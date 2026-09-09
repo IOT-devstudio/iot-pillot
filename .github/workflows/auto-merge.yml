@@ -83,27 +83,13 @@ jobs:
               return;
             }
 
-            // 3. 启用 auto-merge（squash）。
-            //    若 repo 关闭了 auto-merge，回退到直接 merge。
-            try {
-              await github.rest.pulls.enableAutoMerge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number,
-                merge_method: 'squash',
-              });
-              core.info(`✓ auto-merge enabled for PR #${pr.number} (squash)`);
-            } catch (e) {
-              if (e.status === 422) {
-                core.warning('repo-level auto-merge disabled, falling back to direct merge');
-                await github.rest.pulls.merge({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: pr.number,
-                  merge_method: 'squash',
-                });
-                core.info(`✓ PR #${pr.number} merged directly (squash)`);
-              } else {
-                throw e;
-              }
-            }
+            // 3. 直接 squash merge。当 CI 上线后,改为
+            //    github.rest.pulls.enableAutoMerge（API 在新版 Octokit 中存在）；
+            //    当前用同步 merge 以简化。当前没有 status check 需要等。
+            await github.rest.pulls.merge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              merge_method: 'squash',
+            });
+            core.info(`✓ PR #${pr.number} squash merged`);
