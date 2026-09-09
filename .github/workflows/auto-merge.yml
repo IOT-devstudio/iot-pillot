@@ -36,12 +36,10 @@ jobs:
     steps:
       - name: Check and merge
         uses: actions/github-script@v7
-        env:
-          ORG_LOGIN: IOT-devstudio
         with:
           script: |
             const pr = context.payload.pull_request;
-            const org = env.ORG_LOGIN;
+            const org = 'IOT-devstudio';
             const author = pr.user.login;
 
             // 1. 作者必须是组织成员。
@@ -87,7 +85,7 @@ jobs:
               });
               core.info(`✓ auto-merge enabled for PR #${pr.number} (squash)`);
             } catch (e) {
-              if (e.status === 422 && /Auto-merge is not enabled/i.test(e.message || '')) {
+              if (e.status === 422) {
                 core.warning('repo-level auto-merge disabled, falling back to direct merge');
                 await github.rest.pulls.merge({
                   owner: context.repo.owner,
