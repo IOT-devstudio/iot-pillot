@@ -1,0 +1,104 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t iot-pillot-api:latest ./apps/api
+
+      - name: Save Docker image
+        run: docker save iot-pillot-api:latest | gzip > app.tar.gz
+
+      - name: Diagnose secrets (length only)
+        if: always()
+        env:
+          HOST_LEN:     ${{ secrets.HOST }}
+          USERNAME_LEN: ${{ secrets.USERNAME }}
+          SSH_KEY_LEN:  ${{ secrets.SSH_KEY }}
+          PORT_LEN:     ${{ secrets.PORT }}
+        run: |
+          echo "HOST length: ${#HOST_LEN}"
+          echo "USERNAME length: ${#USERNAME_LEN}"
+          echo "SSH_KEY length: ${#SSH_KEY_LEN}"
+          echo "PORT length: ${#PORT_LEN}"
+
+      - name: Copy image to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT || 22 }}
+          source: "app.tar.gz"
+          target: "~/app/"
+          strip_components: 0
+          timeout: 30m
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT || 22 }}
+          timeout: 30s
+          command_timeout: 15m
+          script: |
+            set -e
+            APP_DIR="$HOME/app"
+            CONTAINER_NAME="iot_pillot_api"
+            IMAGE_NAME="iot-pillot-api"
+            HOST_PORT=80
+            CONTAINER_PORT=8080
+
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+
+            test -s app.tar.gz || { echo "MISSING app.tar.gz"; exit 1; }
+            docker load < app.tar.gz
+
+            docker image inspect "${IMAGE_NAME}:latest" >/dev/null \
+              || { echo "load failed — image tag missing"; exit 1; }
+            rm -f app.tar.gz
+
+            docker stop "$CONTAINER_NAME" 2>/dev/null || true
+            docker rm   "$CONTAINER_NAME" 2>/dev/null || true
+
+            docker run -d \
+              --name "$CONTAINER_NAME" \
+              --restart unless-stopped \
+              -p "${HOST_PORT}:${CONTAINER_PORT}" \
+              -e GIN_MODE=release \
+              "${IMAGE_NAME}:latest"
+
+            MAX=6
+            i=0
+            ok=false
+            while [ $i -lt $MAX ]; do
+              i=$((i + 1))
+              echo "Attempt $i/$MAX..."
+              if curl -f -s "http://localhost:${HOST_PORT}/health" >/dev/null 2>&1; then
+                ok=true
+                echo "Health check passed!"
+                break
+              fi
+              sleep 10
+            done
+
+            if [ "$ok" = false ]; then
+              echo "Health check FAILED. Recent logs:"
+              docker logs "$CONTAINER_NAME" --tail 60
+              exit 1
+            fi
+
+            docker image prune -f || true
+            echo "Deployment successful!"
