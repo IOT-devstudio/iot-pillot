@@ -42,17 +42,26 @@ jobs:
             const org = 'IOT-devstudio';
             const author = pr.user.login;
 
-            // 1. 作者必须是组织成员。
+            // 1. 作者必须是 repo collaborator（org 成员默认是 collaborator；
+            //    也允许外部 contributor 拿到 write 权限）。用 repo 级 API，
+            //    默认 GITHUB_TOKEN 即可调用，无需 org-scoped PAT。
+            let perm = 'none';
             try {
-              await github.rest.orgs.checkMembershipForUser({
-                org,
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
                 username: author,
               });
-              core.info(`✓ author ${author} is a member of ${org}`);
+              perm = data.permission;
             } catch (e) {
-              core.info(`✗ author ${author} is not a member of ${org}; skipping`);
+              core.info(`✗ author ${author} is not a collaborator; skipping`);
               return;
             }
+            if (!['admin', 'maintain', 'write'].includes(perm)) {
+              core.info(`✗ author ${author} has permission '${perm}'; need write/maintain/admin; skipping`);
+              return;
+            }
+            core.info(`✓ author ${author} has '${perm}' on repo`);
 
             // 2. 获取 PR 详情，检查 mergeable 状态。
             const { data: prData } = await github.rest.pulls.get({
