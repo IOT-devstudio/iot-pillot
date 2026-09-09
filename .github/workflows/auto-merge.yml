@@ -1,0 +1,102 @@
+# 自动合并成员 PR
+#
+# 触发条件：成员提交 PR、无冲突、非 draft。
+# 行为：调用 GitHub enableAutoMerge API（squash 模式），等所有 status check
+# 通过后 GitHub 自动 squash merge 到 main。
+#
+# 注意：要让本 workflow 能真正合并成功，需在 repo 设置中：
+#   1. Settings → General → Allow auto-merge（默认开启）
+#   2. Settings → Branches → main → 调整 branch protection：
+#      - required_approving_review_count = 0（成员身份代替 review）
+#      - required_status_checks 留空（当前无 CI）；CI 上线后补
+#
+# 不满足条件的工作流只 log 原因、不报错。
+
+name: auto-merge
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  check_run:
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    # 仅对非 draft PR 触发。
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Check and merge
+        uses: actions/github-script@v7
+        env:
+          ORG_LOGIN: IOT-devstudio
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const org = env.ORG_LOGIN;
+            const author = pr.user.login;
+
+            // 1. 作者必须是组织成员。
+            try {
+              await github.rest.orgs.checkMembershipForUser({
+                org,
+                username: author,
+              });
+              core.info(`✓ author ${author} is a member of ${org}`);
+            } catch (e) {
+              core.info(`✗ author ${author} is not a member of ${org}; skipping`);
+              return;
+            }
+
+            // 2. 获取 PR 详情，检查 mergeable 状态。
+            const { data: prData } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+            });
+
+            if (prData.state !== 'open') {
+              core.info(`✗ PR #${pr.number} is ${prData.state}; skipping`);
+              return;
+            }
+            if (prData.mergeable === false) {
+              core.info(`✗ PR #${pr.number} has merge conflicts; skipping`);
+              return;
+            }
+            if (prData.mergeable === null) {
+              core.info(`? PR #${pr.number} mergeability not yet computed; will retry on next event`);
+              return;
+            }
+
+            // 3. 启用 auto-merge（squash）。
+            //    若 repo 关闭了 auto-merge，回退到直接 merge。
+            try {
+              await github.rest.pulls.enableAutoMerge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                merge_method: 'squash',
+              });
+              core.info(`✓ auto-merge enabled for PR #${pr.number} (squash)`);
+            } catch (e) {
+              if (e.status === 422 && /Auto-merge is not enabled/i.test(e.message || '')) {
+                core.warning('repo-level auto-merge disabled, falling back to direct merge');
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  merge_method: 'squash',
+                });
+                core.info(`✓ PR #${pr.number} merged directly (squash)`);
+              } else {
+                throw e;
+              }
+            }

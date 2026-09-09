@@ -4,16 +4,46 @@
 
 ---
 
-## 铁律：不能在 `main` 上直接开发
+## 合并流程：机器人自动 squash merge
 
-所有改动**必须**走分支 + Pull Request 流程：
+`main` 分支受保护，**禁止人工点 Merge 按钮**。由 GitHub Actions
+[`.github/workflows/auto-merge.yml`](./.github/workflows/auto-merge.yml) 自动处理。
 
-1. 从最新的 `main` **迁出自己的分支**
-2. 在自己的分支上提交、推送
-3. **通过 Pull Request** 合并回 `main`
-4. PR 合并后由 GitHub 自动 push（或 maintainer 手动 push）
+### 触发条件
 
-`main` 分支受 GitHub branch protection 保护——直接 push 会被拒绝。
+PR 同时满足以下条件时，机器人会自动 squash merge 到 `main`：
+
+1. **作者是组织成员**（`IOT-devstudio`）
+2. **无合并冲突**（GitHub 检测 mergeable = true）
+3. **非 Draft 状态**（Draft PR 不会被自动合并）
+4. **所有 status check 通过**（CI 上线后生效；当前未启用）
+
+不满足条件时，workflow 只 log 原因、不报错。PR 会停留在 Open 状态等人工处理。
+
+### 阻止自动合并
+
+如果某次改动**不希望**自动合并（例如实验性改动、需要外部 reviewer）：
+
+- 创建为 **Draft PR**（机器人跳过）
+- 或加 `do-not-auto-merge` label（future：未实现，目前以 Draft 为唯一信号）
+
+### 流程速查
+
+```bash
+# 1. 切新分支
+git checkout main && git pull
+git checkout -b feat/my-change
+
+# 2. 改动后提交（Conventional Commits 格式）
+git add .
+git commit -m "feat(form): add share link generation"
+
+# 3. 推送并开 PR（非 Draft）
+git push -u origin feat/my-change
+gh pr create --base main --title "feat(form): add share link generation" --body "..."
+
+# 4. 机器人检查条件：成员 + 无冲突 → 自动 squash merge
+```
 
 ---
 
@@ -100,10 +130,10 @@ BREAKING CHANGE: existing session cookies invalidated; users must re-login.
 
 1. **推送分支**：`git push -u origin <branch>`
 2. **开 PR**：在 GitHub 上创建 PR，base = `main`，按模板填写
-3. **CI 通过**：等待 status check 全绿（CI 配置后启用）
-4. **Review 通过**：**至少 1 人 approve**
-5. **解决所有 conversation**：所有 review comment 必须 resolve
-6. **合并**：使用 **Squash and merge**——保证 `main` 历史每条 PR 一个 commit、整洁
+3. **机器人自动合并**：见上方"合并流程"章节
+4. **人工干预场景**（机器人条件不满足时）：
+   - PR 非成员提交：邀请作者加入组织，或 maintainer 手动 merge
+   - PR 有冲突：rebase 或 merge main 到分支后 push
 
 ### PR 模板必填项
 
@@ -117,15 +147,17 @@ BREAKING CHANGE: existing session cookies invalidated; users must re-login.
 
 ## 代码审查期望
 
-- **review 是为接手的人服务**，不只是为原作者
-- 看 diff 时假设是 5 年后从未看过代码的人在读
+- 成员身份 ≠ review 通过；成员本身仍然需要写好测试与描述
 - 关注点：
   - 可读性、命名清晰度
   - 错误处理是否完整
   - 边界条件、并发安全
   - 测试覆盖
-- **不在 review 里夹带私货**：格式、风格让 lint 工具管，不在 review 里争论
+- **不在 review 里夹带私货**：格式、风格让 lint 工具管
 - review 意见分级：`nit`（可忽略）/ `suggestion`（建议改）/ `request changes`（必须改）
+
+> 注：当机器人自动合并生效时，"review 通过"维度由作者自觉 + CI 兜底。
+> 后续若需强制 review，可在 repo settings 把 `required_approving_review_count` 调回 1。
 
 ---
 
@@ -152,9 +184,9 @@ git checkout -b feat/my-change
 git add .
 git commit -m "feat(form): add share link generation"
 
-# 3. 推送并开 PR
+# 3. 推送并开 PR（非 Draft 即可，机器人会自动合并）
 git push -u origin feat/my-change
 gh pr create --base main --title "feat(form): add share link generation" --body "..."
 
-# 4. 等待 review + CI，merge 后由 GitHub 自动 push 到 main
+# 4. 机器人处理：成员 + 无冲突 → squash merge
 ```

@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iot-pillot-postgres
+    environment:
+      POSTGRES_USER: iot_pillot
+      POSTGRES_PASSWORD: iot_pillot
+      POSTGRES_DB: iot_pillot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iot_pillot -d iot_pillot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
