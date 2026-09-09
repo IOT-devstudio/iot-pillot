@@ -1,0 +1,50 @@
+# CI：PR 与 main push 触发，验证编译/类型。
+# 加完这个 workflow 后，branch protection 可以设 required_status_checks
+# 来保证 auto-merge bot 只合并通过 CI 的 PR。
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Go (apps/api)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: apps/api/go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+      - name: go test
+        run: go test ./...
+
+  frontend:
+    name: TypeScript (apps/web + shared-types)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - name: pnpm install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: typecheck
+        run: pnpm -r typecheck
+      - name: build web
+        run: pnpm --filter @iot-pillot/web build
