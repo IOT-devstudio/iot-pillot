@@ -9,6 +9,11 @@
 `main` 分支受保护，**禁止人工点 Merge 按钮**。由 GitHub Actions
 [`.github/workflows/auto-merge.yml`](./.github/workflows/auto-merge.yml) 自动处理。
 
+### 合并后行为
+
+- 自动 **squash merge** 到 `main`
+- 合并后远程分支**自动删除**（repo setting `delete_branch_on_merge` 已启用）
+
 ### 触发条件
 
 PR 同时满足以下条件时，机器人会自动 squash merge 到 `main`：
@@ -30,19 +35,22 @@ PR 同时满足以下条件时，机器人会自动 squash merge 到 `main`：
 ### 流程速查
 
 ```bash
-# 1. 切新分支
-git checkout main && git pull
+# 1. 同步本地 main 到 origin/main（rebase 而非 merge）
+git fetch origin main
+git rebase origin/main   # 或：git checkout main && git pull --ff-only
+
+# 2. 迁新分支（基于最新 main）
 git checkout -b feat/my-change
 
-# 2. 改动后提交（Conventional Commits 格式）
+# 3. 改动后提交（Conventional Commits 格式）
 git add .
 git commit -m "feat(form): add share link generation"
 
-# 3. 推送并开 PR（非 Draft）
+# 4. 推送并开 PR（非 Draft）
 git push -u origin feat/my-change
 gh pr create --base main --title "feat(form): add share link generation" --body "..."
 
-# 4. 机器人检查条件：成员 + 无冲突 → 自动 squash merge
+# 5. 机器人检查条件：成员 + 无冲突 → 自动 squash merge；合并后远程分支自动删除
 ```
 
 ---
@@ -126,6 +134,51 @@ BREAKING CHANGE: existing session cookies invalidated; users must re-login.
 
 ---
 
+## 分支同步：始终基于最新 main
+
+**新分支必须基于最新 `origin/main`**。任何时候开工前，先把本地 `main`
+同步到 `origin/main` 最新状态：
+
+```bash
+# 拉取最新 main（fast-forward only，不创建 merge commit）
+git fetch origin main
+git checkout main
+git merge --ff-only origin/main
+# 或一步到位：git pull --ff-only
+```
+
+迁新分支时直接基于 main：
+
+```bash
+git checkout -b feat/my-change
+```
+
+### 长期分支中途同步 main
+
+如果分支开发几天，期间 main 进了新 commit：
+
+```bash
+git fetch origin main
+git rebase origin/main              # 把你的 commit 重新接到最新 main 之后
+git push --force-with-lease          # 推回分支（比 --force 安全，会检查远程状态）
+```
+
+### 为什么用 rebase 而不是 merge
+
+- `rebase`：你的 commit 接到 main 最新 commit 之后，历史成直线，无 merge commit
+- `merge main`：分支保留 merge commit，历史分叉，可读性差
+
+`main` 受 `required_linear_history` 保护，不接受 merge commit；
+本地分支的 merge commit 合并后会被 squash 拍平，所以本地用 rebase 更省事。
+
+**禁止**：
+
+- 把 main merge 到分支（产生 merge commit）
+- 用 `git pull`（不指定 `--ff-only` 会隐式 merge）
+- 用 `git push --force`（用 `--force-with-lease`，保留对远程状态的检查）
+
+---
+
 ## Pull Request 流程
 
 1. **推送分支**：`git push -u origin <branch>`
@@ -176,17 +229,18 @@ BREAKING CHANGE: existing session cookies invalidated; users must re-login.
 ## 速查卡
 
 ```bash
-# 1. 切新分支
-git checkout main && git pull
+# 1. 同步本地 main 到 origin/main
+git fetch origin main && git checkout main && git merge --ff-only origin/main
+
+# 2. 迁新分支
 git checkout -b feat/my-change
 
-# 2. 改动后提交（Conventional Commits 格式）
-git add .
-git commit -m "feat(form): add share link generation"
+# 3. 改动 + 提交
+git add . && git commit -m "feat(form): add share link generation"
 
-# 3. 推送并开 PR（非 Draft 即可，机器人会自动合并）
+# 4. 推送 + 开 PR
 git push -u origin feat/my-change
 gh pr create --base main --title "feat(form): add share link generation" --body "..."
 
-# 4. 机器人处理：成员 + 无冲突 → squash merge
+# 5. 机器人自动 squash merge；合并后远程分支自动删除
 ```
