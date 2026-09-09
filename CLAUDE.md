@@ -104,6 +104,7 @@ iot-pillot/
 
 ## 工作约定
 
+- 贡献流程遵循 [CONTRIBUTING.md](./CONTRIBUTING.md)：禁止在 `main` 上直接开发，走分支 + PR；commit 遵循 Conventional Commits；PR 至少 1 人 approve 后 Squash merge
 - Go 后端代码默认落在 `apps/api/`
 - 前端代码默认落在 `apps/web/`
 - 跨前后端的类型定义落在 `packages/shared-types/`
