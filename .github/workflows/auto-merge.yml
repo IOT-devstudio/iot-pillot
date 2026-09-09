@@ -83,9 +83,7 @@ jobs:
               return;
             }
 
-            // 3. 直接 squash merge。当 CI 上线后,改为
-            //    github.rest.pulls.enableAutoMerge（API 在新版 Octokit 中存在）；
-            //    当前用同步 merge 以简化。当前没有 status check 需要等。
+            // 3. 直接 squash merge（CI 上线后改用 enableAutoMerge）。
             await github.rest.pulls.merge({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -93,3 +91,22 @@ jobs:
               merge_method: 'squash',
             });
             core.info(`✓ PR #${pr.number} squash merged`);
+
+            // 4. 显式删除远程分支。
+            //    repo setting delete_branch_on_merge=true 只对 UI 合并生效，
+            //    API 合并不会触发清理——所以 bot 必须自己删。
+            //    默认分支 / 已删 / 受保护 → 忽略错误。
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${pr.head.ref}`,
+              });
+              core.info(`✓ deleted remote branch ${pr.head.ref}`);
+            } catch (e) {
+              if (e.status === 404 || e.status === 422) {
+                core.info(`branch ${pr.head.ref} already gone or protected; skipping`);
+              } else {
+                throw e;
+              }
+            }
