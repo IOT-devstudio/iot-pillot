@@ -104,7 +104,7 @@ iot-pillot/
 
 ## 工作约定
 
-- 贡献流程遵循 [CONTRIBUTING.md](./CONTRIBUTING.md)：禁止在 `main` 上直接开发，走分支 + PR；commit 遵循 Conventional Commits；PR 至少 1 人 approve 后 Squash merge
+- 贡献流程遵循 [CONTRIBUTING.md](./CONTRIBUTING.md)：禁止在 `main` 上直接开发，走分支 + PR；commit 遵循 Conventional Commits；合并由 [`.github/workflows/auto-merge.yml`](./.github/workflows/auto-merge.yml) 自动处理（成员身份 + 无冲突 → squash merge）
 - Go 后端代码默认落在 `apps/api/`
 - 前端代码默认落在 `apps/web/`
 - 跨前后端的类型定义落在 `packages/shared-types/`
@@ -112,3 +112,14 @@ iot-pillot/
 - 所有 SMTP 外发**统一**走 `MailModule`，业务代码不直接调用 SMTP 库
 - 所有模板渲染**统一**走 `TemplateModule`，避免散落字符串拼接
 - 所有权限判断**统一**走 `AuthModule` 的守卫/中间件，不在 handler 里 if-else 角色
+
+---
+
+## 决策日志
+
+| 日期       | 决策                                       | 理由                                                                  |
+| ---------- | ------------------------------------------ | --------------------------------------------------------------------- |
+| 2026-09-09 | 后端选 Go（排除 NestJS、Express、FastAPI） | 招新规模适配，单二进制部署契合"代代传承"；开发/部署/CI 全链路 Go 更轻 |
+| 2026-09-09 | 部署走 GitHub Actions + ghcr.io            | 与 GitHub 仓库同源，免费私有，PR 反馈快（Go 单测秒级）                |
+| 2026-09-09 | 前端定 Vue 3 + Element Plus + TS（从 React+Antd 改定） | 会 Vue 的开发者更多，团队接手门槛低，契合"代代传承"；Element Plus 同样覆盖管理后台表格/表单场景 |
+| 2026-09-09 | 启用 GitHub Actions auto-merge 机器人 | 成员身份 + 无冲突 → 自动 squash merge，代替手工 review；下一 PR 加 CI 后回填 status check |
