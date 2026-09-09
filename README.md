@@ -62,4 +62,3 @@ cd iot-pillot
 
 - [CLAUDE.md](./CLAUDE.md) — 项目计划、技术栈决策、架构原则、工作约定
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — 详细贡献规范：分支策略、commit 规范、PR 流程、review 期望
-// test merge at 2026-09-09T08:08:17Z

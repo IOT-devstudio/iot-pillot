@@ -27,29 +27,28 @@
 
 ## 技术栈
 
-### 已确认（2026-09-09）
+### 已确认且已落地（已在 `go.mod` 或 `package.json` 中实际安装）
 
 | 层            | 选型                                        | 说明                                                             |
 | ------------- | ------------------------------------------- | ---------------------------------------------------------------- |
-| 前端框架      | **Vue 3 + Element Plus + TypeScript** | 会 Vue 的开发者更多，接手门槛低，契合"代代传承"                  |
-| 后端语言      | **Go**                                | 招新规模适配，单二进制部署                                       |
-| 数据库        | **PostgreSQL**                        | 与 GORM 配合稳定                                                 |
-| CI/CD         | **GitHub Actions**                    | `ci.yml`（PR 验证） + `release.yml`（打 tag 触发构建与部署） |
-| 镜像仓库      | **ghcr.io**                           | 私有仓库免费                                                     |
+| 前端框架      | **Vue 3 + Element Plus + TypeScript** | 会 Vue 的开发者更多，接手门槛低                                   |
+| 前端构建      | **Vite** + `unplugin-auto-import` + `unplugin-vue-components` | Element Plus 按需自动引入；`/api` 代理到 :8080                 |
+| 后端语言      | **Go**                                | 单二进制部署                                                     |
+| 后端框架      | **Gin**                                | 路由 + 中间件；已装在 `apps/api/go.mod`                          |
+| 配置管理      | **viper**                              | env prefix `IOT_PILOT_`，自动 ENV 覆盖；已装                     |
+| 数据库        | **PostgreSQL**                        | `docker-compose.yml` 启动本地实例                                 |
 | Monorepo 工具 | **pnpm workspaces**                   | 前后端统一管理                                                   |
-| 部署产物      | Docker 镜像，单实例                         | VPS / Railway / Fly.io 任选                                      |
+| CI/CD         | **GitHub Actions**                    | `auto-merge.yml`（bot）+ `ci.yml`（PR 验证）+ `deploy.yml`（push main → VPS） |
 
-### 已建议（待最终落地时敲定）
+### 已规划但未引入（决策已定，依赖业务模块开工时安装）
 
-| 组件       | 建议                                | 备选             |
-| ---------- | ----------------------------------- | ---------------- |
-| Web 框架   | Gin                                 | Echo / Fiber     |
-| ORM        | GORM                                | sqlc             |
-| SMTP 库    | go-mail                             | gomail           |
-| 模板渲染   | `html/template` + Handlebars 子集 | —               |
-| RBAC       | casbin                              | JWT + 中间件手写 |
-| 数据库迁移 | golang-migrate                      | goose            |
-| 配置管理   | viper                               | envconfig        |
+| 组件       | 建议                                | 备选             | 引入时机                  |
+| ---------- | ----------------------------------- | ---------------- | ------------------------- |
+| ORM        | GORM                                | sqlc             | FormModule / RecruitmentModule 开工 |
+| SMTP 库    | go-mail                             | gomail           | MailModule 开工           |
+| 模板渲染   | `html/template` + Handlebars 子集 | —               | TemplateModule 开工       |
+| RBAC       | casbin                              | JWT + 中间件手写 | AuthModule 开工（鉴权方案定后） |
+| 数据库迁移 | golang-migrate                      | goose            | schema 第一次演进         |
 
 ### 待确认
 
@@ -117,9 +116,10 @@ iot-pillot/
 
 ## 决策日志
 
-| 日期       | 决策                                       | 理由                                                                  |
-| ---------- | ------------------------------------------ | --------------------------------------------------------------------- |
-| 2026-09-09 | 后端选 Go（排除 NestJS、Express、FastAPI） | 招新规模适配，单二进制部署契合"代代传承"；开发/部署/CI 全链路 Go 更轻 |
-| 2026-09-09 | 部署走 GitHub Actions + ghcr.io            | 与 GitHub 仓库同源，免费私有，PR 反馈快（Go 单测秒级）                |
-| 2026-09-09 | 前端定 Vue 3 + Element Plus + TS（从 React+Antd 改定） | 会 Vue 的开发者更多，团队接手门槛低，契合"代代传承"；Element Plus 同样覆盖管理后台表格/表单场景 |
-| 2026-09-09 | 启用 GitHub Actions auto-merge 机器人 | 成员身份 + 无冲突 → 自动 squash merge，代替手工 review；下一 PR 加 CI 后回填 status check |
+| 日期       | 决策                                       | 理由                                                                                       |
+| ---------- | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| 2026-09-09 | 后端选 Go（排除 NestJS、Express、FastAPI） | 招新规模适配，单二进制部署契合"代代传承"；开发/部署/CI 全链路 Go 更轻                      |
+| 2026-09-09 | 部署走 GitHub Actions + ghcr.io            | 与 GitHub 仓库同源，免费私有，PR 反馈快（Go 单测秒级）                                     |
+| 2026-09-09 | 前端定 Vue 3 + Element Plus + TS           | Element Plus 同样覆盖管理后台表格/表单场景                                                 |
+| 2026-09-09 | 启用 GitHub Actions auto-merge 机器人      | 成员身份 + 无冲突 → 自动 squash merge，代替手工 review；下一 PR 加 CI 后回填 status check |
+| 2026-09-09 | 加 `ci.yml` + `deploy.yml`，bot 终于有 status check 可等 | `ci.yml`（PR 触发 Go vet/build/test + 前端 typecheck/build）；`deploy.yml`（push main → Docker build → SCP → SSH 部署到 VPS）；同期把 README 残留测试注释删掉、补 `.env.example`、整理 CLAUDE.md 与 go.mod 一致性 |
