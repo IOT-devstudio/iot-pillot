@@ -4,7 +4,6 @@ IoT 全栈开发工作室的后台管理 web 程序。当前阶段：**招新管
 
 - 仓库：https://github.com/IOT-devstudio/iot-pillot
 - 组织：[IOT-devstudio](https://github.com/IOT-devstudio)
-- 传承使命：**代代传承**——为长期维护与接手友好而设计
 
 ---
 
@@ -23,14 +22,14 @@ IoT 全栈开发工作室的后台管理 web 程序。当前阶段：**招新管
 
 ## 技术栈
 
-| 层 | 选型 |
-|---|---|
-| 前端 | Vue 3 + Element Plus + TypeScript |
-| 后端 | Go（Gin + GORM + go-mail + casbin，建议） |
-| 数据库 | PostgreSQL |
-| Monorepo | pnpm workspaces |
-| CI/CD | GitHub Actions |
-| 镜像 | ghcr.io |
+| 层       | 选型                                      |
+| -------- | ----------------------------------------- |
+| 前端     | Vue 3 + Element Plus + TypeScript         |
+| 后端     | Go（Gin + GORM + go-mail + casbin，建议） |
+| 数据库   | PostgreSQL                                |
+| Monorepo | pnpm workspaces                           |
+| CI/CD    | GitHub Actions                            |
+| 镜像     | ghcr.io                                   |
 
 完整技术栈决策与理由见 [CLAUDE.md](./CLAUDE.md)。
 

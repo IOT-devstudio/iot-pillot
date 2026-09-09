@@ -1,0 +1,45 @@
+# Node / pnpm
+node_modules/
+.pnpm-store/
+dist/
+build/
+*.local
+
+# Go
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Build artifacts / caches
+coverage/
+.cache/
+.turbo/
+.eslintcache
+
+# Generated Go binaries
+apps/api/api
