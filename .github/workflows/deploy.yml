@@ -122,6 +122,25 @@ jobs:
       # 仓库 default_workflow_permissions 是 read，不显式声明的话运行时令牌只有
       # `refs/heads/main: read`，cache-to 会以 "failed to reserve cache" 失败。
       actions: write
+    # 冒烟测试要把镜像真跑起来，需要 Postgres 与 Redis（两者都是启动期硬依赖：
+    # repository.ProvideDB 返回 error，utils.ConnectRedis 直接 log.Fatalf）。
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: iot_pillot
+          POSTGRES_PASSWORD: iot_pillot
+          POSTGRES_DB: iot_pillot
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U iot_pillot -d iot_pillot"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 5
     steps:
       - name: Checkout 待部署的 sha
         uses: actions/checkout@v4
@@ -168,6 +187,36 @@ jobs:
           cache-from: type=gha
           # ignore-error=true：缓存只是加速手段，缓存服务抽风绝不该让一次部署失败。
           cache-to: type=gha,mode=max,ignore-error=true
+
+      # ── 闸门：坏镜像不许离开 runner ──────────────────────────────────
+      # 这是真正拦得住的一道。同一个脚本在 ci.yml 里也跑，但那份只是早期信号 ——
+      # auto-merge.yml 不等 CI 就合并，CI 拦不住任何一次坏合并。
+      # 用测试凭据，证明的是「配置合法时镜像能工作」，不证明生产配置正确；
+      # 生产配置由部署后的健康检查 + 自动回滚兜底。
+      - name: 冒烟测试（scp 之前）
+        run: |
+          set -euo pipefail
+          docker load < "${GITHUB_WORKSPACE}/app.tar"
+          docker run -d --name smoke --network host \
+            -e IOT_PILOT_DB_HOST=127.0.0.1 \
+            -e IOT_PILOT_DB_PORT=5432 \
+            -e IOT_PILOT_DB_USER=iot_pillot \
+            -e IOT_PILOT_DB_PASSWORD=iot_pillot \
+            -e IOT_PILOT_DB_NAME=iot_pillot \
+            -e IOT_PILOT_REDIS_HOST=127.0.0.1 \
+            -e IOT_PILOT_REDIS_PORT=6379 \
+            -e IOT_PILOT_JWT_SECRET=ci-only-not-a-real-secret \
+            -e IOT_PILOT_MODE=release \
+            "iot-pillot-api:${{ steps.meta.outputs.short }}"
+          bash deploy/smoke.sh http://127.0.0.1:8080
+
+      - name: 冒烟测试容器日志
+        if: always()
+        run: docker logs smoke 2>&1 || true
+
+      - name: 清理冒烟容器
+        if: always()
+        run: docker rm -f smoke >/dev/null 2>&1 || true
 
       - name: 压缩镜像
         run: gzip -f -1 "${GITHUB_WORKSPACE}/app.tar"
