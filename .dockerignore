@@ -1,0 +1,60 @@
+# Docker build context 排除清单。
+#
+# context 是仓库根（Dockerfile 需要同时看到 apps/web 与 apps/api），
+# 所以 node_modules 必须排掉，否则 context 会有几百 MB，
+# buildx 在开始构建之前就先卡在传输上。
+#
+# 注意：dockerignore 只在 context 根目录被读取。
+# apps/api/.dockerignore 在 context 上移后已失效，故已删除，内容并入此文件。
+
+# 依赖
+node_modules
+**/node_modules
+.pnpm-store
+
+# 版本控制与文档
+.git
+.gitignore
+.gitattributes
+.github
+docs
+*.md
+.claude
+
+# 前端构建产物（镜像内会重新构建，避免把本地的陈旧产物带进去）
+dist
+**/dist
+*.tsbuildinfo
+
+# vite / unplugin 生成物
+apps/web/auto-imports.d.ts
+apps/web/components.d.ts
+apps/web/vite.config.d.ts
+apps/web/vite.config.js
+
+# 环境与密钥（绝不进镜像）
+.env
+.env.*
+
+# Go 构建产物与测试副产物
+apps/api/api
+bin
+*.exe
+*.test
+*.out
+coverage.out
+coverage.html
+
+# 本地临时目录
+temp
+plan
+
+# 编辑器与 OS 垃圾文件
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

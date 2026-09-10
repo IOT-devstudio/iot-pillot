@@ -14,7 +14,7 @@
 #
 # ── 增量策略 ──────────────────────────────────────────────────────────
 # refs/tags/deployed 是"已部署水位线",语义 = 这个 sha 的 apps/api 正在线上跑。
-# gate 比对它与 main HEAD:main 没前进、或 apps/api/ 没变 → 直接跳过,
+# gate 比对它与 main HEAD:main 没前进、或镜像相关路径没变 → 直接跳过,
 # 不构建、不传输、不重启容器。tag 只在部署成功后推进。
 #
 # ── 注意 ──────────────────────────────────────────────────────────────
@@ -76,6 +76,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          # 影响镜像产物的所有路径。Dockerfile 的 context 是仓库根，
+          # 前端、共享类型、锁文件、nginx 配置与 entrypoint 都会进镜像。
+          IMAGE_PATHS=(
+            apps/api/ apps/web/ packages/
+            pnpm-lock.yaml pnpm-workspace.yaml
+            Dockerfile .dockerignore deploy/
+          )
+
           MAIN_SHA=$(git rev-parse --verify HEAD)
           # tag 不存在时 rev-parse 退出码非 0,不加 || true 会被 set -e 中止。
           LAST_SHA=$(git rev-parse -q --verify refs/tags/deployed^{commit} || true)
@@ -87,10 +95,12 @@ jobs:
           elif [ "$LAST_SHA" = "$MAIN_SHA" ]; then
             deploy=false; reason="main 未前进,已部署于 $MAIN_SHA"
           # git diff --quiet 有差异时返回 1;bash 的 if 条件豁免 set -e。
-          elif git diff --quiet "$LAST_SHA" "$MAIN_SHA" -- apps/api/; then
-            deploy=false; reason="apps/api/ 无变更($LAST_SHA..$MAIN_SHA)"
+          # 镜像现在同时包含前端与后端，任何影响产物的路径都要纳入判定。
+          # 漏掉一个，对应的改动就会被静默判定为「无需部署」。
+          elif git diff --quiet "$LAST_SHA" "$MAIN_SHA" -- "${IMAGE_PATHS[@]}"; then
+            deploy=false; reason="镜像相关路径无变更($LAST_SHA..$MAIN_SHA)"
           else
-            deploy=true;  reason="apps/api/ 有变更($LAST_SHA..$MAIN_SHA)"
+            deploy=true;  reason="镜像相关路径有变更($LAST_SHA..$MAIN_SHA)"
           fi
 
           {
@@ -176,8 +186,8 @@ jobs:
       - name: 构建镜像(复用 GHA layer cache)
         uses: docker/build-push-action@v6
         with:
-          context: ./apps/api
-          file: ./apps/api/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: false
           load: false
           tags: |
@@ -197,18 +207,24 @@ jobs:
         run: |
           set -euo pipefail
           docker load < "${GITHUB_WORKSPACE}/app.tar"
-          docker run -d --name smoke --network host \
-            -e IOT_PILOT_DB_HOST=127.0.0.1 \
+          docker run -d --name smoke \
+            -p 18080:80 \
+            --add-host=host.docker.internal:host-gateway \
+            -e IOT_PILOT_DB_HOST=host.docker.internal \
             -e IOT_PILOT_DB_PORT=5432 \
             -e IOT_PILOT_DB_USER=iot_pillot \
             -e IOT_PILOT_DB_PASSWORD=iot_pillot \
             -e IOT_PILOT_DB_NAME=iot_pillot \
-            -e IOT_PILOT_REDIS_HOST=127.0.0.1 \
+            -e IOT_PILOT_REDIS_HOST=host.docker.internal \
             -e IOT_PILOT_REDIS_PORT=6379 \
             -e IOT_PILOT_JWT_SECRET=ci-only-not-a-real-secret \
             -e IOT_PILOT_MODE=release \
             "iot-pillot-api:${{ steps.meta.outputs.short }}"
-          bash deploy/smoke.sh http://127.0.0.1:8080
+          bash deploy/smoke.sh http://127.0.0.1:18080
+
+      # 放在 HTTP 断言之后：这一步会把容器杀掉。
+      - name: 冒烟测试（进程监督语义）
+        run: bash deploy/smoke-lifecycle.sh smoke
 
       - name: 冒烟测试容器日志
         if: always()
@@ -249,7 +265,7 @@ jobs:
             IMAGE_NAME="iot-pillot-api"
             CONTAINER_NAME="iot_pillot_api"
             HOST_PORT=80
-            CONTAINER_PORT=8080
+            CONTAINER_PORT=80      # nginx 监听 80；Go 在 127.0.0.1:8080 由 nginx 反代
             NEW_TAG="${{ steps.meta.outputs.short }}"
 
             mkdir -p "$APP_DIR"

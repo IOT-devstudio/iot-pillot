@@ -95,8 +95,8 @@ jobs:
       - name: 构建镜像
         uses: docker/build-push-action@v6
         with:
-          context: ./apps/api
-          file: ./apps/api/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: false
           load: true
           tags: iot-pillot-api:ci
@@ -104,24 +104,31 @@ jobs:
           # 缓存只是加速手段，缓存服务抽风不该让 CI 变红
           cache-to: type=gha,mode=max,ignore-error=true
 
-      # --network host：service container 的端口映射在 runner 的 localhost 上，
-      # 容器内用 127.0.0.1 即可访问 postgres / redis。
+      # 用 host-gateway 而不是 --network host：容器内 nginx 监听 80，
+      # 走桥接 + 端口映射就不必占用 runner 的 80 端口；
+      # service container 的端口发布在宿主 localhost 上，容器内经 host.docker.internal 访问。
       - name: 启动容器
         run: |
-          docker run -d --name smoke --network host \
-            -e IOT_PILOT_DB_HOST=127.0.0.1 \
+          docker run -d --name smoke \
+            -p 18080:80 \
+            --add-host=host.docker.internal:host-gateway \
+            -e IOT_PILOT_DB_HOST=host.docker.internal \
             -e IOT_PILOT_DB_PORT=5432 \
             -e IOT_PILOT_DB_USER=iot_pillot \
             -e IOT_PILOT_DB_PASSWORD=iot_pillot \
             -e IOT_PILOT_DB_NAME=iot_pillot \
-            -e IOT_PILOT_REDIS_HOST=127.0.0.1 \
+            -e IOT_PILOT_REDIS_HOST=host.docker.internal \
             -e IOT_PILOT_REDIS_PORT=6379 \
             -e IOT_PILOT_JWT_SECRET=ci-only-not-a-real-secret \
             -e IOT_PILOT_MODE=release \
             iot-pillot-api:ci
 
-      - name: 冒烟测试
-        run: bash deploy/smoke.sh http://127.0.0.1:8080
+      - name: 冒烟测试（HTTP 行为）
+        run: bash deploy/smoke.sh http://127.0.0.1:18080
+
+      # 放在 HTTP 断言之后：这一步会把容器杀掉。
+      - name: 冒烟测试（进程监督语义）
+        run: bash deploy/smoke-lifecycle.sh smoke
 
       # 失败时只有一个红叉最难查，把容器日志全量打出来。
       - name: 容器日志
