@@ -47,6 +47,45 @@ runs_of() { grep '^RUN_ARGS' "$WORK/log" 2>/dev/null; }
 
 printf '服务器部署脚本 · 打桩测试\n\n'
 
+# 应用配置环境变量（与 GitHub secrets 一一对应）
+export DB_HOST=stub-postgres DB_PORT=5432 DB_USER=stub_user DB_PASSWORD=stub_pw DB_NAME=iot_pillot
+export REDIS_HOST=stub-redis REDIS_PORT=6379 REDIS_PASSWORD=stub_redis_pw
+export JWT_SECRET=stub-jwt-secret-not-for-production
+
+# --- 场景 0：应用配置注入 ----------------------------------------------------
+run_deploy "sha256:OLDIMAGE" "8080" "ok"
+last_run=$(runs_of | tail -1)
+missing=""
+for kv in 'IOT_PILOT_MODE=release' 'IOT_PILOT_DB_HOST=stub-postgres' \
+          'IOT_PILOT_DB_USER=stub_user' 'IOT_PILOT_DB_PASSWORD=stub_pw' \
+          'IOT_PILOT_DB_NAME=iot_pillot' 'IOT_PILOT_REDIS_HOST=stub-redis' \
+          'IOT_PILOT_JWT_SECRET=stub-jwt-secret-not-for-production'; do
+  printf '%s' "$last_run" | grep -qF -- "$kv" || missing="$missing $kv"
+done
+if [ -z "$missing" ]; then
+  ok "docker run 注入了全部应用配置（mode/db/redis/jwt）"
+else
+  bad "docker run 缺少应用配置" "缺：$missing"
+fi
+
+# --- 场景 0b：secrets 缺失时的快速失败 ---------------------------------------
+# 少配一项时，脚本必须在起容器之前就失败，并报出缺的是哪一项，
+# 而不是起一个必死的容器、跑完 60 秒健康检查、再回滚。
+(
+  export PATH="$PWD/$STUB_DIR:$PATH"
+  export HOME="$WORK/missing_home" STUB_LOG="$WORK/nothing"
+  export STUB_PREV_IMAGE="" STUB_PREV_CPORT="" STUB_HEALTH="ok"
+  unset DB_HOST    # 模拟 GitHub secrets 少配这一项
+  mkdir -p "$HOME/app"; printf 'd' | gzip > "$HOME/app/app.tar.gz"
+  bash "$WORK/server.sh" > "$WORK/missing_out" 2>&1
+)
+MISSING_RC=$?
+if [ "$MISSING_RC" != "0" ] && grep -q "缺少配置：DB_HOST" "$WORK/missing_out"; then
+  ok "缺少 secrets 时在使用前明确报错（DB_HOST）"
+else
+  bad "缺少 secrets 时的行为不对" "exit=${MISSING_RC}，输出：$(head -3 "$WORK/missing_out" 2>/dev/null)"
+fi
+
 # --- 场景 1：跨端口回滚 ------------------------------------------------------
 # 旧容器监听 8080（纯 api 镜像），新镜像监听 80（nginx）。
 # 新镜像健康检查失败时，回滚必须用旧容器自己的端口，

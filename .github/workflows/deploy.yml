@@ -258,6 +258,19 @@ jobs:
           port: ${{ secrets.PORT || 22 }}
           timeout: 30s
           command_timeout: 15m
+          # 应用配置通过 env 传给远程脚本，再由 start_container 注入容器。
+          # 不能直接内插进 script —— script 内容会回显到 Actions 日志，
+          # 内插会把 JWT/密码泄露进日志；走 env 变量则 ssh-action 会遮蔽取值。
+          env:
+            DB_HOST:     ${{ secrets.DB_HOST }}
+            DB_PORT:     ${{ secrets.DB_PORT }}
+            DB_USER:     ${{ secrets.DB_USER }}
+            DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+            DB_NAME:     ${{ secrets.DB_NAME }}
+            REDIS_HOST:     ${{ secrets.REDIS_HOST }}
+            REDIS_PORT:     ${{ secrets.REDIS_PORT }}
+            REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+            JWT_SECRET:  ${{ secrets.JWT_SECRET }}
           script: |
             set -euo pipefail
 
@@ -267,6 +280,14 @@ jobs:
             HOST_PORT=80
             CONTAINER_PORT=80      # nginx 监听 80；Go 在 127.0.0.1:8080 由 nginx 反代
             NEW_TAG="${{ steps.meta.outputs.short }}"
+
+            # 应用配置。缺任何一项，容器都会在启动期直接退出 ——
+            # DB 与 Redis 是启动期硬依赖，jwt.secret 为空会被 Config.validate 拒绝。
+            # 这里显式检查，让失败信息出现在部署日志顶部，而不是埋在容器日志里。
+            for v in DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME \
+                     REDIS_HOST REDIS_PORT JWT_SECRET; do
+              [ -n "${!v:-}" ] || { echo "缺少配置：$v（GitHub secrets 未设置）"; exit 1; }
+            done
 
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
@@ -303,6 +324,16 @@ jobs:
                 --restart unless-stopped \
                 -p "${HOST_PORT}:${2}" \
                 -e GIN_MODE=release \
+                -e IOT_PILOT_MODE=release \
+                -e IOT_PILOT_DB_HOST="$DB_HOST" \
+                -e IOT_PILOT_DB_PORT="$DB_PORT" \
+                -e IOT_PILOT_DB_USER="$DB_USER" \
+                -e IOT_PILOT_DB_PASSWORD="$DB_PASSWORD" \
+                -e IOT_PILOT_DB_NAME="$DB_NAME" \
+                -e IOT_PILOT_REDIS_HOST="$REDIS_HOST" \
+                -e IOT_PILOT_REDIS_PORT="$REDIS_PORT" \
+                -e IOT_PILOT_REDIS_PASSWORD="$REDIS_PASSWORD" \
+                -e IOT_PILOT_JWT_SECRET="$JWT_SECRET" \
                 "$1"
             }
 
