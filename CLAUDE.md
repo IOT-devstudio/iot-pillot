@@ -123,3 +123,4 @@ iot-pillot/
 | 2026-09-09 | 前端定 Vue 3 + Element Plus + TS           | Element Plus 同样覆盖管理后台表格/表单场景                                                 |
 | 2026-09-09 | 启用 GitHub Actions auto-merge 机器人      | 成员身份 + 无冲突 → 自动 squash merge，代替手工 review；下一 PR 加 CI 后回填 status check |
 | 2026-09-09 | 加 `ci.yml` + `deploy.yml`，bot 终于有 status check 可等 | `ci.yml`（PR 触发 Go vet/build/test + 前端 typecheck/build）；`deploy.yml`（push main → Docker build → SCP → SSH 部署到 VPS）；同期把 README 残留测试注释删掉、补 `.env.example`、整理 CLAUDE.md 与 go.mod 一致性 |
+| 2026-09-09 | 文档收尾：README 填实快速开始 + 项目状态、docs/architecture.md 落地、.gitignore 覆盖 Vite/unplugin/vue-tsc 副产物 | README 补 install/dev/build/test 命令与项目状态表；docs/architecture.md 记录当前架构 + 5 个业务模块引入顺序 + 数据模型与状态机；.gitignore 加 *.tsbuildinfo 与 apps/web/{auto-imports.d.ts, components.d.ts, vite.config.{d.ts,js}} 避免 pnpm build 污染 PR |
