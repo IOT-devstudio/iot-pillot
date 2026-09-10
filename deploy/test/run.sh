@@ -68,6 +68,12 @@ else
   bad "docker run 缺少应用配置" "缺：$missing"
 fi
 
+if printf '%s' "$last_run" | grep -q -- '--network iot-pilot-net'; then
+  ok "docker run 加入了 iot-pilot-net 网络（DB/Redis 以容器名寻址的前提）"
+else
+  bad "docker run 缺少 --network"
+fi
+
 # --- 场景 0b：secrets 缺失时的快速失败 ---------------------------------------
 # 少配一项时，脚本必须在起容器之前就失败，并报出缺的是哪一项，
 # 而不是起一个必死的容器、跑完 60 秒健康检查、再回滚。
