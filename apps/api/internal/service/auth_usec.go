@@ -85,3 +85,7 @@ func (auc *AuthUseCase) Refresh(ctx context.Context, refreshToken string) (*resp
 func (auc *AuthUseCase) Logout(ctx context.Context, accessToken string, refreshToken string) error {
 	return auc.tokenManager.RevokeSession(ctx, accessToken, refreshToken)
 }
+
+func (auc *AuthUseCase) SendVerifyCode(ctx context.Context, verifier string, verifierType string) error {
+	return auc.codeManager.SendVerifyCode(ctx, verifier, utils.VerifierType(verifierType))
+}
