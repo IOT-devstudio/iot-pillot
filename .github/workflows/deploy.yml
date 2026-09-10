@@ -276,7 +276,18 @@ jobs:
             # 按 tag 回滚会滚到刚失败的那个镜像上。用 image ID 则不受 tag 重指影响。
             # 也不依赖 DEPLOYED_SHA 文件，首次部署（文件还不存在）时同样有回滚路径。
             PREV_IMAGE_ID=$(docker inspect -f '{{.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)
+
+            # 回滚还必须带上旧容器**自己的**容器内端口，不能复用 CONTAINER_PORT。
+            # 不同代的镜像监听的端口可能不同：纯 api 镜像监听 8080，引入 nginx 后监听 80。
+            # 用新镜像的端口去启动旧镜像，会把宿主端口映射到一个没人监听的容器端口上，
+            # 于是回滚本身也失败、服务彻底躺下。跨端口的那一次部署上这是必然发生的。
+            PREV_CPORT=$(docker inspect \
+              -f '{{range $p, $v := .HostConfig.PortBindings}}{{$p}}{{"\n"}}{{end}}' \
+              "$CONTAINER_NAME" 2>/dev/null | head -1 | sed 's|/.*||' || true)
+            PREV_CPORT="${PREV_CPORT:-$CONTAINER_PORT}"
+
             echo "回滚目标镜像：${PREV_IMAGE_ID:-（无，当前没有运行中的容器）}"
+            [ -n "$PREV_IMAGE_ID" ] && echo "回滚目标容器端口：${PREV_CPORT}"
 
             test -s app.tar.gz || { echo "MISSING app.tar.gz"; exit 1; }
             docker load < app.tar.gz
@@ -284,13 +295,13 @@ jobs:
               || { echo "load 失败 —— 镜像 tag 缺失"; exit 1; }
             rm -f app.tar.gz
 
-            start_container() {   # $1 = 完整镜像引用（tag 或 image ID）
+            start_container() {   # $1 = 镜像引用（tag 或 image ID）  $2 = 容器内端口
               docker stop "$CONTAINER_NAME" 2>/dev/null || true
               docker rm   "$CONTAINER_NAME" 2>/dev/null || true
               docker run -d \
                 --name "$CONTAINER_NAME" \
                 --restart unless-stopped \
-                -p "${HOST_PORT}:${CONTAINER_PORT}" \
+                -p "${HOST_PORT}:${2}" \
                 -e GIN_MODE=release \
                 "$1"
             }
@@ -308,7 +319,7 @@ jobs:
             }
 
             echo "启动 ${IMAGE_NAME}:${NEW_TAG}"
-            start_container "${IMAGE_NAME}:${NEW_TAG}"
+            start_container "${IMAGE_NAME}:${NEW_TAG}" "$CONTAINER_PORT"
 
             if ! health_ok; then
               echo "健康检查失败,最近日志:"
@@ -316,7 +327,7 @@ jobs:
 
               if [ -n "$PREV_IMAGE_ID" ]; then
                 echo "回滚到 $PREV_IMAGE_ID"
-                start_container "$PREV_IMAGE_ID"
+                start_container "$PREV_IMAGE_ID" "$PREV_CPORT"
                 if health_ok; then
                   echo "回滚成功,线上已恢复到上一版"
                 else
