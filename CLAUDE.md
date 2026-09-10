@@ -59,21 +59,28 @@
 
 ---
 
-## 目录结构（拟）
+## 目录结构
 
 ```
 iot-pillot/
 ├── apps/
 │   ├── web/                # 前端（Vue 3 + Element Plus + TS）
-│   └── api/                # 后端 Go 服务（Gin + GORM）
+│   └── api/                # 后端 Go 服务（Gin + GORM），go.mod 在此
 ├── packages/
 │   └── shared-types/       # 前后端共享 TS 类型（DTO）
+├── deploy/                 # 部署产物配置
+│   ├── nginx.conf          # 完整 nginx 配置（含 events/http 块）
+│   ├── entrypoint.sh       # 容器内两进程的生命周期管理
+│   ├── smoke.sh            # 镜像冒烟测试（HTTP 断言）
+│   └── smoke-lifecycle.sh  # 镜像冒烟测试（进程监督语义）
 ├── .github/
-│   └── workflows/          # ci.yml + release.yml
-├── docs/                   # 项目文档
-├── docker-compose.yml      # 本地 Postgres + API
+│   └── workflows/          # ci.yml + deploy.yml + auto-merge.yml
+├── docs/
+│   └── superpowers/specs/  # 设计文档
+├── Dockerfile              # 单镜像：前端 + 后端 + nginx，context 为仓库根
+├── .dockerignore           # 必须排除 node_modules
+├── docker-compose.yml      # 本地 Postgres
 ├── pnpm-workspace.yaml
-├── go.mod / go.sum
 └── CLAUDE.md
 ```
 
