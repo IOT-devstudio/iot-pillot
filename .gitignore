@@ -4,6 +4,13 @@ node_modules/
 dist/
 build/
 *.local
+*.tsbuildinfo
+
+# Vite / unplugin / vue-tsc generated
+apps/web/auto-imports.d.ts
+apps/web/components.d.ts
+apps/web/vite.config.d.ts
+apps/web/vite.config.js
 
 # Go
 bin/
