@@ -50,3 +50,4 @@ coverage/
 
 # Generated Go binaries
 apps/api/api
+temp/

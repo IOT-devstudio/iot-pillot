@@ -316,12 +316,16 @@ jobs:
               || { echo "load 失败 —— 镜像 tag 缺失"; exit 1; }
             rm -f app.tar.gz
 
+            # Postgres 与 Redis 以容器名运行在 iot-pilot-net 自定义网络里，
+            # secrets 里的 DB_HOST / REDIS_HOST 就是容器名。
+            # 应用容器必须加入同一网络才能解析它们 —— 否则连不上、启动即退出。
             start_container() {   # $1 = 镜像引用（tag 或 image ID）  $2 = 容器内端口
               docker stop "$CONTAINER_NAME" 2>/dev/null || true
               docker rm   "$CONTAINER_NAME" 2>/dev/null || true
               docker run -d \
                 --name "$CONTAINER_NAME" \
                 --restart unless-stopped \
+                --network iot-pilot-net \
                 -p "${HOST_PORT}:${2}" \
                 -e GIN_MODE=release \
                 -e IOT_PILOT_MODE=release \
