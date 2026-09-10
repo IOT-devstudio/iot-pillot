@@ -95,6 +95,31 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	response.OK(c, result)
 }
 
+// SendVerifyCode 发送验证码接口
+// @Summary 发送验证码接口
+// @Description 发送验证码到指定邮箱
+// @Tags 认证模块
+// @Accept json
+// @Produce json
+// @Param verifier query string true "验证目标（邮箱）"
+// @Param verifier_type query string true "验证类型（email）"
+// @Success 200 {object} response.Result "发送验证码成功"
+// @Failure 400 {object} response.Result "请求参数错误"
+// @Router /api/v1/send-verify-code [post]
+func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
+	var req request.VerifyCodeReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, err.Error())
+		return
+	}
+	err := h.authService.SendVerifyCode(c, req.Verifier, req.VerifierType)
+	if err != nil {
+		response.FailInvalidParam(c, err.Error())
+		return
+	}
+	response.OKWithMsg(c, "发送验证码成功", nil)
+}
+
 // Logout 用户退出登录接口
 // @Summary 用户退出登录接口
 // @Description 退出登录接口（需要 access token 和 refresh token）
