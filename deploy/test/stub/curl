@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# curl 打桩：STUB_HEALTH 决定健康检查成败。
+# 第一次部署失败、回滚后成功，用 STUB_HEALTH=fail_then_ok 模拟。
+COUNT_FILE="${STUB_LOG}.curlcount"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$COUNT_FILE"
+
+case "${STUB_HEALTH:-ok}" in
+  ok)   exit 0 ;;
+  fail) exit 22 ;;
+  fail_then_ok)
+    # 前 6 次（新镜像的健康检查轮询）全失败，之后（回滚后）成功
+    [ "$n" -le 6 ] && exit 22
+    exit 0
+    ;;
+esac
+exit 0

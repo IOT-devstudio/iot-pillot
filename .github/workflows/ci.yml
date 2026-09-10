@@ -90,6 +90,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 服务器部署脚本（deploy.yml 里 ssh-action 的 script）是整条流水线上
+      # 最难验证的部分：只在真实服务器、真实故障时才执行。用假的 docker / curl
+      # / sleep 把它抽出来在本地跑，断言 docker 调用正确（跨端口回滚等）。
+      - name: 部署脚本打桩测试
+        run: bash deploy/test/run.sh
+
       - uses: docker/setup-buildx-action@v3
 
       - name: 构建镜像

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# sleep 打桩：让 6×10 秒的健康检查轮询瞬间跑完。
+exit 0
