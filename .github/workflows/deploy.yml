@@ -274,6 +274,10 @@ jobs:
           port: ${{ secrets.PORT || 22 }}
           timeout: 30s
           command_timeout: 15m
+          # ssh-action 不会自动把 step env 转发进远程 shell —— 必须用 envs
+          # 显式点名。缺了这行,变量只存在于 action 容器里,远程脚本里全部为空,
+          # 上线时会以「缺少配置：DB_HOST」快速失败。
+          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,REDIS_HOST,REDIS_PORT,REDIS_PASSWORD,JWT_SECRET
           script: |
             set -euo pipefail
 
