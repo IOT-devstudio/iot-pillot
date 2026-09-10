@@ -251,6 +251,22 @@ jobs:
 
       - name: 服务器上部署(失败自动回滚)
         uses: appleboy/ssh-action@v1.0.3
+        # 应用配置通过 env 传给远程脚本，再由 start_container 注入容器。
+        # 不能直接内插进 script —— script 内容会回显到 Actions 日志，
+        # 内插会把 JWT/密码泄露进日志；走 env 变量则 ssh-action 会遮蔽取值。
+        # env 必须是 step 级字段、与 uses/with 平级(6 空格缩进)；
+        # 缩进到 with 里面 GitHub 的 schema 校验器会拒绝整个 workflow
+        # ("A mapping was not expected")，dispatch 也会 422。
+        env:
+          DB_HOST:     ${{ secrets.DB_HOST }}
+          DB_PORT:     ${{ secrets.DB_PORT }}
+          DB_USER:     ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME:     ${{ secrets.DB_NAME }}
+          REDIS_HOST:     ${{ secrets.REDIS_HOST }}
+          REDIS_PORT:     ${{ secrets.REDIS_PORT }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          JWT_SECRET:  ${{ secrets.JWT_SECRET }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -258,21 +274,6 @@ jobs:
           port: ${{ secrets.PORT || 22 }}
           timeout: 30s
           command_timeout: 15m
-          env:
-            DB_HOST:     ${{ secrets.DB_HOST }}
-            DB_PORT:     ${{ secrets.DB_PORT }}
-            DB_USER:     ${{ secrets.DB_USER }}
-            DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-            DB_NAME:     ${{ secrets.DB_NAME }}
-            REDIS_HOST:     ${{ secrets.REDIS_HOST }}
-            REDIS_PORT:     ${{ secrets.REDIS_PORT }}
-            REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
-            JWT_SECRET:  ${{ secrets.JWT_SECRET }}
-          # 应用配置通过 env 传给远程脚本，再由 start_container 注入容器。
-          # 不能直接内插进 script —— script 内容会回显到 Actions 日志，
-          # 内插会把 JWT/密码泄露进日志；走 env 变量则 ssh-action 会遮蔽取值。
-          # env 必须是 step 级字段,与 with 平级；放进 with 里 GitHub 的
-          # schema 校验器会拒绝整个 workflow（"A mapping was not expected"）。
           script: |
             set -euo pipefail
 
