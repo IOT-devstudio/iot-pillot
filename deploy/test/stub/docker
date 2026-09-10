@@ -20,6 +20,7 @@ case "$1 $2" in
     echo "containerid123"
     exit 0
     ;;
+  "stop "*|"rm "*) exit 0 ;;
   "logs "*) echo "(stub logs)"; exit 0 ;;
   "images "*) exit 0 ;;
   "rmi "*) exit 0 ;;
