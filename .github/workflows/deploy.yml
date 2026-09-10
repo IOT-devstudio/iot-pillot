@@ -1,37 +1,173 @@
+# Deploy —— 构建 apps/api 镜像并部署到 VPS。
+#
+# ── 为什么有三个触发器 ────────────────────────────────────────────────
+# auto-merge.yml 用默认 GITHUB_TOKEN 调 pulls.merge() 合并 PR。GitHub 规定
+# GITHUB_TOKEN 产生的事件不会创建新的 workflow run(防递归),所以 main 前进
+# 产生的 push 事件被系统吞掉 —— 实测仓库生命周期内 push 触发的 run 数为 0,
+# 本 workflow 从来没有自动跑过。
+#
+#   push          若哪天合并身份换成 PAT / GitHub App,这条会自动复活。
+#   workflow_run  抑制规则的唯一已确认例外,是当前实际生效的那条。
+#   workflow_dispatch  手动逃生舱,兼首次 bootstrap(建立 deployed tag)。
+#
+# 三条同时挂,由 gate job 幂等去重 —— 不赌任何一条成立。
+#
+# ── 增量策略 ──────────────────────────────────────────────────────────
+# refs/tags/deployed 是"已部署水位线",语义 = 这个 sha 的 apps/api 正在线上跑。
+# gate 比对它与 main HEAD:main 没前进、或 apps/api/ 没变 → 直接跳过,
+# 不构建、不传输、不重启容器。tag 只在部署成功后推进。
+#
+# ── 注意 ──────────────────────────────────────────────────────────────
+# outputs: type=docker 是单平台 exporter。若以后加 platforms: linux/amd64,arm64
+# 会以晦涩的 tarball 错误失败,届时需改用 type=oci 或分平台导出。
+
 name: Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  workflow_run:
+    workflows: ["auto-merge"]
+    types: [completed]
   workflow_dispatch:
+    inputs:
+      force:
+        description: "忽略增量判定,强制重新构建并部署"
+        type: boolean
+        default: false
+
+# workflow_run 触发的 run,默认 GITHUB_TOKEN 是只读的;tag job 要推 tag。
+permissions:
+  contents: read
+
+# 部署不能被打断:排队,不取消。
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  gate:
+    name: 判定是否需要部署
     runs-on: ubuntu-latest
+    # auto-merge 历史 run 里有失败的;它的 job 被 if 跳过时 run 结论是 skipped。
+    # 两者都不该触发部署。
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      deploy: ${{ steps.decide.outputs.deploy }}
+      sha: ${{ steps.decide.outputs.sha }}
+      reason: ${{ steps.decide.outputs.reason }}
     steps:
-      - name: Checkout code
+      # 必须显式 ref: main —— workflow_run 上下文里 checkout 默认 ref 是上游
+      # run 的 head ref(PR 分支),github.sha 也指向 PR head 而非 merge commit。
+      - name: Checkout main(含全部历史与 tag)
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Build Docker image
-        run: docker build -t iot-pillot-api:latest ./apps/api
-
-      - name: Save Docker image
-        run: docker save iot-pillot-api:latest | gzip > app.tar.gz
-
-      - name: Diagnose secrets (length only)
-        if: always()
+      - name: 比对 deployed tag 与 main
+        id: decide
         env:
-          HOST_LEN:     ${{ secrets.HOST }}
-          USERNAME_LEN: ${{ secrets.USERNAME }}
-          SSH_KEY_LEN:  ${{ secrets.SSH_KEY }}
-          PORT_LEN:     ${{ secrets.PORT }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force || 'false' }}
+          EVENT: ${{ github.event_name }}
         run: |
-          echo "HOST length: ${#HOST_LEN}"
-          echo "USERNAME length: ${#USERNAME_LEN}"
-          echo "SSH_KEY length: ${#SSH_KEY_LEN}"
-          echo "PORT length: ${#PORT_LEN}"
+          set -euo pipefail
 
-      - name: Copy image to server
+          MAIN_SHA=$(git rev-parse --verify HEAD)
+          # tag 不存在时 rev-parse 退出码非 0,不加 || true 会被 set -e 中止。
+          LAST_SHA=$(git rev-parse -q --verify refs/tags/deployed^{commit} || true)
+
+          if [ "$FORCE" = "true" ]; then
+            deploy=true;  reason="workflow_dispatch 强制部署"
+          elif [ -z "$LAST_SHA" ]; then
+            deploy=true;  reason="deployed tag 不存在(首次部署)"
+          elif [ "$LAST_SHA" = "$MAIN_SHA" ]; then
+            deploy=false; reason="main 未前进,已部署于 $MAIN_SHA"
+          # git diff --quiet 有差异时返回 1;bash 的 if 条件豁免 set -e。
+          elif git diff --quiet "$LAST_SHA" "$MAIN_SHA" -- apps/api/; then
+            deploy=false; reason="apps/api/ 无变更($LAST_SHA..$MAIN_SHA)"
+          else
+            deploy=true;  reason="apps/api/ 有变更($LAST_SHA..$MAIN_SHA)"
+          fi
+
+          {
+            echo "deploy=$deploy"
+            echo "sha=$MAIN_SHA"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### 部署判定"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 触发事件 | \`$EVENT\` |"
+            echo "| main HEAD | \`$MAIN_SHA\` |"
+            echo "| 上次部署 | \`${LAST_SHA:-（无）}\` |"
+            echo "| 是否部署 | **$deploy** |"
+            echo "| 原因 | $reason |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-and-ship:
+    name: 构建并部署
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout 待部署的 sha
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          fetch-depth: 1
+
+      - name: 解析短 sha
+        id: meta
+        env:
+          FULL_SHA: ${{ needs.gate.outputs.sha }}
+        run: echo "short=${FULL_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+      # auto-merge.yml 不等 CI 通过就直接合并,这里是"编译不过的代码不上生产"
+      # 的唯一一道闸,不能删。
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: apps/api/go.sum
+
+      - name: go vet + go test
+        working-directory: apps/api
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # cache-from/to: type=gha 与 outputs: type=docker 互不冲突 ——
+      # 缓存层进 GHA cache,镜像进 tar。go.sum 不变时 go mod download 层直接复用。
+      - name: 构建镜像(复用 GHA layer cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: false
+          load: false
+          tags: |
+            iot-pillot-api:latest
+            iot-pillot-api:${{ steps.meta.outputs.short }}
+          outputs: type=docker,dest=${{ github.workspace }}/app.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 压缩镜像
+        run: gzip -f -1 "${GITHUB_WORKSPACE}/app.tar"
+
+      - name: 传输到服务器
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.HOST }}
@@ -43,7 +179,7 @@ jobs:
           strip_components: 0
           timeout: 30m
 
-      - name: Deploy on server
+      - name: 服务器上部署(失败自动回滚)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -53,52 +189,111 @@ jobs:
           timeout: 30s
           command_timeout: 15m
           script: |
-            set -e
+            set -euo pipefail
+
             APP_DIR="$HOME/app"
-            CONTAINER_NAME="iot_pillot_api"
             IMAGE_NAME="iot-pillot-api"
+            CONTAINER_NAME="iot_pillot_api"
             HOST_PORT=80
             CONTAINER_PORT=8080
+            NEW_TAG="${{ steps.meta.outputs.short }}"
 
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
 
+            # 回滚目标：正在运行的容器的镜像 ID（不是 tag）。
+            # 必须在 docker load 之前抓 —— load 会把 :latest 重新指向新镜像，
+            # 按 tag 回滚会滚到刚失败的那个镜像上。用 image ID 则不受 tag 重指影响。
+            # 也不依赖 DEPLOYED_SHA 文件，首次部署（文件还不存在）时同样有回滚路径。
+            PREV_IMAGE_ID=$(docker inspect -f '{{.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)
+            echo "回滚目标镜像：${PREV_IMAGE_ID:-（无，当前没有运行中的容器）}"
+
             test -s app.tar.gz || { echo "MISSING app.tar.gz"; exit 1; }
             docker load < app.tar.gz
-
-            docker image inspect "${IMAGE_NAME}:latest" >/dev/null \
-              || { echo "load failed — image tag missing"; exit 1; }
+            docker image inspect "${IMAGE_NAME}:${NEW_TAG}" >/dev/null \
+              || { echo "load 失败 —— 镜像 tag 缺失"; exit 1; }
             rm -f app.tar.gz
 
-            docker stop "$CONTAINER_NAME" 2>/dev/null || true
-            docker rm   "$CONTAINER_NAME" 2>/dev/null || true
+            start_container() {   # $1 = 完整镜像引用（tag 或 image ID）
+              docker stop "$CONTAINER_NAME" 2>/dev/null || true
+              docker rm   "$CONTAINER_NAME" 2>/dev/null || true
+              docker run -d \
+                --name "$CONTAINER_NAME" \
+                --restart unless-stopped \
+                -p "${HOST_PORT}:${CONTAINER_PORT}" \
+                -e GIN_MODE=release \
+                "$1"
+            }
 
-            docker run -d \
-              --name "$CONTAINER_NAME" \
-              --restart unless-stopped \
-              -p "${HOST_PORT}:${CONTAINER_PORT}" \
-              -e GIN_MODE=release \
-              "${IMAGE_NAME}:latest"
+            health_ok() {
+              local i
+              for i in 1 2 3 4 5 6; do
+                echo "健康检查 $i/6..."
+                if curl -f -s "http://localhost:${HOST_PORT}/health" >/dev/null 2>&1; then
+                  return 0
+                fi
+                sleep 10
+              done
+              return 1
+            }
 
-            MAX=6
-            i=0
-            ok=false
-            while [ $i -lt $MAX ]; do
-              i=$((i + 1))
-              echo "Attempt $i/$MAX..."
-              if curl -f -s "http://localhost:${HOST_PORT}/health" >/dev/null 2>&1; then
-                ok=true
-                echo "Health check passed!"
-                break
+            echo "启动 ${IMAGE_NAME}:${NEW_TAG}"
+            start_container "${IMAGE_NAME}:${NEW_TAG}"
+
+            if ! health_ok; then
+              echo "健康检查失败,最近日志:"
+              docker logs "$CONTAINER_NAME" --tail 60 || true
+
+              if [ -n "$PREV_IMAGE_ID" ]; then
+                echo "回滚到 $PREV_IMAGE_ID"
+                start_container "$PREV_IMAGE_ID"
+                if health_ok; then
+                  echo "回滚成功,线上已恢复到上一版"
+                else
+                  echo "回滚后健康检查依然失败 —— 需要人工介入"
+                fi
+              else
+                echo "无可回滚的镜像（首次部署且此前没有运行中的容器）"
               fi
-              sleep 10
-            done
-
-            if [ "$ok" = false ]; then
-              echo "Health check FAILED. Recent logs:"
-              docker logs "$CONTAINER_NAME" --tail 60
               exit 1
             fi
 
-            docker image prune -f || true
-            echo "Deployment successful!"
+            echo "$NEW_TAG" > "$APP_DIR/DEPLOYED_SHA"
+
+            # 保留最近 3 个 short-sha 镜像作为回滚目标(docker images 默认按创建
+            # 时间倒序)。原先的 docker image prune -f 会把上一版冲掉,毁掉回滚路径。
+            set +o pipefail
+            OLD_TAGS=$(docker images "$IMAGE_NAME" --format '{{.Tag}}' \
+              | grep -Ev '^(latest|<none>)$' | tail -n +4)
+            set -o pipefail
+            for t in $OLD_TAGS; do
+              echo "清理旧镜像 ${IMAGE_NAME}:${t}"
+              docker rmi "${IMAGE_NAME}:${t}" >/dev/null 2>&1 || true
+            done
+
+            echo "部署成功:${IMAGE_NAME}:${NEW_TAG}"
+
+  tag:
+    name: 推进 deployed 水位线
+    needs: [gate, build-and-ship]
+    if: success()
+    runs-on: ubuntu-latest
+    # 独立成 job:推 tag 失败不该把一次已经成功的部署标红,且可单独重跑。
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 移动 deployed tag
+        env:
+          SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f deployed "$SHA"
+          # tag 的 force push 不受 main 的 allow_force_pushes:false 约束(那条只管分支)。
+          git push origin refs/tags/deployed --force
+          echo "deployed -> $SHA" >> "$GITHUB_STEP_SUMMARY"

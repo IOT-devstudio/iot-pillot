@@ -7,8 +7,17 @@ name: ci
 on:
   pull_request:
     branches: [main]
+  # 注意：这条目前是死触发器。auto-merge.yml 用默认 GITHUB_TOKEN 调 pulls.merge()
+  # 合并 PR，而 GITHUB_TOKEN 产生的事件不会创建新的 workflow run，所以 main 前进
+  # 时的 push 事件被系统吞掉（实测 push 触发的 run 数为 0）。保留它是因为哪天合并
+  # 身份换成 PAT / GitHub App，它会自动复活。deploy.yml 同理。
   push:
     branches: [main]
+
+# 同一分支连续 force-push 时，取消被顶掉的旧 run。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
