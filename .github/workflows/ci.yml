@@ -57,3 +57,73 @@ jobs:
         run: pnpm -r typecheck
       - name: build web
         run: pnpm --filter @iot-pillot/web build
+
+  # 真正把镜像跑起来做黑盒断言。
+  #
+  # 为什么需要它：ci.yml 的 `go build ./...` 编译所有包，但从不执行 Dockerfile。
+  # PR #13 把入口从 cmd/api 挪到 cmd 之后镜像构建坏了很久没人发现，就是因为
+  # 没有任何 job 真正走过那条路径。
+  #
+  # 注意这一份**拦不住坏合并** —— auto-merge.yml 不等 CI 就合并。它的作用是
+  # 早期信号，以及验证 deploy/smoke.sh 本身。真正的闸门是 deploy.yml 里
+  # 同名脚本的那次调用，它跑在 scp 之前，坏镜像到不了服务器。
+  image:
+    name: Docker image smoke test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: iot_pillot
+          POSTGRES_PASSWORD: iot_pillot
+          POSTGRES_DB: iot_pillot
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U iot_pillot -d iot_pillot"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: false
+          load: true
+          tags: iot-pillot-api:ci
+          cache-from: type=gha
+          # 缓存只是加速手段，缓存服务抽风不该让 CI 变红
+          cache-to: type=gha,mode=max,ignore-error=true
+
+      # --network host：service container 的端口映射在 runner 的 localhost 上，
+      # 容器内用 127.0.0.1 即可访问 postgres / redis。
+      - name: 启动容器
+        run: |
+          docker run -d --name smoke --network host \
+            -e IOT_PILOT_DB_HOST=127.0.0.1 \
+            -e IOT_PILOT_DB_PORT=5432 \
+            -e IOT_PILOT_DB_USER=iot_pillot \
+            -e IOT_PILOT_DB_PASSWORD=iot_pillot \
+            -e IOT_PILOT_DB_NAME=iot_pillot \
+            -e IOT_PILOT_REDIS_HOST=127.0.0.1 \
+            -e IOT_PILOT_REDIS_PORT=6379 \
+            -e IOT_PILOT_JWT_SECRET=ci-only-not-a-real-secret \
+            -e IOT_PILOT_MODE=release \
+            iot-pillot-api:ci
+
+      - name: 冒烟测试
+        run: bash deploy/smoke.sh http://127.0.0.1:8080
+
+      # 失败时只有一个红叉最难查，把容器日志全量打出来。
+      - name: 容器日志
+        if: always()
+        run: docker logs smoke 2>&1 || true
