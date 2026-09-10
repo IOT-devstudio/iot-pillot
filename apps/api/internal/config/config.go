@@ -4,16 +4,38 @@ package config
 
 import (
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
+	SERVICE *ServiceConfig
+	CORS    *CORSConfig
+	DB      *DBConfig
+	SMTP    *SMTPConfig
+	REDIS   *RedisConfig
+	JWT     *JWTConfig
+	CACHE   *CacheConfig
+}
+
+type ServiceConfig struct {
 	Port int
 	Mode string // "debug" | "release" | "test"
-	CORS CORSConfig
-	DB   DBConfig
-	SMTP SMTPConfig
+}
+
+type RedisConfig struct {
+	Host            string
+	Port            int
+	Password        string
+	DB              int
+	PoolSize        int
+	ConnWithTimeout time.Duration
+}
+
+type JWTConfig struct {
+	Secret string
+	Expire int
 }
 
 type CORSConfig struct {
@@ -23,7 +45,7 @@ type CORSConfig struct {
 type DBConfig struct {
 	Host     string
 	Port     int
-	User     string
+	Username string
 	Password string
 	Name     string
 }
@@ -34,6 +56,11 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+}
+
+type CacheConfig struct {
+	BaseKey string
+	Expire  int
 }
 
 func Load() (*Config, error) {
@@ -51,24 +78,38 @@ func Load() (*Config, error) {
 	_ = viper.ReadInConfig()
 
 	return &Config{
-		Port: viper.GetInt("port"),
-		Mode: viper.GetString("mode"),
-		CORS: CORSConfig{
+		SERVICE: &ServiceConfig{
+			Port: viper.GetInt("port"),
+			Mode: viper.GetString("mode"),
+		},
+		CORS: &CORSConfig{
 			AllowedOrigins: viper.GetStringSlice("cors.allowed_origins"),
 		},
-		DB: DBConfig{
+		DB: &DBConfig{
 			Host:     viper.GetString("db.host"),
 			Port:     viper.GetInt("db.port"),
-			User:     viper.GetString("db.user"),
+			Username: viper.GetString("db.username"),
 			Password: viper.GetString("db.password"),
 			Name:     viper.GetString("db.name"),
 		},
-		SMTP: SMTPConfig{
+		SMTP: &SMTPConfig{
 			Host:     viper.GetString("smtp.host"),
 			Port:     viper.GetInt("smtp.port"),
 			Username: viper.GetString("smtp.username"),
 			Password: viper.GetString("smtp.password"),
 			From:     viper.GetString("smtp.from"),
+		},
+		REDIS: &RedisConfig{
+			Host:            viper.GetString("redis.host"),
+			Port:            viper.GetInt("redis.port"),
+			Password:        viper.GetString("redis.password"),
+			DB:              viper.GetInt("redis.db"),
+			PoolSize:        viper.GetInt("redis.pool_size"),
+			ConnWithTimeout: viper.GetDuration("redis.conn_with_timeout") * time.Second,
+		},
+		JWT: &JWTConfig{
+			Secret: viper.GetString("jwt.secret"),
+			Expire: viper.GetInt("jwt.expire"),
 		},
 	}, nil
 }
@@ -83,4 +124,10 @@ func setDefaults() {
 	viper.SetDefault("db.password", "iot_pillot")
 	viper.SetDefault("db.name", "iot_pillot")
 	viper.SetDefault("smtp.port", 587)
+	viper.SetDefault("redis.host", "localhost")
+	viper.SetDefault("redis.port", 6379)
+	viper.SetDefault("redis.password", "")
+	viper.SetDefault("redis.db", 0)
+	viper.SetDefault("redis.pool_size", 100)
+	viper.SetDefault("redis.conn_with_timeout", 5*time.Second)
 }

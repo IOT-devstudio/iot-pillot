@@ -9,6 +9,9 @@ package main
 import (
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/handler"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/service"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 )
 
 // Injectors from wire.go:
@@ -19,7 +22,19 @@ func InitializeApp() (*handler.Router, func(), error) {
 		return nil, nil, err
 	}
 	healthHandler := handler.NewHealthHandler()
-	router := handler.NewRouter(configConfig, healthHandler)
+	db, cleanup, err := repository.ProvideDB(configConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	userRepo := repository.NewUserRepo(db)
+	client := utils.ConnectRedis(configConfig)
+	tokenManager := utils.NewTokenManager(client, configConfig)
+	mailManager := utils.NewMailManager(configConfig, client)
+	codeManager := utils.NewCodeManager(client, mailManager)
+	authUseCase := service.NewAuthUseCase(userRepo, tokenManager, codeManager)
+	authHandler := handler.NewAuthHandler(authUseCase)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler)
 	return router, func() {
+		cleanup()
 	}, nil
 }
