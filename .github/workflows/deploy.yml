@@ -118,6 +118,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # GHA layer cache 的写入走 Actions Cache API，需要 actions: write。
+      # 仓库 default_workflow_permissions 是 read，不显式声明的话运行时令牌只有
+      # `refs/heads/main: read`，cache-to 会以 "failed to reserve cache" 失败。
+      actions: write
     steps:
       - name: Checkout 待部署的 sha
         uses: actions/checkout@v4
@@ -162,7 +166,8 @@ jobs:
             iot-pillot-api:${{ steps.meta.outputs.short }}
           outputs: type=docker,dest=${{ github.workspace }}/app.tar
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # ignore-error=true：缓存只是加速手段，缓存服务抽风绝不该让一次部署失败。
+          cache-to: type=gha,mode=max,ignore-error=true
 
       - name: 压缩镜像
         run: gzip -f -1 "${GITHUB_WORKSPACE}/app.tar"
