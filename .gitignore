@@ -51,3 +51,6 @@ coverage/
 # Generated Go binaries
 apps/api/api
 temp/
+
+# Local agent notes
+AGENTS.md
