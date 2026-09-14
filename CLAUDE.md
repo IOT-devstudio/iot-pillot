@@ -37,6 +37,8 @@
 | 后端框架      | **Gin**                                | 路由 + 中间件；已装在 `apps/api/go.mod`                          |
 | 配置管理      | **viper**                              | env prefix `IOT_PILOT_`，自动 ENV 覆盖；已装                     |
 | 数据库        | **PostgreSQL**                        | `docker-compose.yml` 启动本地实例                                 |
+| ORM           | **GORM**                              | `apps/api/go.mod` 与 `internal/repository` 已实际使用               |
+| SMTP 库       | **gomail**                            | `apps/api/go.mod` 与 `internal/utils/mail_util.go` 已实际使用       |
 | Monorepo 工具 | **pnpm workspaces**                   | 前后端统一管理                                                   |
 | CI/CD         | **GitHub Actions**                    | `auto-merge.yml`（bot）+ `ci.yml`（PR 验证）+ `deploy.yml`（push main → VPS） |
 
@@ -44,8 +46,6 @@
 
 | 组件       | 建议                                | 备选             | 引入时机                  |
 | ---------- | ----------------------------------- | ---------------- | ------------------------- |
-| ORM        | GORM                                | sqlc             | FormModule / RecruitmentModule 开工 |
-| SMTP 库    | go-mail                             | gomail           | MailModule 开工           |
 | 模板渲染   | `html/template` + Handlebars 子集 | —               | TemplateModule 开工       |
 | RBAC       | casbin                              | JWT + 中间件手写 | AuthModule 开工（鉴权方案定后） |
 | 数据库迁移 | golang-migrate                      | goose            | schema 第一次演进         |
@@ -118,6 +118,7 @@ iot-pillot/
 
 - 后端统一响应为 `{ code, message, data }`，而当前 `ApiResponse<T>` 只有 `data` 和可选 `meta`；应先统一成功、失败和分页协议。
 - 后端登录返回 `user_id: number`，共享类型的通用 `ID` 当前定义为 UUID 字符串；在后端迁移到 UUID 前，认证 DTO 必须如实使用 number，禁止靠类型断言掩盖差异。
+- `/api/v1/refresh` 当前复用 `LoginResp`，但实际返回 `user_id: -1`；前端不能把该值写入用户状态。M0 必须改成不含用户 ID 的 refresh DTO，或先修正后端再验收会话恢复。
 - JWT 中的角色目前写死为 `user`，但前端规划角色是 `admin | member`；RBAC 页面和路由守卫必须等后端角色模型、鉴权中间件和“当前用户”接口落地后再启用。
 - 注册要求验证码，但 `/send-verify-code` 未挂载；注册页可以先完成表单和接口适配，不能标记为可验收功能。
 - 注册 DTO 接收 `email`，但当前 `domain.User` 没有邮箱字段，注册逻辑也没有持久化邮箱；依赖邮箱的个人资料和招新关联功能必须等后端模型补齐。
@@ -189,7 +190,7 @@ apps/web/src/
 开发内容：
 
 - 建立基于原生 `fetch` 的轻量 API 客户端，统一 base URL、JSON 序列化、Authorization、响应解包、超时与错误对象；当前规模不引入 axios。
-- 建立 access token / refresh token 的会话存储策略。首期使用 Pinia 管理运行时状态，持久化只保存恢复会话所需字段，不保存密码、验证码或完整用户对象。
+- 固定会话存储策略：首期使用 Pinia 管理运行时状态，并将 access/refresh token 仅保存到 `sessionStorage` 的 `iot-pillot.access-token` 与 `iot-pillot.refresh-token`；不使用 `localStorage`，不保存密码、验证码或完整用户对象。应用启动时读取这两个 key，首个受保护请求验证会话；后端提供 HttpOnly Cookie 方案后再单独评估迁移。
 - 实现 401 刷新队列：同一时间只允许一次 refresh，请求成功后重放等待请求；刷新失败则清空会话并跳转登录，防止并发请求反复刷新。
 - 扩展 Vue Router：公开路由、需登录路由、管理员路由、404/403 页面，并通过 route meta 统一守卫。
 - 建立 Element Plus 的全局交互约定：提交中禁用、危险操作二次确认、成功提示、字段错误、页面级错误和空状态。
@@ -261,6 +262,8 @@ apps/web/src/
 ### 10. M6：招新流程模块
 
 **路由建议**：`/recruitment/prospects`、`/recruitment/candidates`、`/recruitment/candidates/:id`。
+
+MailModule 当前是后端能力，不单独创建前端 `modules/mail/`；招新页面消费邀请/offer/感谢信接口，SMTP 配置页面归 `modules/settings/`。
 
 页面与能力：
 
