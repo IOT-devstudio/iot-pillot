@@ -55,6 +55,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: typecheck
         run: pnpm -r typecheck
+      - name: test web
+        run: pnpm --filter @iot-pillot/web test
       - name: build web
         run: pnpm --filter @iot-pillot/web build
 
