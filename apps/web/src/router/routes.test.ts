@@ -4,9 +4,7 @@ vi.mock("@/views/Home.vue", () => ({ default: { name: "HomeView" } }));
 vi.mock("@/views/PlaceholderView.vue", () => ({
   default: { name: "PlaceholderView" },
 }));
-vi.mock("@/views/AuthView.vue", () => ({ default: { name: "AuthView" } }), {
-  virtual: true,
-});
+vi.mock("@/views/AuthView.vue", () => ({ default: { name: "AuthView" } }));
 
 import { routes } from "./routes";
 
