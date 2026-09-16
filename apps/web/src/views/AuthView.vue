@@ -74,11 +74,11 @@ async function handleSubmit(): Promise<void> {
           <span class="wordmark__mark" aria-hidden="true">i/o</span>
           <span>iot-pillot</span>
         </a>
-        <span class="edition">RECRUIT / 2026</span>
+        <span class="edition">2026 招新计划</span>
       </header>
 
       <section class="brand-copy">
-        <p class="eyebrow">FIELD NOTES · 06</p>
+        <p class="eyebrow">研究手记 · 06</p>
         <h1>把灵感接入<br />真实世界。</h1>
         <p class="brand-copy__description">
           从传感器到云端，从一行代码到一件作品。加入我们，把你的好奇心做成可以运行的答案。
@@ -106,10 +106,10 @@ async function handleSubmit(): Promise<void> {
             <path d="M510 124v108m-54-54h108M472 140l76 76m0-76-76 76" />
           </g>
           <g class="schematic__labels">
-            <text x="165" y="84">NODE / A-17</text>
-            <text x="198" y="251">INPUT ARRAY</text>
-            <text x="482" y="259">SIGNAL</text>
-            <text x="19" y="329">SYSTEM STUDY · SCALE 1:2</text>
+            <text x="165" y="84">节点 / A-17</text>
+            <text x="198" y="251">输入阵列</text>
+            <text x="482" y="259">信号</text>
+            <text x="19" y="329">系统研究 · 比例 1:2</text>
           </g>
           <g class="schematic__annotations">
             <path d="M430 104c51-29 123-20 155 23" />
@@ -121,8 +121,8 @@ async function handleSubmit(): Promise<void> {
       </div>
 
       <footer class="brand-footer">
-        <span>IoT Studio · Research Manual</span>
-        <span>NO. 001—026</span>
+        <span>IoT 工作室 · 研究手册</span>
+        <span>编号 001—026</span>
       </footer>
     </aside>
 
@@ -134,7 +134,7 @@ async function handleSubmit(): Promise<void> {
         </div>
 
         <div class="section-index" aria-hidden="true">
-          <span>ACCESS PROTOCOL</span>
+          <span>访问协议</span>
           <span>06 / 09</span>
         </div>
 
@@ -183,7 +183,7 @@ async function handleSubmit(): Promise<void> {
             <div class="field-group">
               <div class="field-meta">
                 <label for="username">用户名</label>
-                <span>USERNAME</span>
+                <span>用户名</span>
               </div>
               <input
                 id="username"
@@ -203,7 +203,7 @@ async function handleSubmit(): Promise<void> {
             <div class="field-group">
               <div class="field-meta">
                 <label for="login-password">密码</label>
-                <span>PASSWORD</span>
+                <span>密码</span>
               </div>
               <input
                 id="login-password"
@@ -230,7 +230,7 @@ async function handleSubmit(): Promise<void> {
             <div class="field-group">
               <div class="field-meta">
                 <label for="name">姓名</label>
-                <span>NAME</span>
+                <span>姓名</span>
               </div>
               <input
                 id="name"
@@ -250,7 +250,7 @@ async function handleSubmit(): Promise<void> {
             <div class="field-group">
               <div class="field-meta">
                 <label for="email">邮箱</label>
-                <span>EMAIL</span>
+                <span>邮箱</span>
               </div>
               <input
                 id="email"
@@ -271,7 +271,7 @@ async function handleSubmit(): Promise<void> {
               <div class="field-group">
                 <div class="field-meta">
                   <label for="register-password">密码</label>
-                  <span>PASSWORD</span>
+                  <span>密码</span>
                 </div>
                 <input
                   id="register-password"
@@ -296,7 +296,7 @@ async function handleSubmit(): Promise<void> {
               <div class="field-group">
                 <div class="field-meta">
                   <label for="confirm-password">确认密码</label>
-                  <span>CONFIRM</span>
+                  <span>确认密码</span>
                 </div>
                 <input
                   id="confirm-password"
@@ -322,7 +322,7 @@ async function handleSubmit(): Promise<void> {
             <div class="field-group">
               <div class="field-meta">
                 <label for="code">邮箱验证码</label>
-                <span>VERIFY CODE</span>
+                <span>验证码</span>
               </div>
               <div class="code-field">
                 <input
