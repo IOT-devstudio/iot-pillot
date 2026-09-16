@@ -33,7 +33,8 @@ IoT 全栈开发工作室 [IOT-devstudio](https://github.com/IOT-devstudio) 的�
 | `auto-merge.yml`：成员 + 无冲突 → 自动 squash merge + 删分支 | ✅ 落地 |
 | `ci.yml`：PR 触发 Go vet/build/test + 前端 typecheck/build | ✅ 落地 |
 | `deploy.yml`：push main → VPS 部署（需 secrets 配置） | ✅ 落地 |
-| 业务模块（Form / Template / Auth / Mail / Recruitment） | ⏳ 空白，待开工 |
+| Auth 登录注册页（`/login`） | 🟡 页面与接口适配已落地；注册验证码待后端接入 |
+| 业务模块（Form / Template / Mail / Recruitment） | ⏳ 空白，待开工 |
 
 ---
 
@@ -66,19 +67,26 @@ cd iot-pillot
 # 2. 启动本地 Postgres
 docker compose up -d postgres
 
-# 3. 配置后端环境变量
-cp .env.example .env
-# 编辑 .env，至少把 SMTP_* 改成可用的（或先留空）
+# 3. 启动 Redis（docker-compose 当前只定义 Postgres）
+docker run --name iot-pillot-redis -p 6379:6379 -d redis:7-alpine
 
-# 4. 安装前端依赖
+# 4. 配置后端环境变量
+cp .env.example .env
+# 当前 API 不会自动读取 .env；请将必需配置导出到进程环境。
+# JWT secret 必填，SMTP_* 暂时可以留空。
+# PowerShell：$env:IOT_PILOT_JWT_SECRET = "dev-only-change-me"
+# macOS/Linux：export IOT_PILOT_JWT_SECRET=dev-only-change-me
+
+# 5. 安装前端依赖
 pnpm install
 
-# 5. 启动两个 dev server（两个终端窗口）
-cd apps/api && go run ./cmd/api     # 监听 :8080
+# 6. 启动两个 dev server（两个终端窗口）
+cd apps/api && go run ./cmd         # 监听 :8080
 cd apps/web && pnpm dev             # 监听 :5173，/api 代理到 :8080
 
-# 6. 浏览器打开 http://localhost:5173
-#    Home 页面会调用 /api/health 验证前后端联通
+# 7. 浏览器打开 http://localhost:5173/login
+#    登录页支持登录 / 注册模式切换；注册验证码按钮在后端路由接入前保持禁用
+#    后端健康检查地址为 http://localhost:8080/health
 ```
 
 ---

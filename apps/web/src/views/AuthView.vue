@@ -66,7 +66,7 @@ async function handleSubmit(): Promise<void> {
 
 <template>
   <main class="auth-page">
-    <aside class="brand-panel" aria-label="iot-pillot 招新管理系统">
+    <aside class="brand-panel" aria-label="iot-pillot 全栈工作室招新">
       <div class="brand-panel__grid" aria-hidden="true"></div>
 
       <header class="brand-header">
@@ -74,54 +74,56 @@ async function handleSubmit(): Promise<void> {
           <span class="wordmark__mark" aria-hidden="true">i/o</span>
           <span>iot-pillot</span>
         </a>
-        <span class="edition">2026 招新计划</span>
+        <span class="edition">2026 春季招新</span>
       </header>
 
       <section class="brand-copy">
-        <p class="eyebrow">研究手记 · 06</p>
-        <h1>把灵感接入<br />真实世界。</h1>
+        <p class="eyebrow">全栈招新 · 01</p>
+        <h1>从界面到服务，<br />把想法做成作品。</h1>
         <p class="brand-copy__description">
-          从传感器到云端，从一行代码到一件作品。加入我们，把你的好奇心做成可以运行的答案。
+          iot 全栈工作室以前端与后端开发为核心，围绕真实问题做项目：拆需求、写代码、联调服务，再把结果交付给真正的用户。
         </p>
       </section>
 
       <div class="schematic" aria-hidden="true">
         <svg viewBox="0 0 620 390" role="presentation">
           <g class="schematic__fine-lines">
-            <path d="M14 313H600M39 340H360M468 48v284M493 75v232" />
-            <path d="M74 296V91h117M74 132H32M74 246H29" />
-            <circle cx="74" cy="91" r="5" />
-            <circle cx="74" cy="246" r="5" />
-            <circle cx="468" cy="48" r="5" />
+            <path d="M14 313H600M39 340H360M91 48v284M521 48v284" />
+            <path d="M91 91h104M91 246h104M425 91h96M425 246h96" />
+            <circle cx="91" cy="91" r="5" />
+            <circle cx="91" cy="246" r="5" />
+            <circle cx="521" cy="91" r="5" />
+            <circle cx="521" cy="246" r="5" />
           </g>
           <g class="schematic__main-lines">
-            <rect x="164" y="97" width="234" height="166" rx="4" />
-            <rect x="197" y="128" width="168" height="104" rx="2" />
-            <path d="M222 155h47v49h-47zM292 155h47v18h-47zM292 186h47v18h-47z" />
-            <path d="M164 122h-29m29 29h-29m29 29h-29m29 29h-29m29 29h-29" />
-            <path d="M398 122h29m-29 29h29m-29 29h29m-29 29h29m-29 29h29" />
-            <path d="M281 97V69m-52 28V69m104 28V69M281 263v29m-52-29v29m104-29v29" />
-            <circle cx="510" cy="178" r="54" />
-            <circle cx="510" cy="178" r="35" />
-            <path d="M510 124v108m-54-54h108M472 140l76 76m0-76-76 76" />
+            <rect x="115" y="116" width="118" height="124" rx="2" />
+            <rect x="251" y="80" width="118" height="196" rx="2" />
+            <rect x="387" y="116" width="118" height="124" rx="2" />
+            <path d="M233 178h18m118 0h18" />
+            <path d="M142 145h64m-64 31h38m-38 31h64m-64 31h42" />
+            <path d="M278 116h64m-64 31h38m-38 31h64m-64 31h42m-42 31h64" />
+            <path d="M414 145h64m-64 31h38m-38 31h64m-64 31h42" />
+            <path d="M174 116V91m0 149v25m136-195V51m0 225v25m136-185V91m0 149v25" />
+            <circle cx="310" cy="178" r="18" />
+            <path d="M301 178h18m-9-9v18" />
           </g>
           <g class="schematic__labels">
-            <text x="165" y="84">节点 / A-17</text>
-            <text x="198" y="251">输入阵列</text>
-            <text x="482" y="259">信号</text>
-            <text x="19" y="329">系统研究 · 比例 1:2</text>
+            <text x="115" y="103">01 / 界面</text>
+            <text x="251" y="67">02 / 服务</text>
+            <text x="387" y="103">03 / 数据</text>
+            <text x="19" y="329">全栈练习 · 比例 1:2</text>
           </g>
           <g class="schematic__annotations">
-            <path d="M430 104c51-29 123-20 155 23" />
-            <path d="M568 114l18 13-21 5" />
-            <path d="M122 280c54 24 158 30 239 2" />
-            <text x="430" y="91">保持连接</text>
+            <path d="M431 82c40-24 87-13 112 17" />
+            <path d="M535 93l12 8-15 4" />
+            <path d="M112 280c71 23 166 28 277 0" />
+            <text x="431" y="68">一起完成</text>
           </g>
         </svg>
       </div>
 
       <footer class="brand-footer">
-        <span>IoT 工作室 · 研究手册</span>
+        <span>IoT 全栈工作室 · 项目手册</span>
         <span>编号 001—026</span>
       </footer>
     </aside>
@@ -134,20 +136,20 @@ async function handleSubmit(): Promise<void> {
         </div>
 
         <div class="section-index" aria-hidden="true">
-          <span>访问协议</span>
-          <span>06 / 09</span>
+          <span>招新入口</span>
+          <span>01 / 02</span>
         </div>
 
         <header class="form-heading">
-          <p>{{ mode === "login" ? "欢迎归队" : "建立研究员档案" }}</p>
+          <p>{{ mode === "login" ? "欢迎回来" : "建立成员档案" }}</p>
           <h2 id="auth-title">
-            {{ mode === "login" ? "登录工作台" : "加入 iot-pillot" }}
+            {{ mode === "login" ? "回到工作台" : "加入 iot 全栈工作室" }}
           </h2>
           <span>
             {{
               mode === "login"
-                ? "使用你的账户继续探索与协作。"
-                : "填写以下资料，开始你的创造旅程。"
+                ? "使用工作室账号继续协作。"
+                : "填写资料，加入一群认真做作品的人。"
             }}
           </span>
         </header>
@@ -211,7 +213,7 @@ async function handleSubmit(): Promise<void> {
                 name="password"
                 type="password"
                 autocomplete="current-password"
-                placeholder="输入 6–20 位密码"
+                placeholder="输入密码"
                 :aria-invalid="Boolean(errors.password)"
                 :aria-describedby="errors.password ? 'login-password-error' : undefined"
               />
@@ -370,7 +372,7 @@ async function handleSubmit(): Promise<void> {
           {{
             mode === "login"
               ? "登录即代表你同意遵守工作室协作规范。"
-              : "验证码服务正在校准，注册通道即将开放。"
+              : "验证码服务暂未开放，注册资料会在后续招新流程中使用。"
           }}
         </p>
       </div>
@@ -413,8 +415,9 @@ input {
   --red: #b84235;
   display: grid;
   grid-template-columns: minmax(430px, 46%) minmax(390px, 54%);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100dvh;
   min-height: 100vh;
-  min-height: 100dvh;
   overflow: hidden;
   background: var(--paper);
 }
@@ -422,8 +425,8 @@ input {
 .brand-panel {
   position: relative;
   display: flex;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
   padding: clamp(30px, 4.2vw, 68px);
   overflow: hidden;
@@ -613,11 +616,13 @@ input {
 .form-panel {
   position: relative;
   display: grid;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 0;
+  align-content: safe center;
   place-items: center;
   padding: clamp(36px, 7vw, 96px);
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background-color: var(--white);
   background-image:
     linear-gradient(rgb(22 77 128 / 3.5%) 1px, transparent 1px),
@@ -637,6 +642,7 @@ input {
 
 .form-shell {
   width: min(100%, 540px);
+  margin: auto 0;
   animation: form-enter 620ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -953,6 +959,7 @@ input {
 @media (max-width: 819px) {
   .auth-page {
     display: block;
+    height: auto;
     min-height: 100vh;
     min-height: 100dvh;
     overflow: visible;
@@ -963,9 +970,17 @@ input {
   }
 
   .form-panel {
+    height: auto;
     min-height: 100vh;
     min-height: 100dvh;
+    align-content: start;
     padding: 28px clamp(24px, 8vw, 62px) 44px;
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+
+  .form-shell {
+    margin: 0;
   }
 
   .form-panel::before {

@@ -238,6 +238,21 @@ describe("AuthView", () => {
     expect(findButton(mounted.root, "获取验证码 · 暂未开放").props.disabled).toBe(true);
   });
 
+  it("切换模式时不重新挂载左侧品牌面板", async () => {
+    const mounted = mount();
+    unmount = mounted.unmount;
+    const brandPanel = findElement(
+      mounted.root,
+      (element) => element.props.class === "brand-panel",
+    );
+
+    await click(findButton(mounted.root, "注册"));
+
+    expect(
+      findElement(mounted.root, (element) => element.props.class === "brand-panel"),
+    ).toBe(brandPanel);
+  });
+
   it("空登录提交显示字段错误且不发起请求", async () => {
     const mounted = mount();
     unmount = mounted.unmount;
@@ -302,11 +317,14 @@ describe("AuthView", () => {
     unmount = mounted.unmount;
     const text = visibleText(mounted.root);
 
-    expect(text).toContain("招新计划");
-    expect(text).toContain("访问协议");
+    expect(text).toContain("前端");
+    expect(text).toContain("后端");
+    expect(text).toContain("全栈工作室");
+    expect(text).toContain("招新入口");
+    expect(text).toContain("把想法做成");
     expect(text).toContain("用户名");
     expect(text).not.toMatch(
-      /RECRUIT|FIELD NOTES|NODE|INPUT ARRAY|SIGNAL|SYSTEM STUDY|Research Manual|NO\.|ACCESS PROTOCOL|USERNAME|PASSWORD|\bNAME\b|EMAIL|CONFIRM|VERIFY CODE/,
+      /RECRUIT|FIELD NOTES|NODE|INPUT ARRAY|SIGNAL|SYSTEM STUDY|Research Manual|NO\.|ACCESS PROTOCOL|USERNAME|PASSWORD|\bNAME\b|EMAIL|CONFIRM|VERIFY CODE|传感器|云端|节点|信号|输入阵列/,
     );
   });
 });

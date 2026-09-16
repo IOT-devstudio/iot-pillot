@@ -47,14 +47,13 @@
 | 组件       | 建议                                | 备选             | 引入时机                  |
 | ---------- | ----------------------------------- | ---------------- | ------------------------- |
 | 模板渲染   | `html/template` + Handlebars 子集 | —               | TemplateModule 开工       |
-| RBAC       | casbin                              | JWT + 中间件手写 | AuthModule 开工（鉴权方案定后） |
+| RBAC       | casbin                              | JWT + 中间件手写 | 角色模型与路由守卫落地时引入 |
 | 数据库迁移 | golang-migrate                      | goose            | schema 第一次演进         |
 
 ### 待确认
 
 | 层       | 候选                               | 倾向 |
 | -------- | ---------------------------------- | ---- |
-| 鉴权方案 | 本地邮箱密码 + JWT（推荐） / OAuth | 未决 |
 | 国际化   | 中文为主 / 中英双语                | 未决 |
 
 ---
@@ -101,15 +100,19 @@ iot-pillot/
 
 ### 1. 当前基线与开发边界
 
-前端目前仍处于脚手架阶段：`apps/web/src/` 只有根组件、路由和一个健康检查页，尚未形成登录态、后台布局、API 客户端、业务页面或自动化测试。后续开发必须以实际代码为准，不能把 `packages/shared-types` 中已经存在的类型误认为后端接口已经实现。
+前端当前已完成认证入口的第一版交付：`apps/web/src/views/AuthView.vue` 提供 `/login` 单页中的登录 / 注册模式切换，`apps/web/src/api/auth.ts` 对接登录与注册接口，`apps/web/src/auth/` 包含表单校验、提交编排和会话保存，相关行为由 Vitest 覆盖。后台布局和业务页面仍在规划中。后续开发必须以实际代码为准，不能把 `packages/shared-types` 中已经存在的类型误认为后端接口已经实现。
+
+认证页的视觉与布局约束：桌面端使用固定 `100dvh` 双栏，左侧是全栈工作室招新品牌面板，右侧认证表单独立滚动；切换登录 / 注册时左侧面板不重新挂载、不随注册表单高度变化。宽度小于 `820px` 时隐藏左侧面板，表单恢复自然文档流。页面文案应继续突出以前端与后端开发为核心的 IoT 全栈项目实践。
+
+本地联调认证页前，必须先启动 Postgres 和 Redis，并导出 `IOT_PILOT_JWT_SECRET`；`.env` 文件仅作参考，当前 Viper 配置加载不会自动读取它。完整启动步骤见 [README.md](./README.md)。
 
 当前可以直接对接的后端能力：
 
 | 能力 | 实际路由 | 前端可用性 | 备注 |
 | --- | --- | --- | --- |
 | 健康检查 | `GET /health` | 可用，但现有页面路径错误 | `Home.vue` 当前请求 `/api/health`；开发和生产都应统一改用 `/health`，同时为 Vite 增加对应代理 |
-| 登录 | `POST /api/v1/login` | 可开始对接 | 入参是 `username`、`password`；返回 access/refresh 双令牌 |
-| 注册 | `POST /api/v1/register` | 暂时无法闭环 | 注册必须提交邮箱验证码，但发送验证码的 handler 尚未挂到路由 |
+| 登录 | `POST /api/v1/login` | 前端已对接 | `/login` 页面提交 `username`、`password`；返回 access/refresh 双令牌 |
+| 注册 | `POST /api/v1/register` | 页面已适配但暂时无法闭环 | `/login` 页面已渲染姓名、邮箱、密码、确认密码和验证码字段；注册必须提交邮箱验证码，但发送验证码的 handler 尚未挂到路由 |
 | 刷新令牌 | `POST /api/v1/refresh` | 可开始对接 | 刷新成功会轮换两枚令牌，旧令牌立即失效 |
 | 退出登录 | `POST /api/v1/logout` | 可开始对接 | Header 携带 access token，请求体携带 refresh token |
 | 表单、模板、招新、用户权限、SMTP 设置 | 尚无路由 | 阻塞 | 共享 TS 类型仅代表领域草案，不能直接当作已交付 API |
@@ -190,7 +193,7 @@ apps/web/src/
 开发内容：
 
 - 建立基于原生 `fetch` 的轻量 API 客户端，统一 base URL、JSON 序列化、Authorization、响应解包、超时与错误对象；当前规模不引入 axios。
-- 固定会话存储策略：首期使用 Pinia 管理运行时状态，并将 access/refresh token 仅保存到 `sessionStorage` 的 `iot-pillot.access-token` 与 `iot-pillot.refresh-token`；不使用 `localStorage`，不保存密码、验证码或完整用户对象。应用启动时读取这两个 key，首个受保护请求验证会话；后端提供 HttpOnly Cookie 方案后再单独评估迁移。
+- 会话策略分阶段落地：当前认证页使用 `apps/web/src/auth/session.ts` 将后端返回的 access/refresh token 与 `user_id` 保存到 `localStorage` 的 `iot-pillot.auth` 键，绝不保存密码或验证码；后续引入 Pinia 和受保护后台时，再评估迁移为仅保存 token 的 `sessionStorage` 或 HttpOnly Cookie 方案，并同步更新验收标准。
 - 实现 401 刷新队列：同一时间只允许一次 refresh，请求成功后重放等待请求；刷新失败则清空会话并跳转登录，防止并发请求反复刷新。
 - 扩展 Vue Router：公开路由、需登录路由、管理员路由、404/403 页面，并通过 route meta 统一守卫。
 - 建立 Element Plus 的全局交互约定：提交中禁用、危险操作二次确认、成功提示、字段错误、页面级错误和空状态。
@@ -205,8 +208,8 @@ apps/web/src/
 
 页面与能力：
 
-- 登录页：用户名、密码、提交状态、服务端错误提示；成功后回到原目标页或后台首页。
-- 注册页：姓名、邮箱、验证码、密码、确认密码、验证码倒计时；发送验证码接口挂载前保持明确的“后端未就绪”状态。
+- 登录页（当前实现位于 `/login`）：用户名、密码、提交状态、服务端错误提示；成功后回到原目标页或后台首页。登录 / 注册切换不改变左侧品牌面板布局。
+- 注册页（当前与登录共用 `/login`）：姓名、邮箱、验证码、密码、确认密码、验证码倒计时；发送验证码接口挂载前保持明确的“后端未就绪”状态，当前按钮为 disabled。
 - 会话恢复：刷新页面后恢复 token，必要时调用 refresh；刷新失败回到登录页。
 - 主动退出：调用 logout，成功或 token 已失效时都清理本地会话。
 - 多端冲突处理：后端重新登录会使旧会话失效，前端收到对应 401 后提示“账号已在其他位置重新登录”。
@@ -327,7 +330,7 @@ MailModule 当前是后端能力，不单独创建前端 `modules/mail/`；招�
 ## 后续未决项（开发前需明确）
 
 - [ ] 部署目标平台（VPS / Railway / Fly.io）
-- [ ] 鉴权方案（本地邮箱密码 + JWT / OAuth）
+- [x] 基础鉴权方案（用户名密码 + access/refresh JWT）已落地；RBAC 角色模型仍待明确
 - [ ] 邮件模板渲染选型（`html/template` + Handlebars 子集 或纯文本+占位符）
 - [ ] 数据库迁移工具（golang-migrate / goose）
 - [ ] 国际化范围（仅中文 / 中英双语）
