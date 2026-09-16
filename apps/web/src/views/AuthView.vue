@@ -1,1 +1,1031 @@
-<template><main /></template>
+<script setup lang="ts">
+import { reactive, ref } from "vue";
+import { useRouter } from "vue-router";
+import { AuthRequestError, login, register } from "@/api/auth";
+import type { LoginForm, RegisterForm } from "@/auth/form";
+import { saveAuthSession } from "@/auth/session";
+import { submitAuth, type AuthMode } from "@/auth/submit";
+
+const router = useRouter();
+
+const mode = ref<AuthMode>("login");
+const loading = ref(false);
+const errors = ref<Record<string, string>>({});
+const submitError = ref("");
+
+const loginForm = reactive<LoginForm>({
+  username: "",
+  password: "",
+});
+
+const registerForm = reactive<RegisterForm>({
+  name: "",
+  email: "",
+  password: "",
+  confirmPassword: "",
+  code: "",
+});
+
+function setMode(nextMode: AuthMode): void {
+  if (loading.value || mode.value === nextMode) {
+    return;
+  }
+
+  mode.value = nextMode;
+  errors.value = {};
+  submitError.value = "";
+}
+
+async function handleSubmit(): Promise<void> {
+  errors.value = {};
+  submitError.value = "";
+  loading.value = true;
+
+  try {
+    const form = mode.value === "login" ? loginForm : registerForm;
+    const result = await submitAuth(mode.value, form, {
+      login,
+      register,
+      saveSession: saveAuthSession,
+      navigate: (path) => router.push(path),
+    });
+
+    if (!result.ok) {
+      errors.value = result.errors;
+    }
+  } catch (error: unknown) {
+    submitError.value =
+      error instanceof AuthRequestError
+        ? error.message
+        : "服务暂时不可用，请稍后重试";
+  } finally {
+    loading.value = false;
+  }
+}
+</script>
+
+<template>
+  <main class="auth-page">
+    <aside class="brand-panel" aria-label="iot-pillot 招新管理系统">
+      <div class="brand-panel__grid" aria-hidden="true"></div>
+
+      <header class="brand-header">
+        <a class="wordmark" href="/" aria-label="iot-pillot 首页">
+          <span class="wordmark__mark" aria-hidden="true">i/o</span>
+          <span>iot-pillot</span>
+        </a>
+        <span class="edition">RECRUIT / 2026</span>
+      </header>
+
+      <section class="brand-copy">
+        <p class="eyebrow">FIELD NOTES · 06</p>
+        <h1>把灵感接入<br />真实世界。</h1>
+        <p class="brand-copy__description">
+          从传感器到云端，从一行代码到一件作品。加入我们，把你的好奇心做成可以运行的答案。
+        </p>
+      </section>
+
+      <div class="schematic" aria-hidden="true">
+        <svg viewBox="0 0 620 390" role="presentation">
+          <g class="schematic__fine-lines">
+            <path d="M14 313H600M39 340H360M468 48v284M493 75v232" />
+            <path d="M74 296V91h117M74 132H32M74 246H29" />
+            <circle cx="74" cy="91" r="5" />
+            <circle cx="74" cy="246" r="5" />
+            <circle cx="468" cy="48" r="5" />
+          </g>
+          <g class="schematic__main-lines">
+            <rect x="164" y="97" width="234" height="166" rx="4" />
+            <rect x="197" y="128" width="168" height="104" rx="2" />
+            <path d="M222 155h47v49h-47zM292 155h47v18h-47zM292 186h47v18h-47z" />
+            <path d="M164 122h-29m29 29h-29m29 29h-29m29 29h-29m29 29h-29" />
+            <path d="M398 122h29m-29 29h29m-29 29h29m-29 29h29m-29 29h29" />
+            <path d="M281 97V69m-52 28V69m104 28V69M281 263v29m-52-29v29m104-29v29" />
+            <circle cx="510" cy="178" r="54" />
+            <circle cx="510" cy="178" r="35" />
+            <path d="M510 124v108m-54-54h108M472 140l76 76m0-76-76 76" />
+          </g>
+          <g class="schematic__labels">
+            <text x="165" y="84">NODE / A-17</text>
+            <text x="198" y="251">INPUT ARRAY</text>
+            <text x="482" y="259">SIGNAL</text>
+            <text x="19" y="329">SYSTEM STUDY · SCALE 1:2</text>
+          </g>
+          <g class="schematic__annotations">
+            <path d="M430 104c51-29 123-20 155 23" />
+            <path d="M568 114l18 13-21 5" />
+            <path d="M122 280c54 24 158 30 239 2" />
+            <text x="430" y="91">保持连接</text>
+          </g>
+        </svg>
+      </div>
+
+      <footer class="brand-footer">
+        <span>IoT Studio · Research Manual</span>
+        <span>NO. 001—026</span>
+      </footer>
+    </aside>
+
+    <section class="form-panel" aria-labelledby="auth-title">
+      <div class="form-shell">
+        <div class="mobile-wordmark" aria-hidden="true">
+          <span>i/o</span>
+          iot-pillot
+        </div>
+
+        <div class="section-index" aria-hidden="true">
+          <span>ACCESS PROTOCOL</span>
+          <span>06 / 09</span>
+        </div>
+
+        <header class="form-heading">
+          <p>{{ mode === "login" ? "欢迎归队" : "建立研究员档案" }}</p>
+          <h2 id="auth-title">
+            {{ mode === "login" ? "登录工作台" : "加入 iot-pillot" }}
+          </h2>
+          <span>
+            {{
+              mode === "login"
+                ? "使用你的账户继续探索与协作。"
+                : "填写以下资料，开始你的创造旅程。"
+            }}
+          </span>
+        </header>
+
+        <div class="mode-switch" role="group" aria-label="认证方式">
+          <button
+            id="login-tab"
+            type="button"
+            :aria-current="mode === 'login' ? 'page' : undefined"
+            :disabled="loading"
+            @click="setMode('login')"
+          >
+            登录
+          </button>
+          <button
+            id="register-tab"
+            type="button"
+            :aria-current="mode === 'register' ? 'page' : undefined"
+            :disabled="loading"
+            @click="setMode('register')"
+          >
+            注册
+          </button>
+        </div>
+
+        <form
+          class="auth-form"
+          :aria-labelledby="mode === 'login' ? 'login-tab' : 'register-tab'"
+          novalidate
+          @submit.prevent="handleSubmit"
+        >
+          <template v-if="mode === 'login'">
+            <div class="field-group">
+              <div class="field-meta">
+                <label for="username">用户名</label>
+                <span>USERNAME</span>
+              </div>
+              <input
+                id="username"
+                v-model="loginForm.username"
+                name="username"
+                type="text"
+                autocomplete="username"
+                placeholder="输入用户名"
+                :aria-invalid="Boolean(errors.username)"
+                :aria-describedby="errors.username ? 'username-error' : undefined"
+              />
+              <p v-if="errors.username" id="username-error" class="field-error" aria-live="polite">
+                {{ errors.username }}
+              </p>
+            </div>
+
+            <div class="field-group">
+              <div class="field-meta">
+                <label for="login-password">密码</label>
+                <span>PASSWORD</span>
+              </div>
+              <input
+                id="login-password"
+                v-model="loginForm.password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="输入 6–20 位密码"
+                :aria-invalid="Boolean(errors.password)"
+                :aria-describedby="errors.password ? 'login-password-error' : undefined"
+              />
+              <p
+                v-if="errors.password"
+                id="login-password-error"
+                class="field-error"
+                aria-live="polite"
+              >
+                {{ errors.password }}
+              </p>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="field-group">
+              <div class="field-meta">
+                <label for="name">姓名</label>
+                <span>NAME</span>
+              </div>
+              <input
+                id="name"
+                v-model="registerForm.name"
+                name="name"
+                type="text"
+                autocomplete="name"
+                placeholder="输入 3–20 个字符"
+                :aria-invalid="Boolean(errors.name)"
+                :aria-describedby="errors.name ? 'name-error' : undefined"
+              />
+              <p v-if="errors.name" id="name-error" class="field-error" aria-live="polite">
+                {{ errors.name }}
+              </p>
+            </div>
+
+            <div class="field-group">
+              <div class="field-meta">
+                <label for="email">邮箱</label>
+                <span>EMAIL</span>
+              </div>
+              <input
+                id="email"
+                v-model="registerForm.email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="name@example.com"
+                :aria-invalid="Boolean(errors.email)"
+                :aria-describedby="errors.email ? 'email-error' : undefined"
+              />
+              <p v-if="errors.email" id="email-error" class="field-error" aria-live="polite">
+                {{ errors.email }}
+              </p>
+            </div>
+
+            <div class="field-row">
+              <div class="field-group">
+                <div class="field-meta">
+                  <label for="register-password">密码</label>
+                  <span>PASSWORD</span>
+                </div>
+                <input
+                  id="register-password"
+                  v-model="registerForm.password"
+                  name="password"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="6–20 位密码"
+                  :aria-invalid="Boolean(errors.password)"
+                  :aria-describedby="errors.password ? 'register-password-error' : undefined"
+                />
+                <p
+                  v-if="errors.password"
+                  id="register-password-error"
+                  class="field-error"
+                  aria-live="polite"
+                >
+                  {{ errors.password }}
+                </p>
+              </div>
+
+              <div class="field-group">
+                <div class="field-meta">
+                  <label for="confirm-password">确认密码</label>
+                  <span>CONFIRM</span>
+                </div>
+                <input
+                  id="confirm-password"
+                  v-model="registerForm.confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="再次输入密码"
+                  :aria-invalid="Boolean(errors.confirmPassword)"
+                  :aria-describedby="errors.confirmPassword ? 'confirm-password-error' : undefined"
+                />
+                <p
+                  v-if="errors.confirmPassword"
+                  id="confirm-password-error"
+                  class="field-error"
+                  aria-live="polite"
+                >
+                  {{ errors.confirmPassword }}
+                </p>
+              </div>
+            </div>
+
+            <div class="field-group">
+              <div class="field-meta">
+                <label for="code">邮箱验证码</label>
+                <span>VERIFY CODE</span>
+              </div>
+              <div class="code-field">
+                <input
+                  id="code"
+                  v-model="registerForm.code"
+                  name="code"
+                  type="text"
+                  autocomplete="one-time-code"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="6 位数字"
+                  :aria-invalid="Boolean(errors.code)"
+                  :aria-describedby="errors.code ? 'code-error code-status' : 'code-status'"
+                />
+                <button id="code-status" type="button" disabled>
+                  获取验证码 · 暂未开放
+                </button>
+              </div>
+              <p v-if="errors.code" id="code-error" class="field-error" aria-live="polite">
+                {{ errors.code }}
+              </p>
+            </div>
+          </template>
+
+          <div
+            v-if="submitError"
+            class="submit-error"
+            role="alert"
+            aria-live="assertive"
+          >
+            <span aria-hidden="true">!</span>
+            {{ submitError }}
+          </div>
+
+          <button class="submit-button" type="submit" :disabled="loading" :aria-busy="loading">
+            <span>{{ loading ? "正在校验…" : mode === "login" ? "进入工作台" : "创建账户" }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13m-5-5 5 5-5 5" />
+            </svg>
+          </button>
+        </form>
+
+        <p class="form-note">
+          <span aria-hidden="true">※</span>
+          {{
+            mode === "login"
+              ? "登录即代表你同意遵守工作室协作规范。"
+              : "验证码服务正在校准，注册通道即将开放。"
+          }}
+        </p>
+      </div>
+    </section>
+  </main>
+</template>
+
+<style scoped>
+:global(*) {
+  box-sizing: border-box;
+}
+
+:global(html),
+:global(body),
+:global(#app) {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+:global(body) {
+  color: #102b4e;
+  background: #f3efe4;
+  font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.auth-page {
+  --ink: #102b4e;
+  --ink-soft: #52657b;
+  --blue: #164d80;
+  --blue-bright: #1e659f;
+  --paper: #f3efe4;
+  --paper-deep: #e8e0ce;
+  --white: #fffdf7;
+  --red: #b84235;
+  display: grid;
+  grid-template-columns: minmax(430px, 46%) minmax(390px, 54%);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.brand-panel {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  flex-direction: column;
+  padding: clamp(30px, 4.2vw, 68px);
+  overflow: hidden;
+  color: #f6f0df;
+  background: var(--blue);
+  isolation: isolate;
+}
+
+.brand-panel::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 76% 18%, rgb(112 171 211 / 18%), transparent 27%),
+    linear-gradient(145deg, rgb(255 255 255 / 3%), transparent 52%);
+  content: "";
+}
+
+.brand-panel__grid {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgb(211 232 244 / 9%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(211 232 244 / 9%) 1px, transparent 1px),
+    linear-gradient(rgb(211 232 244 / 5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(211 232 244 / 5%) 1px, transparent 1px);
+  background-position: -1px -1px;
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+  mask-image: linear-gradient(to bottom, black 0%, rgb(0 0 0 / 76%) 82%, transparent 100%);
+}
+
+.brand-header,
+.brand-footer,
+.section-index,
+.field-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand-header {
+  animation: reveal 700ms ease-out both;
+}
+
+.wordmark {
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+  color: inherit;
+  font-family: "Iowan Old Style", "Songti SC", STSong, serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.wordmark__mark,
+.mobile-wordmark span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+  font-family: "Avenir Next", sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.edition,
+.section-index,
+.field-meta span,
+.brand-footer,
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.edition {
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgb(246 240 223 / 55%);
+}
+
+.brand-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 610px;
+  margin-top: clamp(60px, 10vh, 118px);
+  animation: reveal 700ms 100ms ease-out both;
+}
+
+.eyebrow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 20px;
+  color: #c3d8e8;
+}
+
+.eyebrow::before {
+  width: 34px;
+  height: 1px;
+  background: var(--red);
+  content: "";
+}
+
+.brand-copy h1 {
+  margin: 0;
+  font-family: "Iowan Old Style", "Songti SC", STSong, serif;
+  font-size: clamp(44px, 5.3vw, 78px);
+  font-weight: 600;
+  line-height: 1.13;
+  letter-spacing: -0.045em;
+}
+
+.brand-copy__description {
+  max-width: 450px;
+  margin: 28px 0 0;
+  color: rgb(246 240 223 / 73%);
+  font-size: 14px;
+  line-height: 1.85;
+}
+
+.schematic {
+  position: absolute;
+  right: -7%;
+  bottom: 7%;
+  width: min(84%, 690px);
+  opacity: 0.78;
+  animation: reveal 900ms 220ms ease-out both;
+}
+
+.schematic svg {
+  display: block;
+  width: 100%;
+}
+
+.schematic__fine-lines,
+.schematic__main-lines,
+.schematic__annotations {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.schematic__fine-lines {
+  stroke: rgb(219 235 244 / 32%);
+  stroke-width: 1;
+}
+
+.schematic__main-lines {
+  stroke: rgb(231 241 246 / 65%);
+  stroke-width: 1.4;
+}
+
+.schematic__labels {
+  fill: rgb(231 241 246 / 56%);
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.schematic__annotations {
+  stroke: #e77464;
+  stroke-width: 2;
+}
+
+.schematic__annotations text {
+  fill: #eaa196;
+  font-family: "Kaiti SC", KaiTi, serif;
+  font-size: 14px;
+  stroke: none;
+}
+
+.brand-footer {
+  z-index: 1;
+  margin-top: auto;
+  padding-top: 24px;
+  color: rgb(246 240 223 / 62%);
+  border-top: 1px solid rgb(246 240 223 / 18%);
+}
+
+.form-panel {
+  position: relative;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  padding: clamp(36px, 7vw, 96px);
+  overflow-y: auto;
+  background-color: var(--white);
+  background-image:
+    linear-gradient(rgb(22 77 128 / 3.5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(22 77 128 / 3.5%) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.form-panel::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 18px;
+  width: 1px;
+  background: rgb(184 66 53 / 35%);
+  content: "";
+}
+
+.form-shell {
+  width: min(100%, 540px);
+  animation: form-enter 620ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mobile-wordmark {
+  display: none;
+}
+
+.section-index {
+  margin-bottom: clamp(54px, 8vh, 84px);
+  padding-bottom: 11px;
+  color: var(--ink-soft);
+  border-bottom: 1px solid rgb(16 43 78 / 22%);
+}
+
+.section-index span:last-child {
+  color: var(--red);
+}
+
+.form-heading p {
+  margin: 0 0 11px;
+  color: var(--red);
+  font-family: "Kaiti SC", KaiTi, serif;
+  font-size: 16px;
+  transform: rotate(-1.5deg);
+  transform-origin: left center;
+}
+
+.form-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Iowan Old Style", "Songti SC", STSong, serif;
+  font-size: clamp(34px, 4vw, 50px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+
+.form-heading > span {
+  display: block;
+  margin-top: 13px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 38px 0 32px;
+  border-bottom: 1px solid rgb(16 43 78 / 24%);
+}
+
+.mode-switch button {
+  position: relative;
+  padding: 13px 10px;
+  color: #758394;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.mode-switch button::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--blue);
+  content: "";
+  opacity: 0;
+  transform: scaleX(0.35);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.mode-switch button[aria-current="page"] {
+  color: var(--blue);
+}
+
+.mode-switch button[aria-current="page"]::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.mode-switch button:disabled {
+  cursor: wait;
+}
+
+.auth-form {
+  display: grid;
+  gap: 24px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.field-group {
+  min-width: 0;
+}
+
+.field-meta {
+  margin-bottom: 8px;
+}
+
+.field-meta label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field-meta span {
+  color: #8b96a3;
+  font-size: 8px;
+}
+
+.field-group input {
+  width: 100%;
+  height: 50px;
+  padding: 0 14px;
+  color: var(--ink);
+  border: 1px solid #bfc6c6;
+  border-radius: 2px;
+  outline: 0;
+  background: rgb(255 253 247 / 82%);
+  font-size: 14px;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.field-group input::placeholder {
+  color: #9aa2aa;
+}
+
+.field-group input:hover {
+  border-color: #8195a8;
+}
+
+.field-group input:focus-visible,
+.mode-switch button:focus-visible,
+.submit-button:focus-visible,
+.wordmark:focus-visible {
+  outline: 3px solid rgb(30 101 159 / 28%);
+  outline-offset: 3px;
+}
+
+.field-group input:focus-visible {
+  border-color: var(--blue-bright);
+  outline: 0;
+  background: #fffefb;
+  box-shadow: 0 0 0 3px rgb(30 101 159 / 15%);
+}
+
+.field-group input[aria-invalid="true"] {
+  border-color: var(--red);
+  background: #fffaf5;
+}
+
+.field-error {
+  margin: 7px 0 0;
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.field-error::before {
+  margin-right: 6px;
+  content: "↳";
+}
+
+.code-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.code-field button {
+  min-width: 168px;
+  padding: 0 14px;
+  color: #77828b;
+  border: 1px dashed #aeb5b7;
+  border-radius: 2px;
+  background: #eeeae0;
+  font-size: 12px;
+  cursor: not-allowed;
+}
+
+.submit-error {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  color: #8e2f27;
+  border-left: 2px solid var(--red);
+  background: #f8ebe4;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.submit-error span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.submit-button {
+  display: flex;
+  width: 100%;
+  height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding: 0 20px;
+  overflow: hidden;
+  color: #fffdf7;
+  border: 1px solid var(--blue);
+  border-radius: 2px;
+  background: var(--blue);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.submit-button svg {
+  width: 21px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  transition: transform 180ms ease;
+}
+
+.submit-button:hover:not(:disabled) {
+  background: #0c3c69;
+}
+
+.submit-button:hover:not(:disabled) svg {
+  transform: translateX(4px);
+}
+
+.submit-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.submit-button:disabled {
+  cursor: wait;
+  opacity: 0.67;
+}
+
+.form-note {
+  display: flex;
+  gap: 9px;
+  margin: 22px 0 0;
+  color: #74808d;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.form-note span {
+  color: var(--red);
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes form-enter {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 1060px) {
+  .auth-page {
+    grid-template-columns: minmax(390px, 42%) minmax(430px, 58%);
+  }
+
+  .brand-copy h1 {
+    font-size: 49px;
+  }
+
+  .form-panel {
+    padding: 48px;
+  }
+
+  .field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 819px) {
+  .auth-page {
+    display: block;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .brand-panel {
+    display: none;
+  }
+
+  .form-panel {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 28px clamp(24px, 8vw, 62px) 44px;
+  }
+
+  .form-panel::before {
+    left: 12px;
+  }
+
+  .mobile-wordmark {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 38px;
+    font-family: "Iowan Old Style", "Songti SC", STSong, serif;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .mobile-wordmark span {
+    width: 32px;
+    height: 32px;
+    font-size: 8px;
+  }
+
+  .section-index {
+    margin-bottom: 42px;
+  }
+}
+
+@media (max-width: 480px) {
+  .form-panel {
+    place-items: start center;
+    padding-right: 22px;
+    padding-left: 30px;
+  }
+
+  .code-field {
+    grid-template-columns: 1fr;
+  }
+
+  .code-field button {
+    height: 43px;
+  }
+
+  .auth-form {
+    gap: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-header,
+  .brand-copy,
+  .schematic,
+  .form-shell {
+    animation: none;
+  }
+
+  .mode-switch button::after,
+  .field-group input,
+  .submit-button,
+  .submit-button svg {
+    transition: none;
+  }
+}
+</style>
