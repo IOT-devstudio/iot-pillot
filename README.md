@@ -67,18 +67,24 @@ cd iot-pillot
 # 2. 启动本地 Postgres
 docker compose up -d postgres
 
-# 3. 配置后端环境变量
-cp .env.example .env
-# 编辑 .env，至少把 SMTP_* 改成可用的（或先留空）
+# 3. 启动 Redis（docker-compose 当前只定义 Postgres）
+docker run --name iot-pillot-redis -p 6379:6379 -d redis:7-alpine
 
-# 4. 安装前端依赖
+# 4. 配置后端环境变量
+cp .env.example .env
+# 当前 API 不会自动读取 .env；请将必需配置导出到进程环境。
+# JWT secret 必填，SMTP_* 暂时可以留空。
+# PowerShell：$env:IOT_PILOT_JWT_SECRET = "dev-only-change-me"
+# macOS/Linux：export IOT_PILOT_JWT_SECRET=dev-only-change-me
+
+# 5. 安装前端依赖
 pnpm install
 
-# 5. 启动两个 dev server（两个终端窗口）
+# 6. 启动两个 dev server（两个终端窗口）
 cd apps/api && go run ./cmd         # 监听 :8080
 cd apps/web && pnpm dev             # 监听 :5173，/api 代理到 :8080
 
-# 6. 浏览器打开 http://localhost:5173/login
+# 7. 浏览器打开 http://localhost:5173/login
 #    登录页支持登录 / 注册模式切换；注册验证码按钮在后端路由接入前保持禁用
 #    后端健康检查地址为 http://localhost:8080/health
 ```
