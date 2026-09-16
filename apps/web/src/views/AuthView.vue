@@ -78,10 +78,10 @@ async function handleSubmit(): Promise<void> {
       </header>
 
       <section class="brand-copy">
-        <p class="eyebrow">招新档案 · 01</p>
-        <h1>把想法做成<br />可以运行的作品。</h1>
+        <p class="eyebrow">全栈招新 · 01</p>
+        <h1>从界面到服务，<br />把想法做成作品。</h1>
         <p class="brand-copy__description">
-          iot 全栈工作室，面向喜欢写代码、做产品、一起解决问题的同学开放。我们从问题出发，把想法拆开、实现，再交付成真正的作品。
+          iot 全栈工作室以前端与后端开发为核心，围绕真实问题做项目：拆需求、写代码、联调服务，再把结果交付给真正的用户。
         </p>
       </section>
 
@@ -108,9 +108,9 @@ async function handleSubmit(): Promise<void> {
             <path d="M301 178h18m-9-9v18" />
           </g>
           <g class="schematic__labels">
-            <text x="115" y="103">01 / 想法</text>
-            <text x="251" y="67">02 / 实现</text>
-            <text x="387" y="103">03 / 交付</text>
+            <text x="115" y="103">01 / 界面</text>
+            <text x="251" y="67">02 / 服务</text>
+            <text x="387" y="103">03 / 数据</text>
             <text x="19" y="329">全栈练习 · 比例 1:2</text>
           </g>
           <g class="schematic__annotations">
@@ -123,7 +123,7 @@ async function handleSubmit(): Promise<void> {
       </div>
 
       <footer class="brand-footer">
-        <span>IoT 工作室 · 研究手册</span>
+        <span>IoT 全栈工作室 · 项目手册</span>
         <span>编号 001—026</span>
       </footer>
     </aside>
@@ -143,7 +143,7 @@ async function handleSubmit(): Promise<void> {
         <header class="form-heading">
           <p>{{ mode === "login" ? "欢迎回来" : "建立成员档案" }}</p>
           <h2 id="auth-title">
-            {{ mode === "login" ? "进入工作台" : "加入 iot 全栈工作室" }}
+            {{ mode === "login" ? "回到工作台" : "加入 iot 全栈工作室" }}
           </h2>
           <span>
             {{
@@ -415,8 +415,9 @@ input {
   --red: #b84235;
   display: grid;
   grid-template-columns: minmax(430px, 46%) minmax(390px, 54%);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100dvh;
   min-height: 100vh;
-  min-height: 100dvh;
   overflow: hidden;
   background: var(--paper);
 }
@@ -424,8 +425,8 @@ input {
 .brand-panel {
   position: relative;
   display: flex;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
   padding: clamp(30px, 4.2vw, 68px);
   overflow: hidden;
@@ -615,11 +616,13 @@ input {
 .form-panel {
   position: relative;
   display: grid;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 0;
+  align-content: safe center;
   place-items: center;
   padding: clamp(36px, 7vw, 96px);
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background-color: var(--white);
   background-image:
     linear-gradient(rgb(22 77 128 / 3.5%) 1px, transparent 1px),
@@ -639,6 +642,7 @@ input {
 
 .form-shell {
   width: min(100%, 540px);
+  margin: auto 0;
   animation: form-enter 620ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -955,6 +959,7 @@ input {
 @media (max-width: 819px) {
   .auth-page {
     display: block;
+    height: auto;
     min-height: 100vh;
     min-height: 100dvh;
     overflow: visible;
@@ -965,9 +970,17 @@ input {
   }
 
   .form-panel {
+    height: auto;
     min-height: 100vh;
     min-height: 100dvh;
+    align-content: start;
     padding: 28px clamp(24px, 8vw, 62px) 44px;
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+
+  .form-shell {
+    margin: 0;
   }
 
   .form-panel::before {

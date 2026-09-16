@@ -238,6 +238,21 @@ describe("AuthView", () => {
     expect(findButton(mounted.root, "获取验证码 · 暂未开放").props.disabled).toBe(true);
   });
 
+  it("切换模式时不重新挂载左侧品牌面板", async () => {
+    const mounted = mount();
+    unmount = mounted.unmount;
+    const brandPanel = findElement(
+      mounted.root,
+      (element) => element.props.class === "brand-panel",
+    );
+
+    await click(findButton(mounted.root, "注册"));
+
+    expect(
+      findElement(mounted.root, (element) => element.props.class === "brand-panel"),
+    ).toBe(brandPanel);
+  });
+
   it("空登录提交显示字段错误且不发起请求", async () => {
     const mounted = mount();
     unmount = mounted.unmount;
@@ -302,7 +317,8 @@ describe("AuthView", () => {
     unmount = mounted.unmount;
     const text = visibleText(mounted.root);
 
-    expect(text).toContain("春季招新");
+    expect(text).toContain("前端");
+    expect(text).toContain("后端");
     expect(text).toContain("全栈工作室");
     expect(text).toContain("招新入口");
     expect(text).toContain("把想法做成");
