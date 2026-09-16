@@ -33,7 +33,8 @@ IoT 全栈开发工作室 [IOT-devstudio](https://github.com/IOT-devstudio) 的�
 | `auto-merge.yml`：成员 + 无冲突 → 自动 squash merge + 删分支 | ✅ 落地 |
 | `ci.yml`：PR 触发 Go vet/build/test + 前端 typecheck/build | ✅ 落地 |
 | `deploy.yml`：push main → VPS 部署（需 secrets 配置） | ✅ 落地 |
-| 业务模块（Form / Template / Auth / Mail / Recruitment） | ⏳ 空白，待开工 |
+| Auth 登录注册页（`/login`） | 🟡 页面与接口适配已落地；注册验证码待后端接入 |
+| 业务模块（Form / Template / Mail / Recruitment） | ⏳ 空白，待开工 |
 
 ---
 
@@ -74,11 +75,12 @@ cp .env.example .env
 pnpm install
 
 # 5. 启动两个 dev server（两个终端窗口）
-cd apps/api && go run ./cmd/api     # 监听 :8080
+cd apps/api && go run ./cmd         # 监听 :8080
 cd apps/web && pnpm dev             # 监听 :5173，/api 代理到 :8080
 
-# 6. 浏览器打开 http://localhost:5173
-#    Home 页面会调用 /api/health 验证前后端联通
+# 6. 浏览器打开 http://localhost:5173/login
+#    登录页支持登录 / 注册模式切换；注册验证码按钮在后端路由接入前保持禁用
+#    后端健康检查地址为 http://localhost:8080/health
 ```
 
 ---
