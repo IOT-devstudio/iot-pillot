@@ -66,7 +66,7 @@ async function handleSubmit(): Promise<void> {
 
 <template>
   <main class="auth-page">
-    <aside class="brand-panel" aria-label="iot-pillot 招新管理系统">
+    <aside class="brand-panel" aria-label="iot-pillot 全栈工作室招新">
       <div class="brand-panel__grid" aria-hidden="true"></div>
 
       <header class="brand-header">
@@ -74,48 +74,50 @@ async function handleSubmit(): Promise<void> {
           <span class="wordmark__mark" aria-hidden="true">i/o</span>
           <span>iot-pillot</span>
         </a>
-        <span class="edition">2026 招新计划</span>
+        <span class="edition">2026 春季招新</span>
       </header>
 
       <section class="brand-copy">
-        <p class="eyebrow">研究手记 · 06</p>
-        <h1>把灵感接入<br />真实世界。</h1>
+        <p class="eyebrow">招新档案 · 01</p>
+        <h1>把想法做成<br />可以运行的作品。</h1>
         <p class="brand-copy__description">
-          从传感器到云端，从一行代码到一件作品。加入我们，把你的好奇心做成可以运行的答案。
+          iot 全栈工作室，面向喜欢写代码、做产品、一起解决问题的同学开放。我们从问题出发，把想法拆开、实现，再交付成真正的作品。
         </p>
       </section>
 
       <div class="schematic" aria-hidden="true">
         <svg viewBox="0 0 620 390" role="presentation">
           <g class="schematic__fine-lines">
-            <path d="M14 313H600M39 340H360M468 48v284M493 75v232" />
-            <path d="M74 296V91h117M74 132H32M74 246H29" />
-            <circle cx="74" cy="91" r="5" />
-            <circle cx="74" cy="246" r="5" />
-            <circle cx="468" cy="48" r="5" />
+            <path d="M14 313H600M39 340H360M91 48v284M521 48v284" />
+            <path d="M91 91h104M91 246h104M425 91h96M425 246h96" />
+            <circle cx="91" cy="91" r="5" />
+            <circle cx="91" cy="246" r="5" />
+            <circle cx="521" cy="91" r="5" />
+            <circle cx="521" cy="246" r="5" />
           </g>
           <g class="schematic__main-lines">
-            <rect x="164" y="97" width="234" height="166" rx="4" />
-            <rect x="197" y="128" width="168" height="104" rx="2" />
-            <path d="M222 155h47v49h-47zM292 155h47v18h-47zM292 186h47v18h-47z" />
-            <path d="M164 122h-29m29 29h-29m29 29h-29m29 29h-29m29 29h-29" />
-            <path d="M398 122h29m-29 29h29m-29 29h29m-29 29h29m-29 29h29" />
-            <path d="M281 97V69m-52 28V69m104 28V69M281 263v29m-52-29v29m104-29v29" />
-            <circle cx="510" cy="178" r="54" />
-            <circle cx="510" cy="178" r="35" />
-            <path d="M510 124v108m-54-54h108M472 140l76 76m0-76-76 76" />
+            <rect x="115" y="116" width="118" height="124" rx="2" />
+            <rect x="251" y="80" width="118" height="196" rx="2" />
+            <rect x="387" y="116" width="118" height="124" rx="2" />
+            <path d="M233 178h18m118 0h18" />
+            <path d="M142 145h64m-64 31h38m-38 31h64m-64 31h42" />
+            <path d="M278 116h64m-64 31h38m-38 31h64m-64 31h42m-42 31h64" />
+            <path d="M414 145h64m-64 31h38m-38 31h64m-64 31h42" />
+            <path d="M174 116V91m0 149v25m136-195V51m0 225v25m136-185V91m0 149v25" />
+            <circle cx="310" cy="178" r="18" />
+            <path d="M301 178h18m-9-9v18" />
           </g>
           <g class="schematic__labels">
-            <text x="165" y="84">节点 / A-17</text>
-            <text x="198" y="251">输入阵列</text>
-            <text x="482" y="259">信号</text>
-            <text x="19" y="329">系统研究 · 比例 1:2</text>
+            <text x="115" y="103">01 / 想法</text>
+            <text x="251" y="67">02 / 实现</text>
+            <text x="387" y="103">03 / 交付</text>
+            <text x="19" y="329">全栈练习 · 比例 1:2</text>
           </g>
           <g class="schematic__annotations">
-            <path d="M430 104c51-29 123-20 155 23" />
-            <path d="M568 114l18 13-21 5" />
-            <path d="M122 280c54 24 158 30 239 2" />
-            <text x="430" y="91">保持连接</text>
+            <path d="M431 82c40-24 87-13 112 17" />
+            <path d="M535 93l12 8-15 4" />
+            <path d="M112 280c71 23 166 28 277 0" />
+            <text x="431" y="68">一起完成</text>
           </g>
         </svg>
       </div>
@@ -134,20 +136,20 @@ async function handleSubmit(): Promise<void> {
         </div>
 
         <div class="section-index" aria-hidden="true">
-          <span>访问协议</span>
-          <span>06 / 09</span>
+          <span>招新入口</span>
+          <span>01 / 02</span>
         </div>
 
         <header class="form-heading">
-          <p>{{ mode === "login" ? "欢迎归队" : "建立研究员档案" }}</p>
+          <p>{{ mode === "login" ? "欢迎回来" : "建立成员档案" }}</p>
           <h2 id="auth-title">
-            {{ mode === "login" ? "登录工作台" : "加入 iot-pillot" }}
+            {{ mode === "login" ? "进入工作台" : "加入 iot 全栈工作室" }}
           </h2>
           <span>
             {{
               mode === "login"
-                ? "使用你的账户继续探索与协作。"
-                : "填写以下资料，开始你的创造旅程。"
+                ? "使用工作室账号继续协作。"
+                : "填写资料，加入一群认真做作品的人。"
             }}
           </span>
         </header>
@@ -211,7 +213,7 @@ async function handleSubmit(): Promise<void> {
                 name="password"
                 type="password"
                 autocomplete="current-password"
-                placeholder="输入 6–20 位密码"
+                placeholder="输入密码"
                 :aria-invalid="Boolean(errors.password)"
                 :aria-describedby="errors.password ? 'login-password-error' : undefined"
               />
@@ -370,7 +372,7 @@ async function handleSubmit(): Promise<void> {
           {{
             mode === "login"
               ? "登录即代表你同意遵守工作室协作规范。"
-              : "验证码服务正在校准，注册通道即将开放。"
+              : "验证码服务暂未开放，注册资料会在后续招新流程中使用。"
           }}
         </p>
       </div>
