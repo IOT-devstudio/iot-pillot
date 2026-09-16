@@ -302,11 +302,13 @@ describe("AuthView", () => {
     unmount = mounted.unmount;
     const text = visibleText(mounted.root);
 
-    expect(text).toContain("招新计划");
-    expect(text).toContain("访问协议");
+    expect(text).toContain("春季招新");
+    expect(text).toContain("全栈工作室");
+    expect(text).toContain("招新入口");
+    expect(text).toContain("把想法做成");
     expect(text).toContain("用户名");
     expect(text).not.toMatch(
-      /RECRUIT|FIELD NOTES|NODE|INPUT ARRAY|SIGNAL|SYSTEM STUDY|Research Manual|NO\.|ACCESS PROTOCOL|USERNAME|PASSWORD|\bNAME\b|EMAIL|CONFIRM|VERIFY CODE/,
+      /RECRUIT|FIELD NOTES|NODE|INPUT ARRAY|SIGNAL|SYSTEM STUDY|Research Manual|NO\.|ACCESS PROTOCOL|USERNAME|PASSWORD|\bNAME\b|EMAIL|CONFIRM|VERIFY CODE|传感器|云端|节点|信号|输入阵列/,
     );
   });
 });
