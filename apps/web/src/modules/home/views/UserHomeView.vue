@@ -72,6 +72,11 @@ function handleApply(direction: RecruitmentDirection): void {
           已记录报名意向：{{ appliedDirection.title }}（演示数据，尚未提交到后端）
         </p>
       </div>
+
+      <!-- 底部入口：纯声明式跳转，用 RouterLink 而不是 router.push -->
+      <p class="user-home__footer">
+        <RouterLink class="user-home__link" to="/user/about">关于我们</RouterLink>
+      </p>
     </div>
   </div>
 </template>
@@ -133,5 +138,22 @@ function handleApply(direction: RecruitmentDirection): void {
   background: #e9f6ef;
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* 底部入口。放在 __body 之外、__inner 之内，跟 about 页底部的处理一致 */
+.user-home__footer {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--home-border);
+  font-size: 13px;
+}
+
+.user-home__link {
+  color: var(--home-accent);
+  text-decoration: none;
+}
+
+.user-home__link:hover {
+  text-decoration: underline;
 }
 </style>
