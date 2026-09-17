@@ -22,11 +22,30 @@
 | 路由 | 归属 | `admin` | `member` | 未登录 |
 | --- | --- | --- | --- | --- |
 | `/`、`/login`、`/home` | 公开 | 放行 | 放行 | 放行 |
-| `/dashboard`、`/forms`、`/recruitment`、`/templates`、`/settings` | 成员页 | 放行 | 跳 `/member` | 跳 `/login` |
-| `/admin/buildings` | 成员页 | 放行 | 跳 `/member` | 跳 `/login` |
-| `/member` | 个人页 | 放行 | 放行 | 跳 `/login` |
+| `/dashboard`、`/forms`、`/recruitment`、`/templates`、`/settings` | 成员页 | 放行 | 跳 `/member` | 跳 `/` |
+| `/admin/buildings` | 成员页 | 放行 | 跳 `/member` | 跳 `/` |
+| `/member` | 个人页 | 放行 | 放行 | 跳 `/` |
 
 访问规则是**单向**的：成员可以访问普通用户页面，反向不行。因此 `/member` 的允许角色是两个角色，而不是仅 `member`。
+
+### 登录入口只有一个
+
+未登录时统一转到 3D 开屏（`/`），而不是二维的 `/login`。二维页只在 3D 渲染失败时由开屏自己转投过去，正常路径永远到不了它——「只有一个登录界面」由此成立。
+
+| 路由 | 角色 |
+| --- | --- |
+| `/` 3D 开屏 | **唯一登录界面** |
+| `/login` 二维页 | 仅 WebGL 渲染失败时可达的应急入口 |
+
+这条链路的实际路径：
+
+```text
+未登录访问 /dashboard
+  -> 守卫转 /?redirect=/dashboard
+  -> 3D 建场景
+       ├─ 成功 -> 播放开屏动画，面板可用
+       └─ WebGL 失败 -> 转 /login?redirect=/dashboard（redirect 保留）
+```
 
 ## 守卫改造
 
@@ -127,6 +146,9 @@ redirect 取值由 `submitAuth` 校验，**只接受站内绝对路径**（以 `
 | `apps/web/src/auth/submit.test.ts` | 新增 redirect 落点与开放重定向防护用例 |
 | `apps/web/src/views/AuthView.vue` | 读取并传入 `redirect` 参数 |
 | `apps/web/src/views/AuthView.test.ts` | `vue-router` 桩补充 `useRoute`，新增 redirect 用例 |
+| `apps/web/src/modules/opener/composables/useAuthPanel.ts` | 接收并消费 `redirect`（3D 面板的分流闭环） |
+| `apps/web/src/modules/opener/composables/useStudioScene.ts` | 新增 `onWebglFailed` 回调，跳哪交给调用方 |
+| `apps/web/src/modules/opener/views/StudioOpener.vue` | 读 `redirect` 传给面板；WebGL 失败时转投 `/login` |
 
 ### 顺带修复：`BuildingInspector.vue` 的 TDZ 崩溃
 
@@ -134,7 +156,9 @@ redirect 取值由 `submitAuth` 校验，**只接受站内绝对路径**（以 `
 
 这个 bug 原先不可见，因为 `/admin/buildings` 从未真正被路由进入过（守卫与路由配置在此之前把所有人都挡在外面）。本次改动让成员首次能正常进入该页，才把它暴露出来。修复方式是把 `currentVertex` 的声明提到引用它的 watch 之前，语义不变。
 
-注意：该页的 canvas 在**改动前就**不渲染（已用 `git stash` 对照原始代码验证），属于既有问题，不在本次范围。
+**崩溃的影响范围**（用从 `main` 检出原始文件做对照验证）：该异常会打断整个组件树的挂载，`/admin/buildings` 在原始代码下渲染出来是**一张白纸**——`svgPolygons: 0`、`svgTexts: 0`、页面文本为空。修复后 13 栋楼、网格、属性面板与代码区全部正常，选中顶点时局部坐标也能回填（`-11 / -8`，正是那个 watch 的职责）。所以这不是可选的顺手清理，而是让该页能用的必要条件。
+
+编辑器用 **SVG** 渲染（`svgCount: 1`、`canvasCount: 0`），排查时不要找 `<canvas>` 元素。
 
 ## 测试
 
@@ -146,7 +170,7 @@ redirect 取值由 `submitAuth` 校验，**只接受站内绝对路径**（以 `
 - 成员访问成员页放行。
 - 普通用户访问成员页，跳转到 `/member`。
 - 成员访问 `/member` 放行（单向规则的直接验证）。
-- 未登录访问成员页，跳登录页并带上 `redirect`。
+- 未登录访问成员页，跳 3D 开屏 `/` 并带上 `redirect`。
 - 令牌失效（401/403）清会话，其他错误不清会话。
 - 未知角色按最小可见范围处理，不卡在登录页。
 - `landingFor` 对 `admin`、`member` 与未知角色分别返回正确落点。
@@ -157,10 +181,11 @@ redirect 取值由 `submitAuth` 校验，**只接受站内绝对路径**（以 `
 - `pnpm typecheck` 通过。
 - `pnpm vitest run` 通过：11 个测试文件、113 个用例。
 - `pnpm build` 通过（chunk 体积警告为既有问题，由 three.js 导致）。
-- 浏览器实测（后端未启动，用注入的 `/api/v1/me` 桩模拟两种身份）：
-  - 未登录访问 `/member` → 跳 `/login?redirect=/member`。
-  - 普通用户带 `redirect=/admin/buildings` 登录 → 落到 `/member`，页面渲染「个人中心」。
-  - 成员带 `redirect=/admin/buildings` 登录 → 落到 `/admin/buildings`，编辑器正常加载。
+- 浏览器实测（用临时 mock 后端提供 `/api/v1/me`，模拟两种身份）：
+  - 未登录访问 `/dashboard` → 转到 `/?redirect=/dashboard`（3D 开屏）。
+  - 成员在 3D 面板登录 → 回到 `/dashboard`，说明守卫写的 redirect 被 3D 面板消费。
+  - 普通用户会话访问 `/admin/buildings` → 挡回 `/member`。
+  - 注入 WebGL 失败 → 转投 `/login?redirect=/dashboard`（应急入口且保留 redirect）。
 
 ## 不在本次范围
 
