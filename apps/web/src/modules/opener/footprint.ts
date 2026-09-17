@@ -28,9 +28,22 @@ export interface Bounds {
  */
 const EPSILON = 1e-9;
 
-/** 保留 3 位小数：生成代码时避免 0.30000000000000004 这种噪音 */
+/**
+ * 保留 3 位小数：生成代码时避免 0.30000000000000004 这种噪音。
+ *
+ * 同时把 -0 归一化成 0。这一点很关键：regularFootprint 在 90°/270° 处会算出
+ * cos(90°) ≈ 9e-17 这种浮点噪声，四舍五入后得到 -0；而 String(-0) 是 "0"，
+ * 于是"数据里是 -0、生成的代码里是 0"，往返比对会一直报差异，每次重新生成
+ * 都会产生无意义的 diff。渲染上无影响，但会掩盖真正的变化。
+ */
 function round(value: number): number {
-  return Math.round(value * 1000) / 1000;
+  const rounded = Math.round(value * 1000) / 1000;
+  return rounded === 0 ? 0 : rounded;
+}
+
+/** 对外的坐标取整（编辑器与代码生成共用同一套精度） */
+export function roundCoord(value: number): number {
+  return round(value);
 }
 
 /* ------------------------------------------------------------------ *
@@ -377,6 +390,67 @@ function convexOverlap(a: FootprintPoint[], b: FootprintPoint[]): boolean {
   }
 
   return true;
+}
+
+/**
+ * 点是否落在多边形内（射线法）。**边界上的点算在内**。
+ *
+ * 编辑器用它做命中测试（点选楼栋）；先判边界是因为射线法在边/顶点上会抖动：
+ * 光标压在棱上时忽而在内忽而在外，比选不中更难受。
+ */
+export function pointInPolygon(
+  polygon: FootprintPoint[],
+  point: FootprintPoint,
+): boolean {
+  if (polygon.length < 3) {
+    return false;
+  }
+
+  const [px, pz] = point;
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const a = polygon[i];
+    const b = polygon[j];
+    if (!a || !b) {
+      continue;
+    }
+
+    if (pointOnSegment(point, a, b)) {
+      return true;
+    }
+
+    const crossesRow = a[1] > pz !== b[1] > pz;
+    if (!crossesRow) {
+      continue;
+    }
+    const intersectX = ((b[0] - a[0]) * (pz - a[1])) / (b[1] - a[1]) + a[0];
+    if (px < intersectX) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+/** 点是否落在线段 ab 上（含端点） */
+function pointOnSegment(
+  p: FootprintPoint,
+  a: FootprintPoint,
+  b: FootprintPoint,
+): boolean {
+  const crossValue = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+  if (Math.abs(crossValue) > 1e-9) {
+    return false;
+  }
+
+  const dot = (p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1]);
+  if (dot < 0) {
+    return false;
+  }
+
+  const lengthSquared = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
+  return dot <= lengthSquared;
 }
 
 /**

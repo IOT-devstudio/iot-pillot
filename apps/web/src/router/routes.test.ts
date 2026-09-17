@@ -9,6 +9,9 @@ vi.mock("@/views/AuthView.vue", () => ({ default: { name: "AuthView" } }));
 vi.mock("@/modules/opener/views/StudioOpener.vue", () => ({
   default: { name: "StudioOpener" },
 }));
+vi.mock("@/modules/opener-editor/views/BuildingsEditor.vue", () => ({
+  default: { name: "BuildingsEditor" },
+}));
 
 import { routes } from "./routes";
 
@@ -19,6 +22,15 @@ describe("application routes", () => {
     expect(rootRoutes).toHaveLength(1);
     expect(rootRoutes[0]?.name).toBe("opener");
     expect(rootRoutes[0]?.component).toMatchObject({ name: "StudioOpener" });
+  });
+
+  it("marks the buildings editor as admin-only", () => {
+    const adminRoutes = routes.filter((route) => route.path === "/admin/buildings");
+
+    expect(adminRoutes).toHaveLength(1);
+    expect(adminRoutes[0]?.component).toMatchObject({ name: "BuildingsEditor" });
+    // 丢了 requiresAdmin 就等于门禁静默失效（guard 只认这个 meta），必须锁住
+    expect(adminRoutes[0]?.meta?.requiresAdmin).toBe(true);
   });
 
   it("keeps the fallback login page and the health page on their own paths", () => {
@@ -33,7 +45,7 @@ describe("application routes", () => {
   });
 
   it("registers each planned placeholder page on the actual route list", () => {
-    const reservedPaths = ["/", "/home", "/login"];
+    const reservedPaths = ["/", "/home", "/login", "/admin/buildings"];
     const placeholderRoutes = routes.filter(
       (route) => !reservedPaths.includes(route.path),
     );

@@ -75,6 +75,17 @@ describe("footprint construction", () => {
     expect(Math.abs(polygonArea(hexagon) - (3 * Math.sqrt(3) * 100) / 2)).toBeLessThan(0.01);
     expect(isConvex(hexagon)).toBe(true);
   });
+
+  it("never emits negative zero coordinates", () => {
+    // 回归测试：cos(90°) 会算出 ~9e-17 的浮点噪声，四舍五入成 -0。
+    // 而 String(-0) === "0"，会让代码生成出现 "数据是 -0、代码是 0" 的假差异。
+    const twelve = regularFootprint(12, 15);
+    const hasNegativeZero = twelve.some(([x, z]) =>
+      Object.is(x, -0) || Object.is(z, -0),
+    );
+
+    expect(hasNegativeZero).toBe(false);
+  });
 });
 
 describe("polygon metrics", () => {
