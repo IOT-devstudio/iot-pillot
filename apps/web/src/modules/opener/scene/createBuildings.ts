@@ -1,27 +1,72 @@
 /**
- * 用 BoxGeometry 生成整座校园（白模）。
+ * 用 ExtrudeGeometry 把底面多边形拉伸成**不规则多边形柱**（白模）。
  *
- * 不使用任何 GLB/GLTF 模型文件：每栋楼 = 一次 BoxGeometry + 一个
- * MeshStandardMaterial。布局完全来自 buildings.ts 的 BUILDINGS 数组。
+ * 不使用任何 GLB/GLTF 模型文件：形状完全来自 buildings.ts 的 footprint 顶点数组，
+ * 所以 L 形、梯形、六边形、十二边形乃至凹多边形都能直接建出来，不再是长方体。
  */
 import * as THREE from "three";
 
-import { BUILDINGS, findBuilding, findDuplicateNames, findOverlappingBuildings } from "../buildings";
+import {
+  BUILDINGS,
+  findBuilding,
+  findDegenerateFootprints,
+  findDuplicateNames,
+  findOverlappingBuildings,
+} from "../buildings";
 import { CONFIG } from "../config";
+import type { FootprintPoint } from "../footprint";
 import { type StudioScene, trackDisposable } from "./types";
+
+/** 描边阈值（度）：过滤掉挤出体顶/底面上由三角化产生的内部边 */
+const EDGE_THRESHOLD_DEGREES = 15;
+
+/**
+ * 把底面多边形沿 Y 轴挤出成高度 height 的柱体，**底面正好落在 y=0**。
+ *
+ * 为什么是这两步（顺序不能反、符号不能错）：
+ *  1. Shape 画在 XY 平面、沿 +Z 挤出 depth。建点时用 (px, -pz) 而不是 (px, pz)，
+ *     是为了抵消第 2 步带来的镜像。
+ *  2. rotateX(-90°) 把 +Z 转到 +Y：挤出方向变成竖直向上、y 落在 [0, height]。
+ *     该变换把 (x, y, z) 映射为 (x, z, -y)，所以形状里的 -pz 正好还原成世界 z = pz。
+ *
+ * 结果与原 BoxGeometry 的 `translate(0, h / 2, 0)` 等价：几何原点在底面中心，
+ * 于是 `mesh.position.y = 0` 就是「立在地面上」，scale.y 也才能做升起动画。
+ */
+export function createPrismGeometry(
+  footprint: FootprintPoint[],
+  height: number,
+): THREE.ExtrudeGeometry {
+  const shape = new THREE.Shape();
+
+  footprint.forEach(([px, pz], index) => {
+    if (index === 0) {
+      shape.moveTo(px, -pz);
+    } else {
+      shape.lineTo(px, -pz);
+    }
+  });
+  shape.closePath();
+
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: height,
+    bevelEnabled: false,
+    // 底面是折线、没有曲线段，1 足以避免无谓细分
+    curveSegments: 1,
+  });
+  geometry.rotateX(-Math.PI / 2);
+
+  return geometry;
+}
 
 /**
  * 按 BUILDINGS 逐栋建楼，结果写进 target.buildings。
  *
- * 关键一步是 `geo.translate(0, h / 2, 0)`：BoxGeometry 的原点在体心，
- * 平移后原点落在**底面中心**，于是
- *   - `mesh.position.y = 0` 就等于「楼立在地面上」；
- *   - 可以用 `mesh.scale.y = 0.001 → 1` 做从地面升起的动画。
+ * 凹多边形（L 形）由 ExtrudeGeometry 自行三角化，顶/底面与侧壁都能正确成面，
+ * 调用方不需要先拆成凸片。
  */
 export function createBuildings(target: StudioScene): void {
   for (const [index, data] of BUILDINGS.entries()) {
-    const geometry = new THREE.BoxGeometry(data.w, data.h, data.d);
-    geometry.translate(0, data.h / 2, 0);
+    const geometry = createPrismGeometry(data.footprint, data.h);
 
     const isStudio = data.name === CONFIG.studioBuildingName;
     const material = new THREE.MeshStandardMaterial({
@@ -51,16 +96,16 @@ export function createBuildings(target: StudioScene): void {
 /**
  * 给工作室楼栋描边高亮。
  *
- * EdgesGeometry 复用「已经 translate 过」的同一份几何，所以描边天然贴在
- * 楼栋棱上；再作为 mesh 的子对象挂上去，于是它会自动跟着 scale.y 一起升起，
- * 不需要在时间轴里单独照顾它。
+ * EdgesGeometry 复用「已经挤出并旋转过」的同一份几何，所以描边天然贴在柱体棱上
+ * （包括凹多边形的内棱）；再作为 mesh 的子对象挂上去，于是它会自动跟着 scale.y
+ * 一起升起，不需要在时间轴里单独照顾它。
  */
 function addStudioOutline(
   target: StudioScene,
   mesh: THREE.Mesh,
   geometry: THREE.BufferGeometry,
 ): void {
-  const edgesGeometry = new THREE.EdgesGeometry(geometry);
+  const edgesGeometry = new THREE.EdgesGeometry(geometry, EDGE_THRESHOLD_DEGREES);
   const edgesMaterial = new THREE.LineBasicMaterial({
     color: CONFIG.studioEdgeColor,
   });
@@ -79,9 +124,15 @@ export function reportSceneIssues(): void {
     console.warn(`[StudioOpener] BUILDINGS 里存在重复的 name：${name}`);
   }
 
+  for (const name of findDegenerateFootprints()) {
+    console.warn(
+      `[StudioOpener] BUILDINGS 里 ${name} 的 footprint 少于 3 个顶点，构不出体。`,
+    );
+  }
+
   for (const [a, b] of findOverlappingBuildings()) {
     console.warn(
-      `[StudioOpener] BUILDINGS 里 ${a} 与 ${b} 的底面范围重叠，画面上会穿模。`,
+      `[StudioOpener] BUILDINGS 里 ${a} 与 ${b} 的底面相交，画面上会穿模。`,
     );
   }
 
