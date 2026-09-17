@@ -10,6 +10,15 @@ const router = useRouter();
 const route = useRoute();
 
 /**
+ * 从 3D 开屏跳过来时带的标记。
+ *
+ * 3D 渲染失败会把用户转投到这个后备页（见 modules/opener/views/StudioOpener.vue），
+ * 但转投本身是静默的——用户只看到「3D 闪一下就没了」。所以由 3D 侧带上
+ * ?fallback=webgl，这里读出来解释原因，并给一个回开屏的出口。
+ */
+const showCompatNotice = computed(() => route.query.fallback === "webgl");
+
+/**
  * 守卫挡下访客时会带上 ?redirect=<原路径>，登录成功后跳回去。
  * 取值交给 submitAuth 校验（只接受站内绝对路径），这里不做判断。
  */
@@ -154,6 +163,22 @@ async function handleSubmit(): Promise<void> {
           <span>招新入口</span>
           <span>01 / 02</span>
         </div>
+
+        <!--
+          3D 渲染失败转投过来的说明。用 role="status" 而不是 alert：
+          这是「告知」不是「出错」，不该抢读屏器的紧急通道。
+
+          刻意不放「返回开屏」链接：WebGL 不可用是环境特征而非偶发故障，
+          点回去会立刻被再次转投，形成死循环。与其给一个必然失败的按钮，
+          不如直说这个浏览器看不了开屏——想再试的话刷新页面即可。
+        -->
+        <p v-if="showCompatNotice" class="compat-notice" role="status">
+          <span class="compat-notice__mark" aria-hidden="true">※</span>
+          <span>
+            当前浏览器未能启用 WebGL，开屏动画无法显示，已切换到兼容登录页。
+            下面的表单功能完全可用。
+          </span>
+        </p>
 
         <header class="form-heading">
           <p>{{ mode === "login" ? "欢迎回来" : "建立成员档案" }}</p>
@@ -823,6 +848,27 @@ input {
   color: var(--red);
   font-size: 12px;
   line-height: 1.4;
+}
+
+/* 3D 渲染失败时的说明条。用蓝色系而非红色：这是「换了个方式」不是「出错了」。
+   尺寸收紧到刚好不把表单挤出滚动条——右栏本就独立滚动，但为一行提示
+   冒出一条滚动条会显得像故障。 */
+.compat-notice {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--blue) 22%, transparent);
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.compat-notice__mark {
+  flex: none;
+  color: var(--blue);
 }
 
 .field-error::before {

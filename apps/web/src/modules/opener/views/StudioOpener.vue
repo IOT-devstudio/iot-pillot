@@ -46,10 +46,17 @@ const { panelVisible, webglFailed, animationSkipped, replayAnimation } =
     panelRef,
     /**
      * 3D 渲染不出来时转投二维后备登录页——此时它是唯一可用的登录入口。
-     * redirect 必须一起带过去，否则用户登录后会丢掉原来的目标。
+     *
+     * redirect 与 fallback 两个参数都要带上：
+     *   - redirect：用户原本要去的页面，丢了就得重新找路
+     *   - fallback：让后备页能说明「为什么你看到的不是开屏」，否则用户
+     *     只感觉 3D 闪了一下就没了，无从判断是坏了还是自己点错了
      */
     onWebglFailed: () =>
-      router.replace({ path: "/login", query: route.query }),
+      router.replace({
+        path: "/login",
+        query: { ...route.query, fallback: "webgl" },
+      }),
   });
 
 // 顶层解构，模板里就能直接写 :mode="mode"（<script setup> 只对顶层 ref 自动解包）
