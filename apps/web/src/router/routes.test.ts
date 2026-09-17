@@ -45,7 +45,14 @@ describe("application routes", () => {
   });
 
   it("registers each planned placeholder page on the actual route list", () => {
-    const reservedPaths = ["/", "/home", "/login", "/admin/buildings"];
+    const reservedPaths = [
+      "/",
+      "/home",
+      "/login",
+      "/admin/buildings",
+      "/user/home",
+      "/user/about",
+    ];
     const placeholderRoutes = routes.filter(
       (route) => !reservedPaths.includes(route.path),
     );
