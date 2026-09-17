@@ -27,10 +27,11 @@ const canvasHostRef = ref<HTMLElement | null>(null);
  *  而不是某个子组件的实例 */
 const panelRef = ref<HTMLElement | null>(null);
 
-const { panelVisible, webglFailed } = useStudioScene({
-  canvasHostRef,
-  panelRef,
-});
+const { panelVisible, webglFailed, animationSkipped, replayAnimation } =
+  useStudioScene({
+    canvasHostRef,
+    panelRef,
+  });
 
 // 顶层解构，模板里就能直接写 :mode="mode"（<script setup> 只对顶层 ref 自动解包）
 const {
@@ -77,6 +78,21 @@ const panelStyle = computed<Record<string, string>>(() => ({
     <p v-if="webglFailed" class="studio-opener__fallback" role="status">
       当前浏览器未能启用 WebGL，已切换为静态画面。
     </p>
+
+    <!--
+      跳过了开屏动画时的补救入口。
+      系统开了「减少动态效果」时我们默认不播（正确的无障碍行为），但必须让人
+      知道原因并且能一键播放，否则整个开屏动画在这台机器上等于消失。
+    -->
+    <button
+      v-if="animationSkipped"
+      type="button"
+      class="studio-opener__replay"
+      @pointerdown.stop
+      @click.stop="replayAnimation"
+    >
+      ▶ 播放开屏动画
+    </button>
 
     <!--
       面板外壳：定位 + 动画层。
@@ -181,6 +197,35 @@ const panelStyle = computed<Record<string, string>>(() => ({
   background: rgb(248 235 228 / 92%);
   font-size: 12px;
   transform: translateX(-50%);
+}
+
+/* 跳过动画时的补救入口：右上角一枚轻量胶囊按钮，不抢 3D 画面也不压住面板 */
+.studio-opener__replay {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  z-index: 4;
+  padding: 9px 16px;
+  color: var(--opener-blue);
+  border: 1px solid var(--opener-code-border);
+  border-radius: 999px;
+  background: var(--opener-card-bg);
+  box-shadow: var(--opener-card-shadow);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  font-family: var(--opener-font);
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.studio-opener__replay:hover {
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.studio-opener__replay:active {
+  transform: translateY(0);
 }
 
 /* 面板外壳：垂直居中刻意用 top/bottom + margin:auto，不用

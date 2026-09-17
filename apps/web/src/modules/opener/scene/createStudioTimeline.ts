@@ -200,5 +200,12 @@ export function createStudioTimeline(
     );
   }
 
+  // 把四个阶段的绝对时刻打出来：调节奏时不用猜，也方便确认时间轴真的在跑
+  console.info(
+    `[StudioOpener] 时间轴已启动：阶段1 ${PHASE1_START.toFixed(2)}s → ${PHASE2_START.toFixed(2)}s（楼栋错峰升起）` +
+      ` → 阶段2 → ${PHASE3_START.toFixed(2)}s（聚焦工作室）` +
+      ` → 阶段3 → ${timeline.duration().toFixed(2)}s（右移 + 面板滑入）`,
+  );
+
   return timeline;
 }

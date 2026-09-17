@@ -9,6 +9,7 @@
  */
 import { nextTick, onMounted, onUnmounted, ref, type Ref } from "vue";
 
+import { CONFIG } from "../config";
 import { reportSceneIssues } from "../scene/createBuildings";
 import {
   createStudioRuntime,
@@ -27,14 +28,54 @@ export interface UseStudioSceneResult {
   panelVisible: Ref<boolean>;
   /** WebGL 初始化失败的降级标记 */
   webglFailed: Ref<boolean>;
+  /**
+   * 本次是否跳过了开屏动画（系统减少动态效果 / ?motion=off）。
+   * 界面据此给出「播放开屏动画」入口——没有这个入口，
+   * 开了该设置的机器上整个开屏动画等于不存在，且无从发现原因。
+   */
+  animationSkipped: Ref<boolean>;
+  /** 手动重播开屏动画（会把场景复位后重新播放）*/
+  replayAnimation: () => void;
+}
+
+/**
+ * 是否跳过整条开屏动画。
+ *
+ * 默认尊重系统的 prefers-reduced-motion，但**必须**留出覆盖入口：
+ * 这个设置一旦为真就会把整个产品卖点（开屏动画）静默抹掉，
+ * 不给出路的话，开了「动画效果」的机器上根本无法演示或验收。
+ *
+ * 优先级：URL ?motion= 显式指定 > CONFIG.respectReducedMotion > 系统设置
+ */
+export type MotionOverride = "force" | "off" | null;
+
+/** 读取 ?motion=force|off。force = 强制播放，off = 强制静态 */
+export function readMotionOverride(): MotionOverride {
+  if (typeof window === "undefined" || !window.location) {
+    return null;
+  }
+  const value = new URLSearchParams(window.location.search).get("motion");
+  return value === "force" || value === "off" ? value : null;
 }
 
 /** 系统是否开启了「减少动态效果」*/
-function prefersReducedMotion(): boolean {
+export function prefersReducedMotion(): boolean {
   return (
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
+}
+
+/** 跳过动画的原因，用于日志与提示文案 */
+export function skipReason(): "url-motion-off" | "reduced-motion" | null {
+  const override = readMotionOverride();
+  if (override === "off") {
+    return "url-motion-off";
+  }
+  if (override === "force" || !CONFIG.respectReducedMotion) {
+    return null;
+  }
+  return prefersReducedMotion() ? "reduced-motion" : null;
 }
 
 export function useStudioScene({
@@ -43,6 +84,7 @@ export function useStudioScene({
 }: UseStudioSceneOptions): UseStudioSceneResult {
   const panelVisible = ref(false);
   const webglFailed = ref(false);
+  const animationSkipped = ref(false);
 
   // 运行时本身不是响应式的：它内部持有 WebGLRenderer / Scene / Timeline，
   // 塞进 ref 会被 Vue 套 Proxy，反而破坏 Three.js 的内部身份比较。
@@ -51,6 +93,15 @@ export function useStudioScene({
 
   function handleResize(): void {
     runtime?.resize();
+  }
+
+  /** 手动播放/重播开屏动画 */
+  function replayAnimation(): void {
+    if (!runtime || disposed) {
+      return;
+    }
+    animationSkipped.value = false;
+    runtime.play();
   }
 
   onMounted(async () => {
@@ -89,9 +140,21 @@ export function useStudioScene({
     runtime.resize();
     runtime.start();
 
-    // 4) 尊重系统设置：不播动画，直接给终态
-    if (prefersReducedMotion()) {
+    // 4) 决定播不播动画。
+    //    这里刻意把「为什么跳过」打出来：一旦跳过，整条时间轴一行都不跑，
+    //    画面上只看到最终状态，不留日志的话根本无从判断是设置生效还是代码坏了。
+    const reason = skipReason();
+    if (reason !== null) {
       runtime.showFinalState();
+      animationSkipped.value = true;
+      console.info(
+        "[StudioOpener] 已跳过开屏动画，直接展示终态。" +
+          (reason === "url-motion-off"
+            ? "原因：URL 上带了 ?motion=off。"
+            : "原因：系统/浏览器开启了「减少动态效果」(prefers-reduced-motion: reduce)。" +
+              "画面上提供了「播放开屏动画」按钮可手动播放，也可以加 ?motion=force，" +
+              "或把 CONFIG.respectReducedMotion 设为 false。"),
+      );
       return;
     }
 
@@ -106,5 +169,5 @@ export function useStudioScene({
     runtime = null;
   });
 
-  return { panelVisible, webglFailed };
+  return { panelVisible, webglFailed, animationSkipped, replayAnimation };
 }

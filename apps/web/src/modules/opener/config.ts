@@ -64,6 +64,19 @@ export const CONFIG = {
   panelSlideDuration: 0.9,
   panelEase: "power3.out",
 
+  /**
+   * 是否尊重系统的 prefers-reduced-motion（「减少动态效果」）。
+   *
+   * 默认 true 是正确的无障碍行为，但注意它的效果是**整条开屏动画完全不播**，
+   * 画面直接是终态。所以在 Windows「设置 → 辅助功能 → 视觉效果 → 动画效果」
+   * 关闭的机器上（或 DevTools 里模拟了该媒体特性时）会看不到任何动画。
+   *
+   * 覆盖方式（优先级从高到低）：
+   *   1. URL 加 ?motion=force 强制播放，?motion=off 强制静态
+   *   2. 把这一项设为 false（任何环境下都播）
+   */
+  respectReducedMotion: true,
+
   // ── 登录面板 ──
   /** 面板宽度（px）。窄屏由 AuthPanel 的 CSS 兜底压窄 */
   loginPanelWidth: 360,

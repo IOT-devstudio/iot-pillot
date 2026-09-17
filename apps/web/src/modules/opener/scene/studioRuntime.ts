@@ -14,7 +14,7 @@ import { createStudioTimeline } from "./createStudioTimeline";
 import type { StudioScene } from "./types";
 
 export interface StudioRuntime {
-  /** 播放开屏动画（含面板初始隐藏位置）*/
+  /** 从头播放开屏动画（含面板初始隐藏位置）。可重复调用：会先把场景复位 */
   play(): void;
   /** 启动渲染循环 */
   start(): void;
@@ -70,8 +70,36 @@ export function createStudioRuntime(
     target.renderer.render(target.scene, target.camera);
   }
 
+  /**
+   * 把场景复位到「阶段 0 初始状态」。
+   *
+   * play() 每次都会先复位，所以 play() 是幂等的：既能当首次播放入口，
+   * 也能当「重播」用（例如用户拒绝了减少动态效果之后手动点播放）。
+   */
+  function resetToInitialState(): void {
+    timeline?.kill();
+    timeline = null;
+    idleActive = false;
+
+    for (const { mesh } of target.buildings) {
+      // 压扁回地面以下，等时间轴重新把它们拉起来
+      mesh.scale.y = 0.001;
+    }
+
+    target.camera.position.set(
+      CONFIG.cameraStart.x,
+      CONFIG.cameraStart.y,
+      CONFIG.cameraStart.z,
+    );
+    target.lookAt.x = CONFIG.cameraStartTarget.x;
+    target.lookAt.y = CONFIG.cameraStartTarget.y;
+    target.lookAt.z = CONFIG.cameraStartTarget.z;
+  }
+
   return {
     play(): void {
+      resetToInitialState();
+
       if (panelEl) {
         // 面板初始位置：整个藏到画面左侧之外（等价 transform: translateX(-100%)）
         gsap.set(panelEl, { xPercent: -100, autoAlpha: 0 });
