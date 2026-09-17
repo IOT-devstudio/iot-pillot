@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   register: vi.fn(),
   saveAuthSession: vi.fn(),
   push: vi.fn(),
+  query: {} as Record<string, string>,
 }));
 
 vi.mock("@/api/auth", async (importOriginal) => {
@@ -25,6 +26,7 @@ vi.mock("@/auth/session", () => ({
 
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push: mocks.push }),
+  useRoute: () => ({ query: mocks.query }),
 }));
 
 type TestNode = TestElement | TestText;
@@ -216,6 +218,8 @@ describe("AuthView", () => {
     mocks.login.mockResolvedValue(session);
     mocks.register.mockResolvedValue(session);
     mocks.push.mockResolvedValue(undefined);
+    // 每个用例都从"没有 redirect 参数"开始，避免相互污染
+    mocks.query = {};
   });
 
   afterEach(() => {
@@ -310,6 +314,59 @@ describe("AuthView", () => {
     expect(mocks.saveAuthSession).toHaveBeenCalledWith(session);
     expect(mocks.push).toHaveBeenCalledWith("/dashboard");
     expect(findButton(mounted.root, "进入工作台").props.disabled).toBe(false);
+  });
+
+  it("携带 redirect 参数时登录后回到原目标页", async () => {
+    mocks.query = { redirect: "/admin/buildings" };
+    const mounted = mount();
+    unmount = mounted.unmount;
+    await input(findById(mounted.root, "username"), "researcher");
+    await input(findById(mounted.root, "login-password"), "secret12");
+
+    await submit(mounted.root);
+    await nextTick();
+
+    // 守卫被绕过时留下的原目标必须被消费，否则用户永远回不到想去的页面
+    expect(mocks.push).toHaveBeenCalledWith("/admin/buildings");
+  });
+
+  it("从 3D 转投过来时说明原因", () => {
+    mocks.query = { fallback: "webgl", redirect: "/admin/buildings" };
+    const mounted = mount();
+    unmount = mounted.unmount;
+    const text = visibleText(mounted.root);
+
+    // 静默转投会让用户以为 3D 坏了，必须解释清楚
+    expect(text).toContain("未能启用 WebGL");
+    expect(text).toContain("兼容登录页");
+  });
+
+  it("兼容提示里不放「返回开屏」链接", () => {
+    mocks.query = { fallback: "webgl" };
+    const mounted = mount();
+    unmount = mounted.unmount;
+
+    // WebGL 不可用是环境特征，点回去会被立刻转投，形成死循环。
+    // 锁住这一点，防止以后有人「顺手」把这个链接加回来。
+    // 注意范围只限提示条内部：左侧品牌面板的 wordmark 本来就指向 "/"。
+    const notice = findElement(
+      mounted.root,
+      (element) => element.props.class === "compat-notice",
+    );
+    expect(notice).toBeTruthy();
+
+    const hrefs = allElements(notice!)
+      .filter((element) => element.type === "a")
+      .map((element) => element.props.href);
+    expect(hrefs).toEqual([]);
+  });
+
+  it("正常打开登录页时不显示兼容提示", () => {
+    // 没有 fallback 标记却弹出提示，等于无故吓唬用户
+    const mounted = mount();
+    unmount = mounted.unmount;
+
+    expect(visibleText(mounted.root)).not.toContain("未能启用 WebGL");
   });
 
   it("面向用户的辅助和字段文案使用中文", () => {
