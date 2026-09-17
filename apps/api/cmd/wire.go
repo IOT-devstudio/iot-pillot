@@ -15,6 +15,12 @@ import (
 func InitializeApp() (*handler.Router, func(), error) {
 	wire.Build(
 		config.Load,
+		// AuthConfig 是 *Config 的字段，没有独立的 provider：
+		// 用 FieldsOf 把 *config.AuthConfig 暴露出来给 AuthUseCase 注入。
+		// 注意参数必须是 new(*config.Config)：FieldsOf 取的是「该指针类型所指结构体」
+		// 的字段，写 new(config.Config) 会要求一个 config.Config **值** provider，
+		// 而 config.Load 只提供 *config.Config。
+		wire.FieldsOf(new(*config.Config), "AUTH"),
 		repository.ProvideDB,
 		utils.ConnectRedis,
 
