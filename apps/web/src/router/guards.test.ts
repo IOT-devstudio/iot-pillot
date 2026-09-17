@@ -59,10 +59,10 @@ describe("resolveRouteAccess", () => {
   it("redirects a plain user to their own landing page, not a dead end", async () => {
     const deps = makeDeps({ fetchRole: vi.fn(async () => "member") });
 
-    // 普通用户访问成员页：落到 /member，而不是被挡在某个自己也进不去的页面
+    // 普通用户访问成员页：落到 /user/home，而不是被挡在某个自己也进不去的页面
     await expect(
       resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
-    ).resolves.toEqual({ path: "/member" });
+    ).resolves.toEqual({ path: "/user/home" });
     // 角色是 member 说明令牌本身有效，不该清会话
     expect(deps.clearSession).not.toHaveBeenCalled();
   });
@@ -72,7 +72,7 @@ describe("resolveRouteAccess", () => {
     const deps = makeDeps({ fetchRole: vi.fn(async () => "member") });
 
     await expect(
-      resolveRouteAccess(PERSONAL_PAGES, "/member", deps),
+      resolveRouteAccess(PERSONAL_PAGES, "/user/home", deps),
     ).resolves.toBeNull();
   });
 
@@ -80,7 +80,7 @@ describe("resolveRouteAccess", () => {
     const deps = makeDeps();
 
     await expect(
-      resolveRouteAccess(PERSONAL_PAGES, "/member", deps),
+      resolveRouteAccess(PERSONAL_PAGES, "/user/home", deps),
     ).resolves.toBeNull();
   });
 
@@ -148,7 +148,7 @@ describe("resolveRouteAccess", () => {
 
     await expect(
       resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
-    ).resolves.toEqual({ path: "/member" });
+    ).resolves.toEqual({ path: "/user/home" });
   });
 });
 
@@ -158,10 +158,10 @@ describe("landingFor", () => {
   });
 
   it("sends a plain user to the personal page", () => {
-    expect(landingFor("member")).toBe("/member");
+    expect(landingFor("member")).toBe("/user/home");
   });
 
   it("falls back to the personal page for an unknown role", () => {
-    expect(landingFor("superuser")).toBe("/member");
+    expect(landingFor("superuser")).toBe("/user/home");
   });
 });

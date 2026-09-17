@@ -2,7 +2,7 @@
 
 ## 目标
 
-让登录后的落点与访问范围由用户身份决定：工作室成员进入管理后台，普通用户进入个人页面。两个目标页面本期使用占位实现，本设计只交付**身份判定、路由守护与分流导向**这条链路。
+让登录后的落点与访问范围由用户身份决定：工作室成员进入管理后台，普通用户进入用户侧首页。两个落点本期都还不是本设计交付的内容，本设计只交付**身份判定、路由守护与分流导向**这条链路。
 
 ## 角色模型
 
@@ -22,11 +22,11 @@
 | 路由 | 归属 | `admin` | `member` | 未登录 |
 | --- | --- | --- | --- | --- |
 | `/`、`/login`、`/home` | 公开 | 放行 | 放行 | 放行 |
-| `/dashboard`、`/forms`、`/recruitment`、`/templates`、`/settings` | 成员页 | 放行 | 跳 `/member` | 跳 `/` |
-| `/admin/buildings` | 成员页 | 放行 | 跳 `/member` | 跳 `/` |
-| `/member` | 个人页 | 放行 | 放行 | 跳 `/` |
+| `/dashboard`、`/forms`、`/recruitment`、`/templates`、`/settings` | 成员页 | 放行 | 跳 `/user/home` | 跳 `/` |
+| `/admin/buildings` | 成员页 | 放行 | 跳 `/user/home` | 跳 `/` |
+| `/user/home`、`/user/about` | 用户页 | 放行 | 放行 | 跳 `/` |
 
-访问规则是**单向**的：成员可以访问普通用户页面，反向不行。因此 `/member` 的允许角色是两个角色，而不是仅 `member`。
+访问规则是**单向**的：成员可以访问普通用户页面，反向不行。因此用户侧页面的允许角色是两个角色，而不是仅 `member`。
 
 ### 登录入口只有一个
 
@@ -77,7 +77,7 @@ allowRoles 为空              -> 放行
 查询 /me 抛其他错误（网络等） -> 不清会话 -> /login?redirect=<原路径>
 ```
 
-越权时跳「该角色自己的落点」而非固定的拒绝页：普通用户访问成员页会落到 `/member`，成员访问 `/member` 本就放行。这样不会出现「被跳到自己也进不去的页面」的死循环。
+越权时跳「该角色自己的落点」而非固定的拒绝页：普通用户访问成员页会落到 `/user/home`，成员访问 `/user/home` 本就放行。这样不会出现「被跳到自己也进不去的页面」的死循环。
 
 网络异常不清会话，沿用现有实现：网络抖动不应该删掉用户的会话。
 
@@ -103,7 +103,7 @@ meta: { allowRoles: ["admin", "member"] }   // 个人页（成员也可访问）
 落点判定抽成纯函数，供守卫与登录流程共用：
 
 ```ts
-landingFor(role)  // admin -> /dashboard，其余 -> /member
+landingFor(role)  // admin -> /dashboard，其余 -> /user/home
 ```
 
 ### redirect 参数
@@ -112,7 +112,7 @@ landingFor(role)  // admin -> /dashboard，其余 -> /member
 
 **实现取舍**：最初设计让登录流程自己查询路由表、用 `canAccess` 校验 redirect 目标的权限后再决定落点。实现时改成了更简单的做法——**登录后只做 `redirect ?? "/dashboard"`，权限交给守卫把关**：
 
-- 普通用户带着 `redirect=/admin/buildings` 登录会先跳到该路径，守卫随即判定无权，把它送到 `/member`。
+- 普通用户带着 `redirect=/admin/buildings` 登录会先跳到该路径，守卫随即判定无权，把它送到 `/user/home`。
 - 行为与「登录时先校验」完全一致，但少了一整套「路径 → 角色清单」的查表管线。
 - 而且**更省请求**：普通用户无 redirect 时，前者需要 2 次 `/me`，后者只需守卫那 1 次。
 - Vue Router 的异步守卫在目标组件渲染前完成，用户看不到中间跳转。
@@ -124,7 +124,7 @@ redirect 取值由 `submitAuth` 校验，**只接受站内绝对路径**（以 `
 举例：
 
 - 成员会话过期被踢到登录页，重新登录后回到原目标页。
-- 普通用户直接访问 `/admin/buildings` 被踢到登录页，登录后经守卫落到 `/member`，不会卡在无权页面。
+- 普通用户直接访问 `/admin/buildings` 被踢到登录页，登录后经守卫落到 `/user/home`，不会卡在无权页面。
 - 正常登录各回各家。
 
 ## 文件改动
@@ -136,19 +136,25 @@ redirect 取值由 `submitAuth` 校验，**只接受站内绝对路径**（以 `
 | `apps/web/src/router/guards.ts` | 改造为 `resolveRouteAccess`，新增 `landingFor` |
 | `apps/web/src/router/guards.test.ts` | 适配现有用例，新增越权跳转与角色清单用例 |
 | `apps/web/src/router/index.ts` | 接线新守卫，从 `meta.allowRoles` 取值 |
-| `apps/web/src/router/routes.ts` | 五个占位页声明 `meta.allowRoles`，汇总 `/member` |
+| `apps/web/src/router/routes.ts` | 五个占位页声明 `meta.allowRoles`；汇总用户侧路由 |
 | `apps/web/src/router/routes.test.ts` | 新增角色守卫断言，锁定每页的 `allowRoles` |
-| `apps/web/src/router/route-specs.ts` | 移除 `/login`（已单独声明），导出 `MEMBER_ONLY` |
-| `apps/web/src/modules/opener-editor/routes.ts` | `requiresAdmin: true` 改为 `allowRoles: ["admin"]` |
-| `apps/web/src/modules/shared/routes.ts` | 新增，声明 `/member` 与 `ANY_SIGNED_IN` |
-| `apps/web/src/modules/shared/views/MemberView.vue` | 新增普通用户占位页 |
+| `apps/web/src/router/route-specs.ts` | 导出 `MEMBER_ONLY` 与 `ANY_SIGNED_IN` 两个角色清单常量 |
+| `apps/web/src/modules/opener-editor/routes.ts` | `requiresAdmin: true` 改为 `allowRoles: MEMBER_ONLY` |
+| `apps/web/src/modules/home/routes.ts` | `/user/home` 声明 `allowRoles: ANY_SIGNED_IN` |
+| `apps/web/src/modules/about/routes.ts` | `/user/about` 声明 `allowRoles: ANY_SIGNED_IN` |
 | `apps/web/src/auth/submit.ts` | 消费 `redirect`，新增 `defaultNavigateTarget` 与其校验 |
 | `apps/web/src/auth/submit.test.ts` | 新增 redirect 落点与开放重定向防护用例 |
-| `apps/web/src/views/AuthView.vue` | 读取并传入 `redirect` 参数 |
-| `apps/web/src/views/AuthView.test.ts` | `vue-router` 桩补充 `useRoute`，新增 redirect 用例 |
+| `apps/web/src/views/AuthView.vue` | 读取并传入 `redirect` 参数；WebGL 转投时显示兼容提示 |
+| `apps/web/src/views/AuthView.test.ts` | `vue-router` 桩补充 `useRoute`，新增 redirect 与兼容提示用例 |
 | `apps/web/src/modules/opener/composables/useAuthPanel.ts` | 接收并消费 `redirect`（3D 面板的分流闭环） |
 | `apps/web/src/modules/opener/composables/useStudioScene.ts` | 新增 `onWebglFailed` 回调，跳哪交给调用方 |
 | `apps/web/src/modules/opener/views/StudioOpener.vue` | 读 `redirect` 传给面板；WebGL 失败时转投 `/login` |
+
+### 与用户侧路由骨架（PR #41）的合并
+
+PR #41 先一步在 main 上建了 `/user/home` 与 `/user/about` 两个**真实页面**（用户资料、招新进度、方向列表）。本设计最初自建的 `/member` 占位页因此被删除，普通用户落点改为已存在的 `/user/home`，避免两套并行的用户侧体系。
+
+合并时给 `/user/*` 补上了 `meta.allowRoles: ANY_SIGNED_IN`。这一步不能省：两张路由此前只声明了 `title`，而守卫只认 `allowRoles`——不补的话未登录用户能直接走进去，门禁静默失效。
 
 ### 顺带修复：`BuildingInspector.vue` 的 TDZ 崩溃
 
@@ -168,8 +174,8 @@ redirect 取值由 `submitAuth` 校验，**只接受站内绝对路径**（以 `
 
 - 公开路由放行，且不查询服务端（保持现有用例）。
 - 成员访问成员页放行。
-- 普通用户访问成员页，跳转到 `/member`。
-- 成员访问 `/member` 放行（单向规则的直接验证）。
+- 普通用户访问成员页，跳转到 `/user/home`。
+- 成员访问 `/user/home` 放行（单向规则的直接验证）。
 - 未登录访问成员页，跳 3D 开屏 `/` 并带上 `redirect`。
 - 令牌失效（401/403）清会话，其他错误不清会话。
 - 未知角色按最小可见范围处理，不卡在登录页。
@@ -184,7 +190,7 @@ redirect 取值由 `submitAuth` 校验，**只接受站内绝对路径**（以 `
 - 浏览器实测（用临时 mock 后端提供 `/api/v1/me`，模拟两种身份）：
   - 未登录访问 `/dashboard` → 转到 `/?redirect=/dashboard`（3D 开屏）。
   - 成员在 3D 面板登录 → 回到 `/dashboard`，说明守卫写的 redirect 被 3D 面板消费。
-  - 普通用户会话访问 `/admin/buildings` → 挡回 `/member`。
+  - 普通用户会话访问 `/admin/buildings` → 挡回 `/user/home`。
   - 注入 WebGL 失败 → 转投 `/login?redirect=/dashboard`（应急入口且保留 redirect）。
 
 ## 不在本次范围

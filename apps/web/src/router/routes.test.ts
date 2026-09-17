@@ -12,8 +12,11 @@ vi.mock("@/modules/opener/views/StudioOpener.vue", () => ({
 vi.mock("@/modules/opener-editor/views/BuildingsEditor.vue", () => ({
   default: { name: "BuildingsEditor" },
 }));
-vi.mock("@/modules/shared/views/MemberView.vue", () => ({
-  default: { name: "MemberView" },
+vi.mock("@/modules/home/views/UserHomeView.vue", () => ({
+  default: { name: "UserHomeView" },
+}));
+vi.mock("@/modules/about/views/AboutView.vue", () => ({
+  default: { name: "AboutView" },
 }));
 
 import { routes } from "./routes";
@@ -51,13 +54,17 @@ describe("application routes", () => {
     expect(homeRoutes[0]?.component).toMatchObject({ name: "HomeView" });
   });
 
-  it("registers the personal page for both roles", () => {
-    const memberRoutes = routes.filter((route) => route.path === "/member");
+  it("guards the user-side pages for signed-in users", () => {
+    const userPages = routes.filter((route) => route.path.startsWith("/user/"));
 
-    expect(memberRoutes).toHaveLength(1);
-    expect(memberRoutes[0]?.component).toMatchObject({ name: "MemberView" });
-    // 访问规则是单向的：成员也能进普通用户页，所以两个角色都要列上
-    expect(memberRoutes[0]?.meta?.allowRoles).toEqual(["admin", "member"]);
+    expect(userPages.map(({ path, name }) => ({ path, name }))).toEqual([
+      { path: "/user/home", name: "user-home" },
+      { path: "/user/about", name: "about" },
+    ]);
+    // 用户侧页面必须挂守卫：未登录不能看，成员则照常放行（单向规则）
+    for (const page of userPages) {
+      expect(page.meta?.allowRoles).toEqual(["admin", "member"]);
+    }
   });
 
   it("registers each planned placeholder page as member-only", () => {
@@ -66,7 +73,8 @@ describe("application routes", () => {
       "/home",
       "/login",
       "/admin/buildings",
-      "/member",
+      "/user/home",
+      "/user/about",
     ];
     const placeholderRoutes = routes.filter(
       (route) => !reservedPaths.includes(route.path),

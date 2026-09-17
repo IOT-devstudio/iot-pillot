@@ -59,14 +59,17 @@ function toLogin(fullPath: string): RouteRedirect {
  * 各角色的登录落点。
  *
  * 越权时跳访问者**自己的**落点，而不是固定的拒绝页：普通用户被挡出成员页后
- * 会落在 /member，不会出现"被跳到自己也进不去的地方"这种死循环。
+ * 会落在自己的首页，不会出现「被跳到自己也进不去的地方」这种死循环。
  *
  * 未知角色一律按普通用户处理——服务端将来新增角色时，默认给最小可见范围，
  * 而不是让用户卡在登录页。
  */
 export function landingFor(role: UserRole | string): string {
-  return role === "admin" ? "/dashboard" : "/member";
+  return role === "admin" ? "/dashboard" : USER_HOME;
 }
+
+/** 用户侧首页，也是非成员角色的统一落点 */
+const USER_HOME = "/user/home";
 
 /**
  * 判断能否进入目标路由。
