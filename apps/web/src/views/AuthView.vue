@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, onUnmounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { AuthRequestError, login, register } from "@/api/auth";
-import type { LoginForm, RegisterForm } from "@/auth/form";
+import { AuthRequestError, login, register, sendVerifyCode } from "@/api/auth";
+import {
+  type LoginForm,
+  type RegisterForm,
+  validateRegisterForm,
+} from "@/auth/form";
 import { saveAuthSession } from "@/auth/session";
 import { submitAuth, type AuthMode } from "@/auth/submit";
+import { CONFIG } from "@/modules/opener/config";
 
 const router = useRouter();
 const route = useRoute();
@@ -29,8 +34,13 @@ const redirect = computed(() => {
 
 const mode = ref<AuthMode>("login");
 const loading = ref(false);
+const sendingCode = ref(false);
+const codeCooldown = ref(0);
+const verifyNotice = ref("");
 const errors = ref<Record<string, string>>({});
 const submitError = ref("");
+
+let cooldownTimer: ReturnType<typeof setInterval> | undefined;
 
 const loginForm = reactive<LoginForm>({
   username: "",
@@ -53,11 +63,58 @@ function setMode(nextMode: AuthMode): void {
   mode.value = nextMode;
   errors.value = {};
   submitError.value = "";
+  verifyNotice.value = "";
+}
+
+const codeButtonLabel = computed(() => {
+  if (codeCooldown.value > 0) {
+    return `${codeCooldown.value}s 后重发`;
+  }
+  return sendingCode.value ? "发送中…" : "获取验证码";
+});
+
+async function sendCode(): Promise<void> {
+  if (sendingCode.value || codeCooldown.value > 0 || loading.value) {
+    return;
+  }
+
+  submitError.value = "";
+  verifyNotice.value = "";
+  const emailError = validateRegisterForm(registerForm).email;
+  if (emailError) {
+    errors.value = { ...errors.value, email: emailError };
+    return;
+  }
+  const nextErrors = { ...errors.value };
+  delete nextErrors.email;
+  errors.value = nextErrors;
+
+  sendingCode.value = true;
+  try {
+    await sendVerifyCode(registerForm.email.trim());
+    verifyNotice.value = "验证码已发送，请到邮箱查收";
+    codeCooldown.value = CONFIG.verifyCodeCooldownSeconds;
+    cooldownTimer = setInterval(() => {
+      codeCooldown.value -= 1;
+      if (codeCooldown.value <= 0 && cooldownTimer !== undefined) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = undefined;
+      }
+    }, 1000);
+  } catch (error: unknown) {
+    submitError.value =
+      error instanceof AuthRequestError
+        ? error.message
+        : "服务暂时不可用，请稍后重试";
+  } finally {
+    sendingCode.value = false;
+  }
 }
 
 async function handleSubmit(): Promise<void> {
   errors.value = {};
   submitError.value = "";
+  verifyNotice.value = "";
   loading.value = true;
 
   try {
@@ -86,6 +143,13 @@ async function handleSubmit(): Promise<void> {
     loading.value = false;
   }
 }
+
+onUnmounted(() => {
+  if (cooldownTimer !== undefined) {
+    clearInterval(cooldownTimer);
+    cooldownTimer = undefined;
+  }
+});
 </script>
 
 <template>
@@ -379,12 +443,20 @@ async function handleSubmit(): Promise<void> {
                   :aria-invalid="Boolean(errors.code)"
                   :aria-describedby="errors.code ? 'code-error code-status' : 'code-status'"
                 />
-                <button id="code-status" type="button" disabled>
-                  获取验证码 · 暂未开放
+                <button
+                  id="code-status"
+                  type="button"
+                  :disabled="sendingCode || codeCooldown > 0 || loading"
+                  @click="sendCode"
+                >
+                  {{ codeButtonLabel }}
                 </button>
               </div>
               <p v-if="errors.code" id="code-error" class="field-error" aria-live="polite">
                 {{ errors.code }}
+              </p>
+              <p v-if="verifyNotice" class="code-notice" role="status">
+                {{ verifyNotice }}
               </p>
             </div>
           </template>
@@ -412,7 +484,7 @@ async function handleSubmit(): Promise<void> {
           {{
             mode === "login"
               ? "登录即代表你同意遵守工作室协作规范。"
-              : "验证码服务暂未开放，注册资料会在后续招新流程中使用。"
+              : "注册需要邮箱验证码，请先点击「获取验证码」。"
           }}
         </p>
       </div>
@@ -891,6 +963,30 @@ input {
   background: #eeeae0;
   font-size: 12px;
   cursor: not-allowed;
+}
+
+.code-field button:not(:disabled) {
+  color: var(--blue);
+  border-style: solid;
+  border-color: var(--blue);
+  background: rgb(30 101 159 / 7%);
+  cursor: pointer;
+}
+
+.code-field button:not(:disabled):hover {
+  background: rgb(30 101 159 / 14%);
+}
+
+.code-field button:focus-visible {
+  outline: 3px solid rgb(30 101 159 / 28%);
+  outline-offset: 3px;
+}
+
+.code-notice {
+  margin: 7px 0 0;
+  color: #2e8b57;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .submit-error {

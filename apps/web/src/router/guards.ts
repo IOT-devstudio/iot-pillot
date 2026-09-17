@@ -11,10 +11,10 @@
  */
 import {
   AuthRequestError,
-  fetchCurrentUser,
   type UserRole,
 } from "@/api/auth";
 import { clearAuthSession, readAuthSession } from "@/auth/session";
+import { fetchCurrentUserWithRefresh } from "@/auth/current-user";
 
 /**
  * 需要重定向时的目标位置。
@@ -38,7 +38,7 @@ export interface RouteGateDeps {
 const defaultDeps: RouteGateDeps = {
   readToken: () => readAuthSession()?.access_token ?? null,
   fetchRole: async (accessToken: string) =>
-    (await fetchCurrentUser(accessToken)).role,
+    (await fetchCurrentUserWithRefresh(accessToken)).role,
   clearSession: () => clearAuthSession(),
 };
 

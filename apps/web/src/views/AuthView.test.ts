@@ -6,6 +6,7 @@ import AuthView from "./AuthView.vue";
 const mocks = vi.hoisted(() => ({
   login: vi.fn(),
   register: vi.fn(),
+  sendVerifyCode: vi.fn(),
   saveAuthSession: vi.fn(),
   push: vi.fn(),
   query: {} as Record<string, string>,
@@ -17,6 +18,7 @@ vi.mock("@/api/auth", async (importOriginal) => {
     ...actual,
     login: mocks.login,
     register: mocks.register,
+    sendVerifyCode: mocks.sendVerifyCode,
   };
 });
 
@@ -217,6 +219,7 @@ describe("AuthView", () => {
   beforeEach(() => {
     mocks.login.mockResolvedValue(session);
     mocks.register.mockResolvedValue(session);
+    mocks.sendVerifyCode.mockResolvedValue("发送验证码成功");
     mocks.push.mockResolvedValue(undefined);
     // 每个用例都从"没有 redirect 参数"开始，避免相互污染
     mocks.query = {};
@@ -228,7 +231,7 @@ describe("AuthView", () => {
     vi.clearAllMocks();
   });
 
-  it("切换到注册模式后渲染注册字段和禁用的验证码按钮", async () => {
+  it("切换到注册模式后渲染注册字段和可用的验证码按钮", async () => {
     const mounted = mount();
     unmount = mounted.unmount;
 
@@ -239,7 +242,19 @@ describe("AuthView", () => {
     expect(findById(mounted.root, "email")).toBeDefined();
     expect(findById(mounted.root, "confirm-password")).toBeDefined();
     expect(findById(mounted.root, "code")).toBeDefined();
-    expect(findButton(mounted.root, "获取验证码 · 暂未开放").props.disabled).toBe(true);
+    expect(findButton(mounted.root, "获取验证码").props.disabled).toBe(false);
+  });
+
+  it("注册模式可以调用后端发送邮箱验证码", async () => {
+    const mounted = mount();
+    unmount = mounted.unmount;
+
+    await click(findButton(mounted.root, "注册"));
+    await input(findById(mounted.root, "email"), "ada@example.com");
+    await click(findButton(mounted.root, "获取验证码"));
+
+    expect(mocks.sendVerifyCode).toHaveBeenCalledWith("ada@example.com");
+    expect(visibleText(mounted.root)).toContain("验证码已发送，请到邮箱查收");
   });
 
   it("切换模式时不重新挂载左侧品牌面板", async () => {

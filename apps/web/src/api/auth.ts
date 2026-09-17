@@ -102,8 +102,11 @@ async function getAuth<T>(path: string, accessToken: string): Promise<T> {
 async function postAuthNoData(
   path: string,
   payload: unknown,
+  headers?: HeadersInit,
 ): Promise<string> {
-  const { body } = await requestAuth<unknown>(path, jsonPost(payload));
+  const init = jsonPost(payload);
+  init.headers = { "Content-Type": "application/json", ...headers };
+  const { body } = await requestAuth<unknown>(path, init);
   return body.message ?? "success";
 }
 
@@ -113,6 +116,25 @@ export function login(payload: LoginPayload): Promise<AuthSession> {
 
 export function register(payload: RegisterPayload): Promise<AuthSession> {
   return postAuth<AuthSession>("/api/v1/register", payload);
+}
+
+/** 使用 refresh token 轮换出新的双令牌。 */
+export function refreshAuthSession(refreshToken: string): Promise<AuthSession> {
+  return postAuth<AuthSession>("/api/v1/refresh", {
+    refresh_token: refreshToken,
+  });
+}
+
+/** 注销当前会话；后端会让该用户的 access/refresh token 一并失效。 */
+export function logout(
+  accessToken: string,
+  refreshToken: string,
+): Promise<string> {
+  return postAuthNoData(
+    "/api/v1/logout",
+    { refresh_token: refreshToken },
+    { Authorization: `Bearer ${accessToken}` },
+  );
 }
 
 /**
@@ -147,4 +169,33 @@ export interface CurrentUser {
  */
 export function fetchCurrentUser(accessToken: string): Promise<CurrentUser> {
   return getAuth<CurrentUser>("/api/v1/me", accessToken);
+}
+
+export interface AdminUser {
+  user_id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface AdminUserList {
+  items: AdminUser[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** 分页读取管理员用户列表。 */
+export function listAdminUsers(
+  accessToken: string,
+  page = 1,
+  pageSize = 20,
+): Promise<AdminUserList> {
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  return getAuth<AdminUserList>(
+    `/api/v1/admin/users?${query.toString()}`,
+    accessToken,
+  );
 }

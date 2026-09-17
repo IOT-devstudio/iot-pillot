@@ -8,7 +8,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DEMO_CURRENT_USER,
   MY_APPLICATIONS,
   RECRUITMENT_DIRECTIONS,
   findDirection,
@@ -35,10 +34,6 @@ describe("home fixtures", () => {
     );
   });
 
-  it("gives the demo user a username and a role the page can render", () => {
-    expect(DEMO_CURRENT_USER.username.trim()).not.toBe("");
-    expect(DEMO_CURRENT_USER.role).toBeTruthy();
-  });
 });
 
 describe("home application fixtures", () => {

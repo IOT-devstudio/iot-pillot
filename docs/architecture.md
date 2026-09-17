@@ -29,10 +29,10 @@ iot-pillot/
 ### 前端（apps/web）
 
 - Vue 3 + `<script setup>` 单文件组件
-- Vue Router 4，初始路由 `/` -> Home
+- Vue Router 4，`/` 为 3D 登录开屏，用户侧为 `/user/*`，管理侧为 `/admin/*` 与 `/dashboard`
 - Element Plus 通过 `unplugin-auto-import` + `unplugin-vue-components` 按需注册
 - Vite dev server 监听 `:5173`，`/api` 代理到 `:8080`
-- Home 视图调 `/api/health` 验证前后端联通
+- Home 视图调根级 `/health` 验证前后端联通；认证页、用户页和管理员控制台已接入当前后端认证接口
 
 ### 后端（apps/api）
 
