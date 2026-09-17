@@ -4,7 +4,9 @@
  *
  * 分工：
  *   fixtures.ts                  假数据（后端接口未就绪，见该文件头部说明）
+ *   format.ts                    展示用的日期格式化（纯函数）
  *   components/UserProfileCard   当前用户信息区（纯展示）
+ *   components/ApplicationList   我的招新情况 / 报名记录（纯展示）
  *   components/DirectionList     招新方向列表（纯展示）
  *   本组件                       布局 + 接线，并持有「刚点了哪条方向」这一个状态
  *
@@ -17,11 +19,17 @@
 import { ref } from "vue";
 
 import type { RecruitmentDirection } from "../fixtures";
-import { DEMO_CURRENT_USER, RECRUITMENT_DIRECTIONS } from "../fixtures";
+import {
+  DEMO_CURRENT_USER,
+  MY_APPLICATIONS,
+  RECRUITMENT_DIRECTIONS,
+} from "../fixtures";
+import ApplicationList from "../components/ApplicationList.vue";
 import DirectionList from "../components/DirectionList.vue";
 import UserProfileCard from "../components/UserProfileCard.vue";
 
 const user = DEMO_CURRENT_USER;
+const applications = MY_APPLICATIONS;
 const directions = RECRUITMENT_DIRECTIONS;
 
 /** 最近一次点击报名的方向；null 表示还没点过 */
@@ -44,21 +52,26 @@ function handleApply(direction: RecruitmentDirection): void {
 
 <template>
   <div class="user-home">
-    <header class="user-home__header">
-      <h1 class="user-home__title">用户首页</h1>
-      <p class="user-home__subtitle">
-        查看你的信息与当前开放的招新方向。
-      </p>
-    </header>
+    <!-- 唯一的宽度容器：标题区和三块卡片都跟着它走，宽度天然一致 -->
+    <div class="user-home__inner">
+      <header class="user-home__header">
+        <h1 class="user-home__title">用户首页</h1>
+        <p class="user-home__subtitle">
+          查看你的信息与当前开放的招新方向。
+        </p>
+      </header>
 
-    <div class="user-home__body">
-      <UserProfileCard :user="user" />
+      <div class="user-home__body">
+        <UserProfileCard :user="user" />
 
-      <DirectionList :directions="directions" @apply="handleApply" />
+        <ApplicationList :applications="applications" />
 
-      <p v-if="appliedDirection" class="user-home__notice" role="status">
-        已记录报名意向：{{ appliedDirection.title }}（演示数据，尚未提交到后端）
-      </p>
+        <DirectionList :directions="directions" @apply="handleApply" />
+
+        <p v-if="appliedDirection" class="user-home__notice" role="status">
+          已记录报名意向：{{ appliedDirection.title }}（演示数据，尚未提交到后端）
+        </p>
+      </div>
     </div>
   </div>
 </template>
@@ -70,12 +83,24 @@ function handleApply(direction: RecruitmentDirection): void {
   --home-muted: #5c6b7a;
   --home-accent: #164d80;
   --home-border: #d8dee4;
+  /* 内容栏宽度：标题与三块卡片共用这一个值，改宽度只改这里 */
+  --home-content-width: 720px;
 
   min-height: 100vh;
   padding: 32px clamp(16px, 4vw, 48px) 48px;
   color: var(--home-ink);
   background: #f4f6f8;
   font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/*
+ * 内容整体水平居中。
+ * 窗口比内容栏窄时 max-width 不生效，由 .user-home 的左右 padding 兜住，
+ * 所以窄屏也不会贴边。
+ */
+.user-home__inner {
+  max-width: var(--home-content-width);
+  margin: 0 auto;
 }
 
 .user-home__header {
@@ -93,10 +118,10 @@ function handleApply(direction: RecruitmentDirection): void {
   font-size: 13px;
 }
 
+/* 只负责卡片间距；宽度交给 .user-home__inner，三块卡片因此天然等宽 */
 .user-home__body {
   display: grid;
   gap: 16px;
-  max-width: 720px;
 }
 
 .user-home__notice {
