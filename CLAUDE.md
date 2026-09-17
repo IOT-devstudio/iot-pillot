@@ -110,7 +110,7 @@ iot-pillot/
 
 | 能力 | 实际路由 | 前端可用性 | 备注 |
 | --- | --- | --- | --- |
-| 健康检查 | `GET /health` | 可用，但现有页面路径错误 | `Home.vue` 当前请求 `/api/health`；开发和生产都应统一改用 `/health`，同时为 Vite 增加对应代理 |
+| 健康检查 | `GET /health` | 可用 | `Home.vue` 调 `/health`，Vite 已加对应代理，与生产 nginx `location = /health` 一致 |
 | 登录 | `POST /api/v1/login` | 前端已对接 | `/login` 页面提交 `username`、`password`；返回 access/refresh 双令牌 |
 | 注册 | `POST /api/v1/register` | 页面已适配但暂时无法闭环 | `/login` 页面已渲染姓名、邮箱、密码、确认密码和验证码字段；注册必须提交邮箱验证码，但发送验证码的 handler 尚未挂到路由 |
 | 刷新令牌 | `POST /api/v1/refresh` | 可开始对接 | 刷新成功会轮换两枚令牌，旧令牌立即失效 |

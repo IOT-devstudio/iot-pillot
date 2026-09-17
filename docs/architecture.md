@@ -32,7 +32,7 @@ iot-pillot/
 - Vue Router 4，初始路由 `/` -> Home
 - Element Plus 通过 `unplugin-auto-import` + `unplugin-vue-components` 按需注册
 - Vite dev server 监听 `:5173`，`/api` 代理到 `:8080`
-- Home 视图调 `/api/health` 验证前后端联通
+- Home 视图调 `/health` 验证前后端联通
 
 ### 后端（apps/api）
 

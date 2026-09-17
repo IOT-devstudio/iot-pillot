@@ -23,6 +23,11 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
+      // 后端健康检查在根级 /health（不在 /api/ 下），需单独反代。
+      "/health": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
     },
   },
   test: {

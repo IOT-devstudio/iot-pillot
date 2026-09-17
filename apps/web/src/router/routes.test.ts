@@ -12,16 +12,22 @@ vi.mock("@/modules/opener/views/StudioOpener.vue", () => ({
 vi.mock("@/modules/opener-editor/views/BuildingsEditor.vue", () => ({
   default: { name: "BuildingsEditor" },
 }));
+vi.mock("@/modules/recruitment/views/ProspectsView.vue", () => ({
+  default: { name: "ProspectsView" },
+}));
+vi.mock("@/modules/recruitment/views/ProspectDetailView.vue", () => ({
+  default: { name: "ProspectDetailView" },
+}));
 
 import { routes } from "./routes";
 
 describe("application routes", () => {
-  it("mounts the 3D opener on the root path", () => {
-    const rootRoutes = routes.filter((route) => route.path === "/");
+  it("mounts the 3D opener on its own path", () => {
+    const openerPaths = routes.filter((route) => route.path === "/opener");
 
-    expect(rootRoutes).toHaveLength(1);
-    expect(rootRoutes[0]?.name).toBe("opener");
-    expect(rootRoutes[0]?.component).toMatchObject({ name: "StudioOpener" });
+    expect(openerPaths).toHaveLength(1);
+    expect(openerPaths[0]?.name).toBe("opener");
+    expect(openerPaths[0]?.component).toMatchObject({ name: "StudioOpener" });
   });
 
   it("marks the buildings editor as admin-only", () => {
@@ -33,19 +39,27 @@ describe("application routes", () => {
     expect(adminRoutes[0]?.meta?.requiresAdmin).toBe(true);
   });
 
-  it("keeps the fallback login page and the health page on their own paths", () => {
+  it("keeps the fallback login page and mounts the health page on the root path", () => {
     const loginRoutes = routes.filter((route) => route.path === "/login");
     expect(loginRoutes).toHaveLength(1);
     expect(loginRoutes[0]?.component).toMatchObject({ name: "AuthView" });
 
-    // 根路径让给开屏后，健康检查页必须还在，否则会丢掉这个入口
-    const homeRoutes = routes.filter((route) => route.path === "/home");
+    // 根路径回到内容首页，健康检查入口也随之回到 /
+    const homeRoutes = routes.filter((route) => route.path === "/");
     expect(homeRoutes).toHaveLength(1);
     expect(homeRoutes[0]?.component).toMatchObject({ name: "HomeView" });
   });
 
   it("registers each planned placeholder page on the actual route list", () => {
-    const reservedPaths = ["/", "/home", "/login", "/admin/buildings"];
+    const reservedPaths = [
+      "/",
+      "/opener",
+      "/login",
+      "/admin/buildings",
+      "/recruitment",
+      "/recruitment/prospects",
+      "/recruitment/prospects/:id",
+    ];
     const placeholderRoutes = routes.filter(
       (route) => !reservedPaths.includes(route.path),
     );
@@ -57,10 +71,21 @@ describe("application routes", () => {
     }))).toEqual([
       { path: "/dashboard", name: "dashboard", title: "控制台" },
       { path: "/forms", name: "forms", title: "表单管理" },
-      { path: "/recruitment", name: "recruitment", title: "招聘管理" },
       { path: "/templates", name: "templates", title: "邮件模板" },
       { path: "/settings", name: "settings", title: "系统设置" },
     ]);
     expect(new Set(placeholderRoutes.map(({ component }) => component)).size).toBe(1);
+  });
+
+  it("registers the recruitment flow routes", () => {
+    const recruitmentPaths = routes
+      .filter((route) => route.path.startsWith("/recruitment"))
+      .map((route) => route.path);
+
+    expect(recruitmentPaths).toEqual([
+      "/recruitment",
+      "/recruitment/prospects",
+      "/recruitment/prospects/:id",
+    ]);
   });
 });
