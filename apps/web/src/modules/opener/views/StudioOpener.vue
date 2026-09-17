@@ -15,11 +15,24 @@
  *   components/*                  → 面板与字段的展示
  */
 import { computed, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 import AuthPanel from "../components/AuthPanel.vue";
 import { useAuthPanel } from "../composables/useAuthPanel";
 import { useStudioScene } from "../composables/useStudioScene";
 import { CONFIG } from "../config";
+
+const route = useRoute();
+const router = useRouter();
+
+/**
+ * 守卫挡下访客时会带上 ?redirect=<原路径>，登录成功后跳回去。
+ * 取值交给 submitAuth 校验（只接受站内绝对路径），这里不做判断。
+ */
+const redirect = computed(() => {
+  const raw = route.query.redirect;
+  return typeof raw === "string" ? raw : undefined;
+});
 
 /** canvas 宿主；WebGLRenderer 的 canvas 会被 append 进来 */
 const canvasHostRef = ref<HTMLElement | null>(null);
@@ -31,6 +44,12 @@ const { panelVisible, webglFailed, animationSkipped, replayAnimation } =
   useStudioScene({
     canvasHostRef,
     panelRef,
+    /**
+     * 3D 渲染不出来时转投二维后备登录页——此时它是唯一可用的登录入口。
+     * redirect 必须一起带过去，否则用户登录后会丢掉原来的目标。
+     */
+    onWebglFailed: () =>
+      router.replace({ path: "/login", query: route.query }),
   });
 
 // 顶层解构，模板里就能直接写 :mode="mode"（<script setup> 只对顶层 ref 自动解包）
@@ -49,7 +68,7 @@ const {
   setMode,
   submit,
   sendCode,
-} = useAuthPanel();
+} = useAuthPanel(redirect);
 
 /** 面板宽度交给 CSS 变量，这样窄屏媒体查询还能再压窄它 */
 const panelStyle = computed<Record<string, string>>(() => ({
@@ -74,9 +93,12 @@ const panelStyle = computed<Record<string, string>>(() => ({
       aria-hidden="true"
     ></div>
 
-    <!-- WebGL 不可用时的可见提示（此时面板已直接展示，功能不受影响）-->
+    <!--
+      WebGL 不可用时的提示。此时已经转投二维后备登录页，这句只在跳转
+      完成前短暂可见——留着是为了万一导航失败还有反馈，不至于白屏。
+    -->
     <p v-if="webglFailed" class="studio-opener__fallback" role="status">
-      当前浏览器未能启用 WebGL，已切换为静态画面。
+      当前浏览器未能启用 WebGL，正在切换到备用登录页…
     </p>
 
     <!--

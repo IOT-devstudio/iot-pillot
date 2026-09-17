@@ -42,7 +42,7 @@ describe("application routes", () => {
     const loginRoutes = routes.filter((route) => route.path === "/login");
     expect(loginRoutes).toHaveLength(1);
     expect(loginRoutes[0]?.component).toMatchObject({ name: "AuthView" });
-    // 登录页必须公开，否则未登录用户会被守卫挡住，形成死循环
+    // 后备登录页必须公开：3D 渲染失败转投过来时，守卫不能把它再挡走
     expect(loginRoutes[0]?.meta?.allowRoles).toBeUndefined();
 
     // 根路径让给开屏后，健康检查页必须还在，否则会丢掉这个入口

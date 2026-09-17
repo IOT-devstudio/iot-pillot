@@ -21,6 +21,16 @@ export interface UseStudioSceneOptions {
   canvasHostRef: Ref<HTMLElement | null>;
   /** 登录面板元素（GSAP 的滑入目标）*/
   panelRef: Ref<HTMLElement | null>;
+  /**
+   * WebGL 初始化失败时的处理，由调用方决定跳哪。
+   *
+   * 抽成回调而不是在这里直接跳转：这个模块刻意不依赖 vue-router，
+   * 只做「Three.js 与 Vue 生命周期」的对接，导航属于调用方的职责。
+   *
+   * 典型实现是转到二维后备登录页——3D 渲染不出来时，那个面板是唯一
+   * 还能用的登录入口。
+   */
+  onWebglFailed?: () => void;
 }
 
 export interface UseStudioSceneResult {
@@ -81,6 +91,7 @@ export function skipReason(): "url-motion-off" | "reduced-motion" | null {
 export function useStudioScene({
   canvasHostRef,
   panelRef,
+  onWebglFailed,
 }: UseStudioSceneOptions): UseStudioSceneResult {
   const panelVisible = ref(false);
   const webglFailed = ref(false);
@@ -122,14 +133,20 @@ export function useStudioScene({
     }
 
     // 2) 建场景。WebGL 不可用（老显卡 / 被禁用 / 无头环境）时降级：
-    //    此时面板已经可见且从未被 GSAP 隐藏，直接就是可用的登录页。
+    //    先把面板留作可见（它从未被 GSAP 隐藏，直接就是可用的登录页），
+    //    再交给调用方决定要不要转到别的登录入口。
     try {
       runtime = createStudioRuntime(host, panelRef.value);
     } catch (error: unknown) {
       runtime?.dispose();
       runtime = null;
       webglFailed.value = true;
-      console.warn("[StudioOpener] WebGL 初始化失败，已降级为静态画面：", error);
+      console.warn("[StudioOpener] WebGL 初始化失败，已降级：", error);
+
+      // await 过一次，组件可能已经卸载；此时再导航会指向一个已消失的视图
+      if (!disposed) {
+        onWebglFailed?.();
+      }
       return;
     }
 

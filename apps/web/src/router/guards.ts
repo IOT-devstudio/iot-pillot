@@ -19,11 +19,12 @@ import { clearAuthSession, readAuthSession } from "@/auth/session";
 /**
  * 需要重定向时的目标位置。
  *
- * 两种定位方式：去登录页按路由名（name），跳角色落点按固定路径（path）。
+ * 只用固定路径定位：登录入口是 3D 开屏所在的 "/"，角色落点也是固定路径。
  */
-export type RouteRedirect =
-  | { path: string }
-  | { name: string; query?: Record<string, string> };
+export interface RouteRedirect {
+  path: string;
+  query?: Record<string, string>;
+}
 
 export interface RouteGateDeps {
   /** 读取本地会话里的 access token；无会话返回 null */
@@ -41,7 +42,18 @@ const defaultDeps: RouteGateDeps = {
   clearSession: () => clearAuthSession(),
 };
 
-const LOGIN_ROUTE = "login";
+/**
+ * 登录入口。
+ *
+ * 指向 3D 开屏（根路径）而不是二维的 /login：后者只在 WebGL 渲染失败时
+ * 由开屏自己转过去，正常路径永远到不了，这样「只有一个登录界面」才成立。
+ */
+const LOGIN_ROUTE = "/";
+
+/** 去登录入口并记住原目标，便于登录后跳回 */
+function toLogin(fullPath: string): RouteRedirect {
+  return { path: LOGIN_ROUTE, query: { redirect: fullPath } };
+}
 
 /**
  * 各角色的登录落点。
@@ -83,7 +95,7 @@ export async function resolveRouteAccess(
 
   const token = deps.readToken();
   if (token === null) {
-    return { name: LOGIN_ROUTE, query: { redirect: fullPath } };
+    return toLogin(fullPath);
   }
 
   let role: string;
@@ -94,7 +106,7 @@ export async function resolveRouteAccess(
       // 令牌确实无效：清掉会话，否则会带着一个坏令牌反复重试
       deps.clearSession();
     }
-    return { name: LOGIN_ROUTE, query: { redirect: fullPath } };
+    return toLogin(fullPath);
   }
 
   if (!allowRoles.includes(role)) {

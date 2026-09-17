@@ -10,7 +10,6 @@
  */
 import { computed, onUnmounted, ref, type ComputedRef, type Ref } from "vue";
 import { useRouter } from "vue-router";
-
 import { AuthRequestError, login, register, sendVerifyCode } from "@/api/auth";
 import {
   type LoginForm,
@@ -42,7 +41,10 @@ export interface UseAuthPanelResult {
 
 const UNAVAILABLE_MESSAGE = "服务暂时不可用，请稍后重试";
 
-export function useAuthPanel(): UseAuthPanelResult {
+export function useAuthPanel(
+  /** 守卫挡下访客时带在 URL 上的原目标（?redirect=），登录成功后跳回去 */
+  redirect?: Ref<string | undefined>,
+): UseAuthPanelResult {
   const router = useRouter();
 
   const mode = ref<AuthMode>("login");
@@ -106,12 +108,17 @@ export function useAuthPanel(): UseAuthPanelResult {
 
     try {
       const form = mode.value === "login" ? loginForm.value : registerForm.value;
-      const result = await submitAuth(mode.value, form, {
-        login,
-        register,
-        saveSession: saveAuthSession,
-        navigate: (path) => router.push(path),
-      });
+      const result = await submitAuth(
+        mode.value,
+        form,
+        {
+          login,
+          register,
+          saveSession: saveAuthSession,
+          navigate: (path) => router.push(path),
+        },
+        redirect?.value,
+      );
 
       if (!result.ok) {
         errors.value = result.errors;

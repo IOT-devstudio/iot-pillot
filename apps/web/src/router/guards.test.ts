@@ -50,7 +50,7 @@ describe("resolveRouteAccess", () => {
     await expect(
       resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.toEqual({
-      name: "login",
+      path: "/",
       query: { redirect: "/admin/buildings" },
     });
     expect(deps.fetchRole).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe("resolveRouteAccess", () => {
     await expect(
       resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.toEqual({
-      name: "login",
+      path: "/",
       query: { redirect: "/admin/buildings" },
     });
     expect(deps.clearSession).toHaveBeenCalledTimes(1);
@@ -111,7 +111,7 @@ describe("resolveRouteAccess", () => {
     await expect(
       resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.toEqual({
-      name: "login",
+      path: "/",
       query: { redirect: "/admin/buildings" },
     });
     expect(deps.clearSession).not.toHaveBeenCalled();
