@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AuthRequestError } from "@/api/auth";
-import { resolveAdminAccess, type AdminGateDeps } from "./guards";
+import { landingFor, resolveRouteAccess, type RouteGateDeps } from "./guards";
 
-function makeDeps(overrides: Partial<AdminGateDeps> = {}): AdminGateDeps & {
+/** 成员页：只有工作室成员（admin）能进 */
+const MEMBER_PAGES = ["admin"] as const;
+/** 普通用户页：成员也能访问，所以两个角色都在清单里 */
+const PERSONAL_PAGES = ["admin", "member"] as const;
+
+function makeDeps(overrides: Partial<RouteGateDeps> = {}): RouteGateDeps & {
   fetchRole: ReturnType<typeof vi.fn>;
   clearSession: ReturnType<typeof vi.fn>;
 } {
@@ -15,26 +20,26 @@ function makeDeps(overrides: Partial<AdminGateDeps> = {}): AdminGateDeps & {
     fetchRole,
     clearSession,
     ...overrides,
-  } as AdminGateDeps & {
+  } as RouteGateDeps & {
     fetchRole: ReturnType<typeof vi.fn>;
     clearSession: ReturnType<typeof vi.fn>;
   };
 }
 
-describe("resolveAdminAccess", () => {
+describe("resolveRouteAccess", () => {
   it("lets public routes through without asking the server", async () => {
     const deps = makeDeps();
 
-    await expect(resolveAdminAccess(false, "/", deps)).resolves.toBeNull();
+    await expect(resolveRouteAccess([], "/", deps)).resolves.toBeNull();
     // 关键：公开路由不该因为守卫而多一次 /me 请求
     expect(deps.fetchRole).not.toHaveBeenCalled();
   });
 
-  it("lets an admin into the admin route", async () => {
+  it("lets an admin into a member page", async () => {
     const deps = makeDeps();
 
     await expect(
-      resolveAdminAccess(true, "/admin/buildings", deps),
+      resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.toBeNull();
     expect(deps.fetchRole).toHaveBeenCalledWith("token-abc");
   });
@@ -43,7 +48,7 @@ describe("resolveAdminAccess", () => {
     const deps = makeDeps({ readToken: () => null });
 
     await expect(
-      resolveAdminAccess(true, "/admin/buildings", deps),
+      resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.toEqual({
       name: "login",
       query: { redirect: "/admin/buildings" },
@@ -51,14 +56,32 @@ describe("resolveAdminAccess", () => {
     expect(deps.fetchRole).not.toHaveBeenCalled();
   });
 
-  it("keeps a member out of the admin route", async () => {
+  it("redirects a plain user to their own landing page, not a dead end", async () => {
+    const deps = makeDeps({ fetchRole: vi.fn(async () => "member") });
+
+    // 普通用户访问成员页：落到 /member，而不是被挡在某个自己也进不去的页面
+    await expect(
+      resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
+    ).resolves.toEqual({ path: "/member" });
+    // 角色是 member 说明令牌本身有效，不该清会话
+    expect(deps.clearSession).not.toHaveBeenCalled();
+  });
+
+  it("lets a member into the personal page", async () => {
+    // 访问规则是单向的：成员可以访问普通用户页面
     const deps = makeDeps({ fetchRole: vi.fn(async () => "member") });
 
     await expect(
-      resolveAdminAccess(true, "/admin/buildings", deps),
-    ).resolves.toEqual({ name: "dashboard" });
-    // 角色是 member 说明令牌本身有效，不该清会话
-    expect(deps.clearSession).not.toHaveBeenCalled();
+      resolveRouteAccess(PERSONAL_PAGES, "/member", deps),
+    ).resolves.toBeNull();
+  });
+
+  it("lets an admin into the personal page too", async () => {
+    const deps = makeDeps();
+
+    await expect(
+      resolveRouteAccess(PERSONAL_PAGES, "/member", deps),
+    ).resolves.toBeNull();
   });
 
   it("clears the session when the server rejects the token", async () => {
@@ -69,7 +92,7 @@ describe("resolveAdminAccess", () => {
     });
 
     await expect(
-      resolveAdminAccess(true, "/admin/buildings", deps),
+      resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.toEqual({
       name: "login",
       query: { redirect: "/admin/buildings" },
@@ -86,7 +109,7 @@ describe("resolveAdminAccess", () => {
     });
 
     await expect(
-      resolveAdminAccess(true, "/admin/buildings", deps),
+      resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.toEqual({
       name: "login",
       query: { redirect: "/admin/buildings" },
@@ -101,7 +124,7 @@ describe("resolveAdminAccess", () => {
       }),
     });
 
-    await resolveAdminAccess(true, "/admin/buildings", deps);
+    await resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps);
 
     expect(deps.clearSession).toHaveBeenCalledTimes(1);
   });
@@ -115,7 +138,30 @@ describe("resolveAdminAccess", () => {
 
     // 任何异常都必须落到"拒绝"，绝不能因为抛错就放行
     await expect(
-      resolveAdminAccess(true, "/admin/buildings", deps),
+      resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.not.toBeNull();
+  });
+
+  it("treats an unknown role as a plain user", async () => {
+    // 服务端将来新增角色时，默认给最小可见范围，而不是放行或卡死在登录页
+    const deps = makeDeps({ fetchRole: vi.fn(async () => "superuser") });
+
+    await expect(
+      resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
+    ).resolves.toEqual({ path: "/member" });
+  });
+});
+
+describe("landingFor", () => {
+  it("sends an admin to the dashboard", () => {
+    expect(landingFor("admin")).toBe("/dashboard");
+  });
+
+  it("sends a plain user to the personal page", () => {
+    expect(landingFor("member")).toBe("/member");
+  });
+
+  it("falls back to the personal page for an unknown role", () => {
+    expect(landingFor("superuser")).toBe("/member");
   });
 });

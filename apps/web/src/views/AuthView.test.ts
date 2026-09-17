@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   register: vi.fn(),
   saveAuthSession: vi.fn(),
   push: vi.fn(),
+  query: {} as Record<string, string>,
 }));
 
 vi.mock("@/api/auth", async (importOriginal) => {
@@ -25,6 +26,7 @@ vi.mock("@/auth/session", () => ({
 
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push: mocks.push }),
+  useRoute: () => ({ query: mocks.query }),
 }));
 
 type TestNode = TestElement | TestText;
@@ -216,6 +218,8 @@ describe("AuthView", () => {
     mocks.login.mockResolvedValue(session);
     mocks.register.mockResolvedValue(session);
     mocks.push.mockResolvedValue(undefined);
+    // 每个用例都从"没有 redirect 参数"开始，避免相互污染
+    mocks.query = {};
   });
 
   afterEach(() => {
@@ -310,6 +314,20 @@ describe("AuthView", () => {
     expect(mocks.saveAuthSession).toHaveBeenCalledWith(session);
     expect(mocks.push).toHaveBeenCalledWith("/dashboard");
     expect(findButton(mounted.root, "进入工作台").props.disabled).toBe(false);
+  });
+
+  it("携带 redirect 参数时登录后回到原目标页", async () => {
+    mocks.query = { redirect: "/admin/buildings" };
+    const mounted = mount();
+    unmount = mounted.unmount;
+    await input(findById(mounted.root, "username"), "researcher");
+    await input(findById(mounted.root, "login-password"), "secret12");
+
+    await submit(mounted.root);
+    await nextTick();
+
+    // 守卫被绕过时留下的原目标必须被消费，否则用户永远回不到想去的页面
+    expect(mocks.push).toHaveBeenCalledWith("/admin/buildings");
   });
 
   it("面向用户的辅助和字段文案使用中文", () => {

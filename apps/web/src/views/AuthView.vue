@@ -1,12 +1,22 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { AuthRequestError, login, register } from "@/api/auth";
 import type { LoginForm, RegisterForm } from "@/auth/form";
 import { saveAuthSession } from "@/auth/session";
 import { submitAuth, type AuthMode } from "@/auth/submit";
 
 const router = useRouter();
+const route = useRoute();
+
+/**
+ * 守卫挡下访客时会带上 ?redirect=<原路径>，登录成功后跳回去。
+ * 取值交给 submitAuth 校验（只接受站内绝对路径），这里不做判断。
+ */
+const redirect = computed(() => {
+  const raw = route.query.redirect;
+  return typeof raw === "string" ? raw : undefined;
+});
 
 const mode = ref<AuthMode>("login");
 const loading = ref(false);
@@ -43,12 +53,17 @@ async function handleSubmit(): Promise<void> {
 
   try {
     const form = mode.value === "login" ? loginForm : registerForm;
-    const result = await submitAuth(mode.value, form, {
-      login,
-      register,
-      saveSession: saveAuthSession,
-      navigate: (path) => router.push(path),
-    });
+    const result = await submitAuth(
+      mode.value,
+      form,
+      {
+        login,
+        register,
+        saveSession: saveAuthSession,
+        navigate: (path) => router.push(path),
+      },
+      redirect.value,
+    );
 
     if (!result.ok) {
       errors.value = result.errors;

@@ -48,6 +48,20 @@ watch(
   { immediate: true },
 );
 
+/**
+ * 当前选中的顶点坐标。
+ *
+ * 必须声明在下面引用它的 watch 之前：那个 watch 带 immediate: true，
+ * 会在 setup 期同步执行一次，此时被 const 声明的 computed 还处于 TDZ，
+ * 后置声明会直接抛 ReferenceError。
+ */
+const currentVertex = computed(() => {
+  if (!props.draft || props.selectedVertex === null) {
+    return null;
+  }
+  return props.draft.footprint[props.selectedVertex] ?? null;
+});
+
 watch(
   () => [props.draft?.id, props.selectedVertex] as const,
   () => {
@@ -60,13 +74,6 @@ watch(
   },
   { immediate: true },
 );
-
-const currentVertex = computed(() => {
-  if (!props.draft || props.selectedVertex === null) {
-    return null;
-  }
-  return props.draft.footprint[props.selectedVertex] ?? null;
-});
 
 const isStudio = computed(
   () => props.draft !== null && props.draft.name === props.studioName,
