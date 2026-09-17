@@ -6,7 +6,6 @@
  */
 import type {
   BufferGeometry,
-  Clock,
   Material,
   Mesh,
   PerspectiveCamera,
@@ -46,7 +45,6 @@ export interface StudioScene {
   scene: Scene;
   camera: PerspectiveCamera;
   renderer: WebGLRenderer;
-  clock: Clock;
   /** 需要随组件销毁一起释放的几何体/材质 */
   disposables: Disposable[];
   /** 已生成的楼栋 */

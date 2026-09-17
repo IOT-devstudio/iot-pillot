@@ -44,7 +44,9 @@ export function createStudioScene(host: HTMLElement): StudioScene {
   // canvas 的 CSS 尺寸由样式表统一控制（宽高 100%），所以这里 updateStyle 传 false
   renderer.setSize(width, height, false);
   renderer.shadowMap.enabled = CONFIG.castShadow;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // 注意：PCFSoftShadowMap 自 r186 起已移除（three 会警告并回退到 PCFShadowMap），
+  // 直接写 PCFShadowMap 才是真正生效的那个值。
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   host.appendChild(renderer.domElement);
 
   const studioScene: StudioScene = {
@@ -52,7 +54,6 @@ export function createStudioScene(host: HTMLElement): StudioScene {
     scene,
     camera,
     renderer,
-    clock: new THREE.Clock(),
     disposables: [],
     buildings: [],
     lookAt,

@@ -57,7 +57,10 @@ export function createStudioRuntime(
     frameId = requestAnimationFrame(renderFrame);
 
     if (idleActive) {
-      const t = (target.clock.getElapsedTime() - idleStartAt) * CONFIG.idleFloatSpeed;
+      // 用 performance.now() 而不是 THREE.Clock：Clock 自 r186 起已弃用，
+      // 而空闲漂浮只需要一个单调时间戳，用不上 delta / timescale。
+      const seconds = (performance.now() - idleStartAt) / 1000;
+      const t = seconds * CONFIG.idleFloatSpeed;
       const amplitude = CONFIG.idleFloatAmplitude;
       target.camera.position.set(
         restPosition.x + Math.sin(t) * amplitude,
@@ -108,7 +111,7 @@ export function createStudioRuntime(
       timeline = createStudioTimeline(target, panelEl, {
         onComplete: () => {
           restPosition.copy(target.camera.position);
-          idleStartAt = target.clock.getElapsedTime();
+          idleStartAt = performance.now();
           idleActive = true;
         },
       });

@@ -46,7 +46,8 @@ export const BUILDINGS: BuildingData[] = [
   { name: "Building_Dorm_South", x: -8, z: 38, w: 30, h: 18, d: 14 },
   { name: "Building_Gym", x: 34, z: 40, w: 28, h: 12, d: 24 },
   { name: "Building_Admin", x: 2, z: -46, w: 20, h: 28, d: 16 },
-  { name: "Building_Auditorium", x: 46, z: 16, w: 26, h: 16, d: 26 },
+  // z 从 16 挪到 12：原来与 Building_Gym 的底面在 z 方向重叠 1 米（会穿模）
+  { name: "Building_Auditorium", x: 46, z: 12, w: 26, h: 16, d: 26 },
   { name: "Building_Workshop", x: -20, z: -6, w: 14, h: 8, d: 12 },
   { name: "Building_Tower", x: 24, z: -30, w: 12, h: 34, d: 12 },
   { name: "Building_Gate", x: -2, z: 22, w: 8, h: 6, d: 6 },
