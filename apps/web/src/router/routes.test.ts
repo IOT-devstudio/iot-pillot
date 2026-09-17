@@ -18,6 +18,9 @@ vi.mock("@/modules/home/views/UserHomeView.vue", () => ({
 vi.mock("@/modules/about/views/AboutView.vue", () => ({
   default: { name: "AboutView" },
 }));
+vi.mock("@/modules/admin/views/AdminDashboardView.vue", () => ({
+  default: { name: "AdminDashboardView" },
+}));
 
 import { routes } from "./routes";
 
@@ -39,6 +42,16 @@ describe("application routes", () => {
     expect(adminRoutes[0]?.component).toMatchObject({ name: "BuildingsEditor" });
     // 丢了 allowRoles 就等于门禁静默失效（guard 只认这个 meta），必须锁住
     expect(adminRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
+  });
+
+  it("mounts the real admin dashboard separately from placeholder pages", () => {
+    const dashboardRoutes = routes.filter((route) => route.path === "/dashboard");
+
+    expect(dashboardRoutes).toHaveLength(1);
+    expect(dashboardRoutes[0]?.component).toMatchObject({
+      name: "AdminDashboardView",
+    });
+    expect(dashboardRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
   });
 
   it("keeps the fallback login page and the health page on their own paths", () => {
@@ -73,6 +86,7 @@ describe("application routes", () => {
       "/home",
       "/login",
       "/admin/buildings",
+      "/dashboard",
       "/user/home",
       "/user/about",
     ];
@@ -85,14 +99,13 @@ describe("application routes", () => {
       name,
       title: meta?.title,
     }))).toEqual([
-      { path: "/dashboard", name: "dashboard", title: "控制台" },
       { path: "/forms", name: "forms", title: "表单管理" },
       { path: "/recruitment", name: "recruitment", title: "招聘管理" },
       { path: "/templates", name: "templates", title: "邮件模板" },
       { path: "/settings", name: "settings", title: "系统设置" },
     ]);
     expect(new Set(placeholderRoutes.map(({ component }) => component)).size).toBe(1);
-    // 后台页全部只对成员开放，任何一页漏标都会让普通用户直接走进去
+    // 后台占位页全部只对成员开放，任何一页漏标都会让普通用户直接走进去
     expect(
       placeholderRoutes.every(
         ({ meta }) => JSON.stringify(meta?.allowRoles) === '["admin"]',

@@ -1,4 +1,4 @@
-import type { AuthSession } from "@/api/auth";
+import { logout as requestLogout, type AuthSession } from "@/api/auth";
 
 export const AUTH_STORAGE_KEY = "iot-pillot.auth";
 
@@ -42,4 +42,47 @@ export function readAuthSession(storage?: Storage): AuthSession | null {
 
 export function clearAuthSession(storage?: Storage): void {
   getStorage(storage).removeItem(AUTH_STORAGE_KEY);
+}
+
+/**
+ * 合并 refresh 接口返回的令牌。
+ *
+ * 后端 refresh 当前返回 user_id: -1，用户 ID 需要沿用本地会话中的值。
+ */
+export function mergeAuthSession(
+  current: AuthSession,
+  refreshed: AuthSession,
+): AuthSession {
+  return {
+    ...current,
+    ...refreshed,
+    user_id: refreshed.user_id >= 0 ? refreshed.user_id : current.user_id,
+  };
+}
+
+export interface SignOutDeps {
+  readSession: () => AuthSession | null;
+  requestLogout: (accessToken: string, refreshToken: string) => Promise<unknown>;
+  clearSession: () => void;
+}
+
+const defaultSignOutDeps: SignOutDeps = {
+  readSession: () => readAuthSession(),
+  requestLogout,
+  clearSession: () => clearAuthSession(),
+};
+
+/** 请求后端注销，并且无论网络结果如何都清理本地会话。 */
+export async function signOut(
+  deps: SignOutDeps = defaultSignOutDeps,
+): Promise<void> {
+  const session = deps.readSession();
+
+  try {
+    if (session !== null) {
+      await deps.requestLogout(session.access_token, session.refresh_token);
+    }
+  } finally {
+    deps.clearSession();
+  }
 }
