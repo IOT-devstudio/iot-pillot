@@ -1,3 +1,112 @@
+<script setup lang="ts">
+/**
+ * 用户侧首页 `/user/home`。
+ *
+ * 分工：
+ *   fixtures.ts                  假数据（后端接口未就绪，见该文件头部说明）
+ *   components/UserProfileCard   当前用户信息区（纯展示）
+ *   components/DirectionList     招新方向列表（纯展示）
+ *   本组件                       布局 + 接线，并持有「刚点了哪条方向」这一个状态
+ *
+ * 这里**不发任何请求**，也不做登录校验：可见性（是否需要登录）待后续
+ * 统一规划，路由守卫只认 meta.requiresAdmin，本路由不设防。
+ *
+ * 视觉沿用 opener-editor 的设计令牌（品牌蓝 + 深墨色），与开屏、编辑器
+ * 保持同一套观感；不引 Element Plus 组件，与本模块手写 UI 的既有做法一致。
+ */
+import { ref } from "vue";
+
+import type { RecruitmentDirection } from "../fixtures";
+import { DEMO_CURRENT_USER, RECRUITMENT_DIRECTIONS } from "../fixtures";
+import DirectionList from "../components/DirectionList.vue";
+import UserProfileCard from "../components/UserProfileCard.vue";
+
+const user = DEMO_CURRENT_USER;
+const directions = RECRUITMENT_DIRECTIONS;
+
+/** 最近一次点击报名的方向；null 表示还没点过 */
+const appliedDirection = ref<RecruitmentDirection | null>(null);
+
+/**
+ * 报名入口的占位实现——**不请求任何接口**。
+ *
+ * 招新接口就绪前这里只负责「点了有反馈」。提示文案里如实写明是演示数据，
+ * 避免演示时被当成真的报名成功了。
+ */
+function handleApply(direction: RecruitmentDirection): void {
+  appliedDirection.value = direction;
+  console.info(
+    "[UserHomeView] 报名意向（演示数据，未提交到后端）：",
+    direction.title,
+  );
+}
+</script>
+
 <template>
-  <h1>用户首页</h1>
+  <div class="user-home">
+    <header class="user-home__header">
+      <h1 class="user-home__title">用户首页</h1>
+      <p class="user-home__subtitle">
+        查看你的信息与当前开放的招新方向。
+      </p>
+    </header>
+
+    <div class="user-home__body">
+      <UserProfileCard :user="user" />
+
+      <DirectionList :directions="directions" @apply="handleApply" />
+
+      <p v-if="appliedDirection" class="user-home__notice" role="status">
+        已记录报名意向：{{ appliedDirection.title }}（演示数据，尚未提交到后端）
+      </p>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+/* 设计令牌：与开屏 / 编辑器同一套品牌色，避免三个页面观感割裂 */
+.user-home {
+  --home-ink: #102b4e;
+  --home-muted: #5c6b7a;
+  --home-accent: #164d80;
+  --home-border: #d8dee4;
+
+  min-height: 100vh;
+  padding: 32px clamp(16px, 4vw, 48px) 48px;
+  color: var(--home-ink);
+  background: #f4f6f8;
+  font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.user-home__header {
+  margin-bottom: 20px;
+}
+
+.user-home__title {
+  margin: 0;
+  font-size: 22px;
+}
+
+.user-home__subtitle {
+  margin: 6px 0 0;
+  color: var(--home-muted);
+  font-size: 13px;
+}
+
+.user-home__body {
+  display: grid;
+  gap: 16px;
+  max-width: 720px;
+}
+
+.user-home__notice {
+  margin: 0;
+  padding: 10px 14px;
+  color: #1c6b45;
+  border-left: 3px solid #2e8b57;
+  border-radius: 8px;
+  background: #e9f6ef;
+  font-size: 12px;
+  line-height: 1.6;
+}
+</style>
