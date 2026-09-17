@@ -27,7 +27,7 @@ export class AuthRequestError extends Error {
 }
 
 /**
- * 发一次 POST 并解包统一响应体 { code, message, data }。
+ * 发一次请求并解包统一响应体 { code, message, data }。
  *
  * 只负责「网络层是否成功 + 业务码是否为 0」，**不要求 data 存在**：
  * 登录/注册有 data，发送验证码没有，两种都由调用方决定怎么处理。
@@ -35,15 +35,11 @@ export class AuthRequestError extends Error {
  */
 async function requestAuth<T>(
   path: string,
-  payload: unknown,
+  init: RequestInit,
 ): Promise<{ body: Partial<BackendResponse<T>>; status: number }> {
   let response: Response;
   try {
-    response = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    response = await fetch(path, init);
   } catch {
     throw new AuthRequestError(UNAVAILABLE_MESSAGE, 0);
   }
@@ -65,9 +61,31 @@ async function requestAuth<T>(
   return { body, status: response.status };
 }
 
+function jsonPost(payload: unknown): RequestInit {
+  return {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  };
+}
+
 /** 需要 data 的接口：data 缺失按「服务不可用」处理，避免把 undefined 当业务对象用 */
 async function postAuth<T>(path: string, payload: unknown): Promise<T> {
-  const { body, status } = await requestAuth<T>(path, payload);
+  const { body, status } = await requestAuth<T>(path, jsonPost(payload));
+
+  if (body.data === undefined) {
+    throw new AuthRequestError(UNAVAILABLE_MESSAGE, status, body.code);
+  }
+
+  return body.data;
+}
+
+/** 需要 data 的 GET（携带 Bearer 令牌）*/
+async function getAuth<T>(path: string, accessToken: string): Promise<T> {
+  const { body, status } = await requestAuth<T>(path, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 
   if (body.data === undefined) {
     throw new AuthRequestError(UNAVAILABLE_MESSAGE, status, body.code);
@@ -85,7 +103,7 @@ async function postAuthNoData(
   path: string,
   payload: unknown,
 ): Promise<string> {
-  const { body } = await requestAuth<unknown>(path, payload);
+  const { body } = await requestAuth<unknown>(path, jsonPost(payload));
   return body.message ?? "success";
 }
 
@@ -109,4 +127,24 @@ export function sendVerifyCode(
     verifier,
     verifier_type: verifierType,
   });
+}
+
+/** 后端角色取值。前端只据此控制可见性，真正的强制在服务端的 RequireRole 中间件 */
+export type UserRole = "admin" | "member";
+
+export interface CurrentUser {
+  user_id: number;
+  username: string;
+  role: UserRole | string;
+}
+
+/**
+ * 拉取当前登录用户的身份与角色（需要 access token）。
+ *
+ * 角色写在令牌里、来源是服务端的部署配置白名单，所以这里必须**问服务端**，
+ * 不能用本地缓存猜：改了白名单之后本地旧值会过期。取不到（401/网络异常）
+ * 一律抛 AuthRequestError，调用方按「不是管理员」处理。
+ */
+export function fetchCurrentUser(accessToken: string): Promise<CurrentUser> {
+  return getAuth<CurrentUser>("/api/v1/me", accessToken);
 }

@@ -83,3 +83,91 @@ func TestLoad_RejectsNonPositiveJWTExpire(t *testing.T) {
 		t.Fatal("jwt.expire=0 时 Load() 应当报错")
 	}
 }
+
+// 管理员白名单默认必须为空。
+//
+// "默认有一个管理员"等于每个环境都带一个已知的提权入口；要显式配置才能开管理端。
+func TestLoad_AdminUsersDefaultsToEmpty(t *testing.T) {
+	resetViper()
+	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() 意外失败: %v", err)
+	}
+	if len(cfg.AUTH.AdminUsers) != 0 {
+		t.Errorf("AdminUsers = %v，期望默认为空", cfg.AUTH.AdminUsers)
+	}
+	if cfg.AUTH.IsAdmin("anyone") {
+		t.Error("默认配置下不应有任何人是管理员")
+	}
+}
+
+// 逗号分隔的环境变量必须被正确切成多个用户名。
+//
+// 回归测试：viper.GetStringSlice 内部对字符串用 strings.Fields（按空白切分），
+// 所以 "drayee,alice" 会变成 ["drayee,alice"] 这一个元素 —— 名字对不上、
+// 谁都不是管理员，而且不报任何错。这里锁死按逗号切分的行为。
+func TestLoad_AdminUsersSplitsCommaSeparatedEnv(t *testing.T) {
+	resetViper()
+	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
+	t.Setenv("IOT_PILOT_AUTH_ADMIN_USERS", "drayee,alice")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() 意外失败: %v", err)
+	}
+
+	want := []string{"drayee", "alice"}
+	if len(cfg.AUTH.AdminUsers) != len(want) {
+		t.Fatalf("AdminUsers = %v，期望 %v", cfg.AUTH.AdminUsers, want)
+	}
+	for i, name := range want {
+		if cfg.AUTH.AdminUsers[i] != name {
+			t.Errorf("AdminUsers[%d] = %q，期望 %q", i, cfg.AUTH.AdminUsers[i], name)
+		}
+	}
+	if !cfg.AUTH.IsAdmin("alice") || cfg.AUTH.IsAdmin("bob") {
+		t.Errorf("IsAdmin 判定有误，当前名单: %v", cfg.AUTH.AdminUsers)
+	}
+}
+
+// 空白、多余空格与重复项都要被清掉：配置里多写一个空格不该让人登不进去。
+func TestLoad_AdminUsersNormalisesInput(t *testing.T) {
+	resetViper()
+	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
+	t.Setenv("IOT_PILOT_AUTH_ADMIN_USERS", " drayee , ,drayee,  alice  ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() 意外失败: %v", err)
+	}
+
+	want := []string{"drayee", "alice"}
+	if len(cfg.AUTH.AdminUsers) != len(want) {
+		t.Fatalf("AdminUsers = %v，期望去空白去重后为 %v", cfg.AUTH.AdminUsers, want)
+	}
+	for i, name := range want {
+		if cfg.AUTH.AdminUsers[i] != name {
+			t.Errorf("AdminUsers[%d] = %q，期望 %q", i, cfg.AUTH.AdminUsers[i], name)
+		}
+	}
+}
+
+// 只有逗号/空格时应当得到空名单，而不是 [""] 这种会意外匹配空用户名的结果。
+func TestLoad_AdminUsersEmptyInputYieldsNoAdmin(t *testing.T) {
+	resetViper()
+	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
+	t.Setenv("IOT_PILOT_AUTH_ADMIN_USERS", " , ,, ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() 意外失败: %v", err)
+	}
+	if len(cfg.AUTH.AdminUsers) != 0 {
+		t.Errorf("AdminUsers = %v，期望为空", cfg.AUTH.AdminUsers)
+	}
+	if cfg.AUTH.IsAdmin("") {
+		t.Error("空名单下空用户名不应被判为管理员")
+	}
+}

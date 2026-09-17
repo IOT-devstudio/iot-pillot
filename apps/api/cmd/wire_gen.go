@@ -31,9 +31,10 @@ func InitializeApp() (*handler.Router, func(), error) {
 	tokenManager := utils.NewTokenManager(client, configConfig)
 	mailManager := utils.NewMailManager(configConfig, client)
 	codeManager := utils.NewCodeManager(client, mailManager)
-	authUseCase := service.NewAuthUseCase(userRepo, tokenManager, codeManager)
+	authConfig := configConfig.AUTH
+	authUseCase := service.NewAuthUseCase(userRepo, tokenManager, codeManager, authConfig)
 	authHandler := handler.NewAuthHandler(authUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, tokenManager)
 	return router, func() {
 		cleanup()
 	}, nil
