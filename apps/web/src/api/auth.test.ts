@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { login, register } from "./auth";
+import { login, register, sendVerifyCode } from "./auth";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -97,5 +97,41 @@ describe("auth api", () => {
     await expect(
       login({ username: "ada", password: "123456" }),
     ).rejects.toThrow("服务暂时不可用，请稍后重试");
+  });
+
+  it("posts the verifier and accepts a response without data", async () => {
+    // 后端 SendVerifyCode 走 OKWithMsg(..., nil)，data 被 omitempty 丢掉，
+    // 所以这里刻意不返回 data —— 不能因为缺 data 就当成服务不可用。
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 0, message: "发送验证码成功" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(sendVerifyCode("ada@example.com")).resolves.toBe(
+      "发送验证码成功",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/send-verify-code",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          verifier: "ada@example.com",
+          verifier_type: "email",
+        }),
+      }),
+    );
+  });
+
+  it("surfaces the backend message when sending a code fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 4001, message: "验证码发送失败" }), {
+        status: 400,
+      }),
+    );
+
+    await expect(sendVerifyCode("ada@example.com")).rejects.toThrow(
+      "验证码发送失败",
+    );
   });
 });

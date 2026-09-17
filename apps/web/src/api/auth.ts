@@ -26,7 +26,17 @@ export class AuthRequestError extends Error {
   }
 }
 
-async function postAuth<T>(path: string, payload: unknown): Promise<T> {
+/**
+ * 发一次 POST 并解包统一响应体 { code, message, data }。
+ *
+ * 只负责「网络层是否成功 + 业务码是否为 0」，**不要求 data 存在**：
+ * 登录/注册有 data，发送验证码没有，两种都由调用方决定怎么处理。
+ * 网络断开、响应不是 JSON、code !== 0 都统一抛 AuthRequestError。
+ */
+async function requestAuth<T>(
+  path: string,
+  payload: unknown,
+): Promise<{ body: Partial<BackendResponse<T>>; status: number }> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -45,15 +55,38 @@ async function postAuth<T>(path: string, payload: unknown): Promise<T> {
     throw new AuthRequestError(UNAVAILABLE_MESSAGE, response.status);
   }
 
-  const businessCode =
-    typeof body?.code === "number" ? body.code : undefined;
+  const businessCode = typeof body?.code === "number" ? body.code : undefined;
   const message = body?.message || UNAVAILABLE_MESSAGE;
 
-  if (!response.ok || body?.code !== 0 || body.data === undefined) {
+  if (!response.ok || body?.code !== 0) {
     throw new AuthRequestError(message, response.status, businessCode);
   }
 
+  return { body, status: response.status };
+}
+
+/** 需要 data 的接口：data 缺失按「服务不可用」处理，避免把 undefined 当业务对象用 */
+async function postAuth<T>(path: string, payload: unknown): Promise<T> {
+  const { body, status } = await requestAuth<T>(path, payload);
+
+  if (body.data === undefined) {
+    throw new AuthRequestError(UNAVAILABLE_MESSAGE, status, body.code);
+  }
+
   return body.data;
+}
+
+/**
+ * 不返回业务数据的接口（例如发送验证码）返回后端 message。
+ * 不能复用 postAuth：它要求 data 必须存在，而后端对这类接口返回
+ * `OKWithMsg(..., nil)`，data 会被 omitempty 丢掉。
+ */
+async function postAuthNoData(
+  path: string,
+  payload: unknown,
+): Promise<string> {
+  const { body } = await requestAuth<unknown>(path, payload);
+  return body.message ?? "success";
 }
 
 export function login(payload: LoginPayload): Promise<AuthSession> {
@@ -62,4 +95,18 @@ export function login(payload: LoginPayload): Promise<AuthSession> {
 
 export function register(payload: RegisterPayload): Promise<AuthSession> {
   return postAuth<AuthSession>("/api/v1/register", payload);
+}
+
+/**
+ * 发送邮箱验证码。注册（RegisterReq.code）必须先拿到它才能提交。
+ * 后端只回 message，不回 data。
+ */
+export function sendVerifyCode(
+  verifier: string,
+  verifierType: "email" | "phone" = "email",
+): Promise<string> {
+  return postAuthNoData("/api/v1/send-verify-code", {
+    verifier,
+    verifier_type: verifierType,
+  });
 }

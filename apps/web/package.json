@@ -13,17 +13,20 @@
   "dependencies": {
     "@iot-pillot/shared-types": "workspace:*",
     "element-plus": "^2.8.4",
+    "gsap": "^3.15.0",
+    "three": "^0.186.0",
     "vue": "^3.5.12",
     "vue-router": "^4.4.5"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-vue": "^5.1.4",
     "typescript": "^5.6.3",
     "unplugin-auto-import": "^0.18.3",
     "unplugin-vue-components": "^0.27.4",
     "vite": "^5.4.9",
-    "vue-tsc": "^2.1.6",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "vue-tsc": "^2.1.6"
   }
 }
