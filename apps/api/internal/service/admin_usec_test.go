@@ -43,6 +43,18 @@ func (s *stubUserRepo) GetByName(_ context.Context, name string) (*domain.User, 
 	return user, nil
 }
 
+func (s *stubUserRepo) GetByEmail(_ context.Context, email string) (*domain.User, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	for _, user := range s.all {
+		if user != nil && user.Detail.Email == email {
+			return user, nil
+		}
+	}
+	return nil, errors.New("user not found")
+}
+
 func (s *stubUserRepo) Update(_ context.Context, _ *domain.User) error { return nil }
 
 func (s *stubUserRepo) SelectUserByNameAndPassword(_ context.Context, _ string, _ string) (*domain.User, error) {

@@ -40,7 +40,11 @@ func InitializeApp() (*handler.Router, func(), error) {
 		return nil, nil, err
 	}
 	adminHandler := handler.NewAdminHandler(adminUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, tokenManager, adminStore)
+	mailModelRepo := repository.NewMailModelRepo(db)
+	mailRepo := repository.NewMailRepo(db)
+	mailUseCase := service.NewMailUseCase(mailModelRepo, mailRepo, userRepo, mailManager)
+	mailHandler := handler.NewMailHandler(mailUseCase)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, tokenManager, adminStore)
 	return router, func() {
 		cleanup()
 	}, nil

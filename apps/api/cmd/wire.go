@@ -29,8 +29,15 @@ func InitializeApp() (*handler.Router, func(), error) {
 		wire.Bind(new(utils.AdminDirectory), new(*utils.AdminStore)),
 
 		repository.NewUserRepo,
+		repository.NewMailModelRepo,
+		repository.NewMailRepo,
+
+		// 邮件服务依赖 MailSender 接口而非 *utils.MailManager：
+		// 同样需要显式 Bind，理由见上面的 AdminDirectory。
+		wire.Bind(new(service.MailSender), new(*utils.MailManager)),
 
 		service.NewAuthUseCase,
+		service.NewMailUseCase,
 		// provideAdminUseCase 代替 service.NewAdminUseCase：
 		// 它在构造管理员服务的同时执行一次配置引导（要把用户名查库解析成 userID）。
 		provideAdminUseCase,
@@ -38,6 +45,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		handler.NewHealthHandler,
 		handler.NewAuthHandler,
 		handler.NewAdminHandler,
+		handler.NewMailHandler,
 
 		handler.NewRouter,
 	)

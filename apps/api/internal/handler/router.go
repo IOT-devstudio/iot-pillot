@@ -20,6 +20,7 @@ func NewRouter(
 	healthHandler *HealthHandler,
 	authHandler *AuthHandler,
 	adminHandler *AdminHandler,
+	mailHandler *MailHandler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -64,6 +65,16 @@ func NewRouter(
 		admin.GET("/admins", adminHandler.ListAdmins)
 		admin.POST("/admins", adminHandler.GrantAdmin)
 		admin.DELETE("/admins/:user_id", adminHandler.RevokeAdmin)
+
+		// ── 管理端-邮件（同样要求管理员）──
+		admin.GET("/mail-templates", mailHandler.ListMailTemplates)
+		admin.POST("/mail-templates", mailHandler.CreateMailTemplate)
+		admin.PUT("/mail-templates/:id", mailHandler.UpdateMailTemplate)
+		admin.DELETE("/mail-templates/:id", mailHandler.DeleteMailTemplate)
+		admin.POST("/mails/send", mailHandler.SendMailToUser)
+		admin.POST("/mails/send-by-email", mailHandler.SendMailToEmail)
+		admin.POST("/mails/send-bulk", mailHandler.SendMailBulk)
+		admin.GET("/mails", mailHandler.ListMails)
 	}
 	return &Router{eng: r, cfg: cfg}
 }
