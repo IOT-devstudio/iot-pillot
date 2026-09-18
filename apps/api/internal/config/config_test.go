@@ -84,9 +84,10 @@ func TestLoad_RejectsNonPositiveJWTExpire(t *testing.T) {
 	}
 }
 
-// 管理员白名单默认必须为空。
+// 管理员**引导**名单默认为空。
 //
-// "默认有一个管理员"等于每个环境都带一个已知的提权入口；要显式配置才能开管理端。
+// "默认有一个管理员"等于每个环境都带一个已知的提权入口；
+// 要显式配置才会在启动时补种进 Redis。
 func TestLoad_AdminUsersDefaultsToEmpty(t *testing.T) {
 	resetViper()
 	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
@@ -98,16 +99,13 @@ func TestLoad_AdminUsersDefaultsToEmpty(t *testing.T) {
 	if len(cfg.AUTH.AdminUsers) != 0 {
 		t.Errorf("AdminUsers = %v，期望默认为空", cfg.AUTH.AdminUsers)
 	}
-	if cfg.AUTH.IsAdmin("anyone") {
-		t.Error("默认配置下不应有任何人是管理员")
-	}
 }
 
 // 逗号分隔的环境变量必须被正确切成多个用户名。
 //
 // 回归测试：viper.GetStringSlice 内部对字符串用 strings.Fields（按空白切分），
 // 所以 "drayee,alice" 会变成 ["drayee,alice"] 这一个元素 —— 名字对不上、
-// 谁都不是管理员，而且不报任何错。这里锁死按逗号切分的行为。
+// 引导静默失效（谁都不是管理员），而且不报任何错。
 func TestLoad_AdminUsersSplitsCommaSeparatedEnv(t *testing.T) {
 	resetViper()
 	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
@@ -127,12 +125,9 @@ func TestLoad_AdminUsersSplitsCommaSeparatedEnv(t *testing.T) {
 			t.Errorf("AdminUsers[%d] = %q，期望 %q", i, cfg.AUTH.AdminUsers[i], name)
 		}
 	}
-	if !cfg.AUTH.IsAdmin("alice") || cfg.AUTH.IsAdmin("bob") {
-		t.Errorf("IsAdmin 判定有误，当前名单: %v", cfg.AUTH.AdminUsers)
-	}
 }
 
-// 空白、多余空格与重复项都要被清掉：配置里多写一个空格不该让人登不进去。
+// 空白、多余空格与重复项都要被清掉：配置里多写一个空格不该让人引导失败。
 func TestLoad_AdminUsersNormalisesInput(t *testing.T) {
 	resetViper()
 	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
@@ -155,7 +150,7 @@ func TestLoad_AdminUsersNormalisesInput(t *testing.T) {
 }
 
 // 只有逗号/空格时应当得到空名单，而不是 [""] 这种会意外匹配空用户名的结果。
-func TestLoad_AdminUsersEmptyInputYieldsNoAdmin(t *testing.T) {
+func TestLoad_AdminUsersEmptyInputYieldsEmptyList(t *testing.T) {
 	resetViper()
 	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
 	t.Setenv("IOT_PILOT_AUTH_ADMIN_USERS", " , ,, ")
@@ -166,8 +161,5 @@ func TestLoad_AdminUsersEmptyInputYieldsNoAdmin(t *testing.T) {
 	}
 	if len(cfg.AUTH.AdminUsers) != 0 {
 		t.Errorf("AdminUsers = %v，期望为空", cfg.AUTH.AdminUsers)
-	}
-	if cfg.AUTH.IsAdmin("") {
-		t.Error("空名单下空用户名不应被判为管理员")
 	}
 }

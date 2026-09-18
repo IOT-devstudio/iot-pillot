@@ -22,14 +22,17 @@ type Config struct {
 	AUTH    *AuthConfig
 }
 
-// AuthConfig 授权相关的部署级配置。
+// AuthConfig 授权相关的配置。
 //
-// 角色**不落库**：role 只是「谁能进管理端」这一授权事实，属于部署配置而不是
-// 用户数据，放配置里既能审计（改配置要走发布流程）又不需要 schema 迁移。
-// 等 M7 要做「用户列表里运行时改角色」时，再给 User 加 role 列并配迁移。
+// 这里**只有引导名单**：管理员名单的真源在 Redis（SET auth:admins，存 userID），
+// 配置里的用户名只在启动时用来把账号补种进 Redis（见 service.AdminUseCase.SeedAdmins）。
+//
+// 曾经的 AuthConfig.IsAdmin 已经被删除：它会成为"谁是管理员"的第二个判定入口，
+// 与 Redis 名单不一致时就会出现"配置说是、Redis 说不是"的分裂状态。
+// 判定只能有一个真源。
 type AuthConfig struct {
-	// AdminUsers 具备 admin 角色的用户名白名单。
-	// 为空表示系统里没有管理员，管理端路由对所有人都是 403。
+	// AdminUsers 启动引导用的用户名列表。
+	// 为空表示本次启动不补种任何管理员（Redis 里已有的管理员不受影响）。
 	AdminUsers []string
 }
 
@@ -182,19 +185,6 @@ func normalizeNames(names []string) []string {
 	return result
 }
 
-// IsAdmin 判断用户名是否在管理员白名单中。
-func (a *AuthConfig) IsAdmin(username string) bool {
-	if a == nil {
-		return false
-	}
-	for _, name := range a.AdminUsers {
-		if name == username {
-			return true
-		}
-	}
-	return false
-}
-
 // validate 校验没有安全默认值的配置项。
 //
 // 这些项不能靠 SetDefault 兜底：JWT 密钥留空会让 HS256 用空密钥签名，
@@ -226,12 +216,6 @@ func setDefaults() {
 	viper.SetDefault("redis.db", 0)
 	viper.SetDefault("redis.pool_size", 100)
 	viper.SetDefault("redis.conn_with_timeout", 5*time.Second)
-	// jwt.expire 单位是秒（auth_util.go: time.Duration(expireSeconds)*time.Second）。
-	// 没有默认值时为 0，会让 exp = time.Now()，令牌签发即过期、认证完全不可用。
 	viper.SetDefault("jwt.expire", 3600)
-	// jwt.secret 故意不设默认值，改由 Config.validate() 强制要求。
-	// 密钥没有"安全的默认值"可言。
-	// 管理员白名单默认为空：默认没有任何管理员是安全的（要显式配置才能开管理端），
-	// 反过来"默认有管理员"会让每个环境都带一个已知的提权入口。
 	viper.SetDefault("auth.admin_users", "")
 }

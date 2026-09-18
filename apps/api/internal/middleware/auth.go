@@ -84,22 +84,41 @@ func AuthRequired(validator TokenValidator) gin.HandlerFunc {
 	}
 }
 
-// RequireRole 要求当前登录用户具备指定角色，否则 403。
+// AdminChecker 是管理员判定对外的全部依赖（只读那一个方法）。
 //
-// 必须挂在 AuthRequired 之后：没有身份信息时按 401 处理（而不是放行），
-// 这样"忘记加 AuthRequired"会表现为拒绝访问，而不是静默放行。
-func RequireRole(role string) gin.HandlerFunc {
+// 用接口而不是 *utils.AdminStore：中间件不该知道管理员名单存在 Redis 还是别处，
+// 测试也就能注入桩、不起 Redis 覆盖 403/放行两条分支。
+type AdminChecker interface {
+	IsAdmin(ctx context.Context, userID int) (bool, error)
+}
+
+// RequireAdmin 要求当前登录用户是管理员，否则 403。
+//
+// 判定读的是 **AdminChecker（Redis）**，不是 JWT 里的 role claim：
+// 撤销管理员必须立刻生效，否则被撤销的人还能拿旧令牌继续访问管理端，
+// 直到令牌自然过期。JWT 里的 role 只用于前端控制入口可见性。
+//
+// 必须挂在 AuthRequired 之后：缺少身份信息时按 401 拒绝（而不是放行），
+// 这样"忘记加 AuthRequired"会表现为拒绝访问，而不是静默开门。
+func RequireAdmin(checker AdminChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		current, exists := c.Get(ContextRole)
-		if !exists {
+		userID, _, _, ok := CurrentUser(c)
+		if !ok {
 			response.FailUnauthorized(c, "缺少认证信息，请先通过 AuthRequired 中间件")
 			c.Abort()
 			return
 		}
 
-		currentRole, _ := current.(string)
-		if currentRole != role {
-			// 403 而不是 404：这里不回显所需角色，避免向普通成员暴露管理端结构
+		isAdmin, err := checker.IsAdmin(c.Request.Context(), userID)
+		if err != nil {
+			// 读不到名单时**拒绝**而不是放行：Redis 抽风不该变成一次提权窗口
+			response.FailServer(c, "无法确认管理员身份，请稍后重试")
+			c.Abort()
+			return
+		}
+
+		if !isAdmin {
+			// 不回显所需角色，避免向普通成员暴露管理端结构
 			response.Fail(c, http.StatusForbidden, response.CodeForbidden, "无权限访问该资源")
 			c.Abort()
 			return

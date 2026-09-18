@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/request"
@@ -152,8 +151,8 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 // Me 返回当前登录用户的身份与角色
 // @Summary 获取当前登录用户
-// @Description 从 access token 解出身份与角色。角色来源是部署配置里的管理员白名单，
-// 前端据此决定是否显示管理端入口；真正的强制在后端路由的 RequireRole 中间件。
+// @Description 从 access token 解出身份与角色。角色真源是 Redis 里的管理员名单，
+// 前端据此决定是否显示管理端入口；服务端的强制在 RequireAdmin 中间件。
 // @Tags 认证模块
 // @Produce json
 // @Success 200 {object} response.Result{data=response.MeResp} "成功"
@@ -171,54 +170,6 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		Username: username,
 		Role:     role,
 	})
-}
-
-// ListUsers 用户列表（仅管理员）
-// @Summary 用户列表
-// @Description 分页读取已注册用户。响应不含密码哈希。需要 admin 角色。
-// @Tags 管理端
-// @Produce json
-// @Param page query int false "页码，从 1 开始" default(1)
-// @Param page_size query int false "每页条数，最大 100" default(20)
-// @Success 200 {object} response.Result{data=response.AdminUserListResp} "成功"
-// @Failure 401 {object} response.Result "未认证"
-// @Failure 403 {object} response.Result "非管理员"
-// @Router /api/v1/admin/users [get]
-func (h *AuthHandler) ListUsers(c *gin.Context) {
-	page := parseBoundedInt(c.Query("page"), 1, 1, 100000)
-	pageSize := parseBoundedInt(c.Query("page_size"), 20, 1, 100)
-
-	result, err := h.authService.ListUsers(c, page, pageSize)
-	if err != nil {
-		response.FailServer(c, err.Error())
-		return
-	}
-
-	response.OK(c, result)
-}
-
-// parseBoundedInt 解析查询参数里的整数并夹到 [min, max]。
-//
-// 非法输入（空串、字母、负数）一律回落到 fallback，而不是报 400：
-// 分页参数脏了不该让整个列表接口失败。
-func parseBoundedInt(raw string, fallback int, min int, max int) int {
-	if raw == "" {
-		return fallback
-	}
-
-	value, err := strconv.Atoi(raw)
-	if err != nil {
-		return fallback
-	}
-
-	if value < min {
-		return min
-	}
-	if value > max {
-		return max
-	}
-
-	return value
 }
 
 // ValidateToken 校验当前 token 是否有效

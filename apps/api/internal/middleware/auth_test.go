@@ -29,13 +29,31 @@ func (s *stubValidator) ValidateAccessToken(_ context.Context, _ string) (int, s
 	return s.userID, s.username, s.role, s.err
 }
 
+// stubAdminChecker 替代 *utils.AdminStore。
+//
+// 管理员判定现在读 Redis，测试同样不需要 Redis：RequireAdmin 只依赖
+// AdminChecker 这一个方法。
+type stubAdminChecker struct {
+	admins map[int]bool
+	err    error
+	calls  int
+}
+
+func (s *stubAdminChecker) IsAdmin(_ context.Context, userID int) (bool, error) {
+	s.calls++
+	if s.err != nil {
+		return false, s.err
+	}
+	return s.admins[userID], nil
+}
+
 // newTestRouter 复刻 router.go 里管理端那条中间件链：
-// AuthRequired 在前提供身份，RequireRole 在后判定角色。
-func newTestRouter(validator TokenValidator, role string, reached *bool) *gin.Engine {
+// AuthRequired 在前提供身份，RequireAdmin 在后读名单判定。
+func newTestRouter(validator TokenValidator, checker AdminChecker, reached *bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 
-	protected := r.Group("/protected", AuthRequired(validator), RequireRole(role))
+	protected := r.Group("/protected", AuthRequired(validator), RequireAdmin(checker))
 	protected.GET("", func(c *gin.Context) {
 		*reached = true
 		userID, username, currentRole, ok := CurrentUser(c)
@@ -75,7 +93,8 @@ func decodeBody(t *testing.T, recorder *httptest.ResponseRecorder) map[string]an
 func TestAuthRequired_RejectsMissingHeader(t *testing.T) {
 	reached := false
 	validator := &stubValidator{role: RoleAdmin}
-	r := newTestRouter(validator, RoleAdmin, &reached)
+	checker := &stubAdminChecker{admins: map[int]bool{1: true}}
+	r := newTestRouter(validator, checker, &reached)
 
 	recorder := doRequest(r, "")
 
@@ -88,11 +107,19 @@ func TestAuthRequired_RejectsMissingHeader(t *testing.T) {
 	if validator.calls != 0 {
 		t.Errorf("缺少请求头时不应该调用令牌校验，实际调用了 %d 次", validator.calls)
 	}
+	// 身份都没建立，就不该去查管理员名单
+	if checker.calls != 0 {
+		t.Errorf("未认证时不应该查管理员名单，实际查了 %d 次", checker.calls)
+	}
 }
 
 func TestAuthRequired_RejectsMalformedHeader(t *testing.T) {
 	reached := false
-	r := newTestRouter(&stubValidator{role: RoleAdmin}, RoleAdmin, &reached)
+	r := newTestRouter(
+		&stubValidator{},
+		&stubAdminChecker{admins: map[int]bool{}},
+		&reached,
+	)
 
 	// 少了 Bearer 前缀：常见的手写请求错误，必须当成未认证
 	recorder := doRequest(r, "some-token")
@@ -108,7 +135,7 @@ func TestAuthRequired_RejectsMalformedHeader(t *testing.T) {
 func TestAuthRequired_RejectsInvalidToken(t *testing.T) {
 	reached := false
 	validator := &stubValidator{err: errors.New("token 已过期")}
-	r := newTestRouter(validator, RoleAdmin, &reached)
+	r := newTestRouter(validator, &stubAdminChecker{}, &reached)
 
 	recorder := doRequest(r, "Bearer expired-token")
 
@@ -120,19 +147,20 @@ func TestAuthRequired_RejectsInvalidToken(t *testing.T) {
 	}
 }
 
-// 核心用例：普通成员访问管理端必须 403，而不是悄悄放行。
-func TestRequireRole_RejectsMember(t *testing.T) {
+// 核心用例：不在管理员名单里的人访问管理端必须 403。
+func TestRequireAdmin_RejectsNonAdmin(t *testing.T) {
 	reached := false
 	validator := &stubValidator{userID: 7, username: "member_user", role: RoleMember}
-	r := newTestRouter(validator, RoleAdmin, &reached)
+	checker := &stubAdminChecker{admins: map[int]bool{1: true}}
+	r := newTestRouter(validator, checker, &reached)
 
 	recorder := doRequest(r, "Bearer member-token")
 
 	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("成员访问管理端状态码 = %d，期望 403", recorder.Code)
+		t.Fatalf("非管理员访问管理端状态码 = %d，期望 403", recorder.Code)
 	}
 	if reached {
-		t.Error("成员不应该到达管理端 handler")
+		t.Error("非管理员不应该到达管理端 handler")
 	}
 
 	body := decodeBody(t, recorder)
@@ -145,10 +173,11 @@ func TestRequireRole_RejectsMember(t *testing.T) {
 	}
 }
 
-func TestRequireRole_AllowsAdmin(t *testing.T) {
+func TestRequireAdmin_AllowsAdmin(t *testing.T) {
 	reached := false
 	validator := &stubValidator{userID: 1, username: "drayee", role: RoleAdmin}
-	r := newTestRouter(validator, RoleAdmin, &reached)
+	checker := &stubAdminChecker{admins: map[int]bool{1: true}}
+	r := newTestRouter(validator, checker, &reached)
 
 	recorder := doRequest(r, "Bearer admin-token")
 
@@ -168,12 +197,50 @@ func TestRequireRole_AllowsAdmin(t *testing.T) {
 	}
 }
 
-// RequireRole 忘了搭配 AuthRequired 时必须拒绝访问，而不是因为"没有身份"就放行。
-func TestRequireRole_WithoutAuthRequiredFailsClosed(t *testing.T) {
+// 关键安全性质：判定读的是**名单**，不是 JWT 里的 role claim。
+// 即使令牌声称 admin，只要名单里没有这个人就必须 403 ——
+// 这样撤销管理员才能立即生效，而不是等旧令牌过期。
+func TestRequireAdmin_IgnoresStaleAdminClaimInToken(t *testing.T) {
+	reached := false
+	// 令牌里的 claim 说自己是 admin（撤销前签发的旧令牌就是这样）
+	validator := &stubValidator{userID: 9, username: "revoked", role: RoleAdmin}
+	// 但名单里已经没有他了
+	checker := &stubAdminChecker{admins: map[int]bool{1: true}}
+	r := newTestRouter(validator, checker, &reached)
+
+	recorder := doRequest(r, "Bearer stale-admin-token")
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("旧令牌带着过期的 admin claim，状态码 = %d，期望 403", recorder.Code)
+	}
+	if reached {
+		t.Error("被撤销的管理员不应该到达管理端 handler")
+	}
+}
+
+// 名单读不到时必须拒绝而不是放行：Redis 抽风不该变成一次提权窗口。
+func TestRequireAdmin_FailsClosedWhenCheckerErrors(t *testing.T) {
+	reached := false
+	validator := &stubValidator{userID: 1, username: "drayee", role: RoleAdmin}
+	checker := &stubAdminChecker{err: errors.New("redis down")}
+	r := newTestRouter(validator, checker, &reached)
+
+	recorder := doRequest(r, "Bearer admin-token")
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("无法确认身份时状态码 = %d，期望 500（拒绝而非放行）", recorder.Code)
+	}
+	if reached {
+		t.Error("名单读不到时绝不应该放行到管理端 handler")
+	}
+}
+
+// RequireAdmin 忘了搭配 AuthRequired 时必须拒绝访问，而不是因为"没有身份"就放行。
+func TestRequireAdmin_WithoutAuthRequiredFailsClosed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	reached := false
 	r := gin.New()
-	r.GET("/protected", RequireRole(RoleAdmin), func(c *gin.Context) {
+	r.GET("/protected", RequireAdmin(&stubAdminChecker{admins: map[int]bool{1: true}}), func(c *gin.Context) {
 		reached = true
 		c.Status(http.StatusOK)
 	})
