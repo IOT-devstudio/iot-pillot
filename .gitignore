@@ -42,6 +42,13 @@ logs/
 .env.*
 !.env.example
 
+# 本地真实配置（含数据库 / SMTP 凭据，绝不入库）
+# config.example.yaml 是模板，必须保持被追踪
+apps/api/config.yaml
+apps/api/config.yml
+apps/api/configs/*.yaml
+!apps/api/configs/config.example.yaml
+
 # Build artifacts / caches
 coverage/
 .cache/
