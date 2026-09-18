@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -161,5 +162,58 @@ func TestLoad_AdminUsersEmptyInputYieldsEmptyList(t *testing.T) {
 	}
 	if len(cfg.AUTH.AdminUsers) != 0 {
 		t.Errorf("AdminUsers = %v，期望为空", cfg.AUTH.AdminUsers)
+	}
+}
+
+// 回归测试：redis.conn_with_timeout 的默认值必须真的是 5 秒。
+//
+// 修复前的写法是 SetDefault("...", 5*time.Second) 再 GetDuration(...) * time.Second：
+// SetDefault 存进去的是 5e9（纳秒数），GetDuration 又原样当纳秒返回 5e9，
+// 再乘一次 time.Second 就变成 5e9 秒 ≈ 158 年 —— Redis 写超时形同不存在。
+func TestLoad_RedisConnWithTimeoutDefaultIsFiveSeconds(t *testing.T) {
+	resetViper()
+	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() 意外失败: %v", err)
+	}
+
+	if cfg.REDIS.ConnWithTimeout != 5*time.Second {
+		t.Errorf("REDIS.ConnWithTimeout = %v（%d ns），期望 5s —— "+
+			"注意检查是否又把 Duration 乘了一次 time.Second",
+			cfg.REDIS.ConnWithTimeout, int64(cfg.REDIS.ConnWithTimeout))
+	}
+}
+
+// 纯数字按「秒」解释（配置文件模板里就是这么写的）。
+func TestLoad_RedisConnWithTimeoutAcceptsPlainSeconds(t *testing.T) {
+	resetViper()
+	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
+	t.Setenv("IOT_PILOT_REDIS_CONN_WITH_TIMEOUT", "30")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() 意外失败: %v", err)
+	}
+
+	if cfg.REDIS.ConnWithTimeout != 30*time.Second {
+		t.Errorf("REDIS.ConnWithTimeout = %v，期望 30s", cfg.REDIS.ConnWithTimeout)
+	}
+}
+
+// 时长字符串也要认（写成 "45s" 不该被当成 45 纳秒或 45e9 秒）。
+func TestLoad_RedisConnWithTimeoutAcceptsDurationString(t *testing.T) {
+	resetViper()
+	t.Setenv("IOT_PILOT_JWT_SECRET", "test-secret")
+	t.Setenv("IOT_PILOT_REDIS_CONN_WITH_TIMEOUT", "45s")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() 意外失败: %v", err)
+	}
+
+	if cfg.REDIS.ConnWithTimeout != 45*time.Second {
+		t.Errorf("REDIS.ConnWithTimeout = %v，期望 45s", cfg.REDIS.ConnWithTimeout)
 	}
 }

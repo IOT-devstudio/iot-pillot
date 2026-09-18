@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -122,7 +123,7 @@ func Load() (*Config, error) {
 			Password:        viper.GetString("redis.password"),
 			DB:              viper.GetInt("redis.db"),
 			PoolSize:        viper.GetInt("redis.pool_size"),
-			ConnWithTimeout: viper.GetDuration("redis.conn_with_timeout") * time.Second,
+			ConnWithTimeout: loadSeconds("redis.conn_with_timeout", 5*time.Second),
 		},
 		JWT: &JWTConfig{
 			Secret: viper.GetString("jwt.secret"),
@@ -140,12 +141,15 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// loadAdminUsers 读取管理员用户名白名单。
+// loadAdminUsers 读取管理员引导名单（用户名或 userID，见 AdminUseCase.SeedAdmins）。
 //
 // 刻意不用 viper.GetStringSlice：它内部走 cast.ToStringSlice，对字符串类型用的是
 // strings.Fields（**按空白切分**）。于是 IOT_PILOT_AUTH_ADMIN_USERS=drayee,alice
 // 会得到 ["drayee,alice"] 这一个元素 —— 名单静默失效、谁都不是管理员，且不报错。
-// 所以这里按值的实际类型分派：字符串按逗号切，配置文件里的 YAML 列表直接用。
+// 所以这里按值的实际类型分派。
+//
+// 数字类型也要收：YAML 里写 admin_users: 1（不带引号）viper 返回的就是 int，
+// 若落到 default 分支会被静默丢掉，表现同样是"配了却没生效"。
 func loadAdminUsers() []string {
 	switch raw := viper.Get("auth.admin_users").(type) {
 	case []string:
@@ -153,13 +157,26 @@ func loadAdminUsers() []string {
 	case []any:
 		names := make([]string, 0, len(raw))
 		for _, item := range raw {
-			if name, ok := item.(string); ok {
-				names = append(names, name)
+			switch value := item.(type) {
+			case string:
+				names = append(names, value)
+			case int:
+				names = append(names, strconv.Itoa(value))
+			case int64:
+				names = append(names, strconv.FormatInt(value, 10))
+			case float64:
+				names = append(names, strconv.FormatInt(int64(value), 10))
 			}
 		}
 		return normalizeNames(names)
 	case string:
 		return normalizeNames(strings.Split(raw, ","))
+	case int:
+		return normalizeNames([]string{strconv.Itoa(raw)})
+	case int64:
+		return normalizeNames([]string{strconv.FormatInt(raw, 10)})
+	case float64:
+		return normalizeNames([]string{strconv.FormatInt(int64(raw), 10)})
 	default:
 		return nil
 	}
@@ -183,6 +200,46 @@ func normalizeNames(names []string) []string {
 	}
 
 	return result
+}
+
+// loadSeconds 读取以「秒」为单位的时长配置。
+//
+// 同一个键要同时接受三种来源，否则会静默失效：
+//   - 配置文件/环境变量里的纯数字 5   → 5 秒（configs/config.example.yaml 的写法）
+//   - 时长字符串 "5s"                → 5 秒
+//   - SetDefault 传进来的 time.Duration → 原样返回
+//
+// 历史坑（已由 TestLoad_RedisConnWithTimeout* 锁住）：原来是
+// `viper.GetDuration(key) * time.Second`。SetDefault 传的是 5*time.Second（= 5e9 纳秒），
+// GetDuration 又把它当纳秒原样返回 5e9，再乘一次 time.Second 就成了 5e18 纳秒
+// ≈ 158 年 —— Redis 写超时形同不存在，而且不会报任何错。
+func loadSeconds(key string, fallback time.Duration) time.Duration {
+	switch raw := viper.Get(key).(type) {
+	case time.Duration:
+		// SetDefault 存进来的就是 Duration，直接用，不要再乘
+		return raw
+	case int:
+		return time.Duration(raw) * time.Second
+	case int64:
+		return time.Duration(raw) * time.Second
+	case float64:
+		return time.Duration(raw * float64(time.Second))
+	case string:
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return fallback
+		}
+		// 先按 "5s" / "1m30s" 这类时长字符串解析
+		if parsed, err := time.ParseDuration(trimmed); err == nil {
+			return parsed
+		}
+		// 再按纯数字秒解析（"5"）
+		if seconds, err := strconv.Atoi(trimmed); err == nil {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+
+	return fallback
 }
 
 // validate 校验没有安全默认值的配置项。

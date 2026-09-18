@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
@@ -42,31 +44,36 @@ func NewAdminUseCase(userRepo repository.UserRepo, admins utils.AdminDirectory, 
  * 启动引导
  * ------------------------------------------------------------------ */
 
-// SeedAdmins 把配置里的管理员用户名补种进管理员名单（启动时执行一次）。
+// SeedAdmins 把配置里的管理员引导项补种进管理员名单（启动时执行一次）。
+//
+// 每一项既可以是**用户名**，也可以是**纯数字的 userID**：
+// 先按用户名查，查不到再按 userID 查。两种都写不出结果时只记日志。
+// 之所以两种都收：运维在配置里很容易直接写 "1"（想表达 ID），
+// 如果只认用户名就会静默失效——配了却没有任何人是管理员，而且不报错。
 //
 // 只增不删：配置表达的是"初始有哪些管理员"，而不是"当前只允许这些管理员"。
 // 若改成覆盖，运维在管理端新加的管理员会在下次重启时被静默抹掉。
 //
-// 找不到的用户名只记日志、不中断启动：新环境里管理员往往还没注册，
+// 找不到的引导项只记日志、不中断启动：新环境里管理员往往还没注册，
 // 这时让服务起不来会把"引导还没完成"变成"服务不可用"。
 // 真正的失败（Redis 报错）才返回错误。
-func (a *AdminUseCase) SeedAdmins(ctx context.Context, usernames []string) error {
-	if len(usernames) == 0 {
+func (a *AdminUseCase) SeedAdmins(ctx context.Context, entries []string) error {
+	if len(entries) == 0 {
 		return nil
 	}
 
 	var ids []int
-	for _, name := range usernames {
-		user, err := a.userRepo.GetByName(ctx, name)
-		if err != nil || user == nil {
-			log.Printf("[admin] 引导跳过：用户 %q 不存在（注册后再把它填进 auth.admin_users 并重启）", name)
+	for _, entry := range entries {
+		id, ok := a.resolveSeedEntry(ctx, entry)
+		if !ok {
 			continue
 		}
-		ids = append(ids, user.ID)
+		ids = append(ids, id)
 	}
 
 	if len(ids) == 0 {
-		log.Printf("[admin] 引导名单里的 %d 个用户名都没有对应账号，本次没有补种任何管理员", len(usernames))
+		log.Printf("[admin] 引导名单里的 %d 项都没有对应账号，本次没有补种任何管理员"+
+			"（账号注册后再重启，或直接把 userID 填进 auth.admin_users）", len(entries))
 		return nil
 	}
 
@@ -76,6 +83,34 @@ func (a *AdminUseCase) SeedAdmins(ctx context.Context, usernames []string) error
 
 	log.Printf("[admin] 已把 %d 个账号补种为管理员", len(ids))
 	return nil
+}
+
+// resolveSeedEntry 把一条引导项解析成 userID。
+//
+// 先按用户名查（更直观、也没有歧义），查不到且该项是纯数字时再按 userID 查。
+// 这个顺序保证"真的存在一个叫 1 的用户"时不会被当成 ID 抢走。
+func (a *AdminUseCase) resolveSeedEntry(ctx context.Context, entry string) (int, bool) {
+	trimmed := strings.TrimSpace(entry)
+	if trimmed == "" {
+		return 0, false
+	}
+
+	if user, err := a.userRepo.GetByName(ctx, trimmed); err == nil && user != nil {
+		log.Printf("[admin] 引导：按用户名匹配到 %q（userID=%d）", trimmed, user.ID)
+		return user.ID, true
+	}
+
+	if id, err := strconv.Atoi(trimmed); err == nil && id > 0 {
+		if user, err := a.userRepo.GetByID(ctx, id); err == nil && user != nil {
+			log.Printf("[admin] 引导：按 userID 匹配到 %d（%q）", user.ID, user.Name)
+			return user.ID, true
+		}
+		log.Printf("[admin] 引导跳过：既没有名为 %q 的账号，也没有 userID=%d 的账号", trimmed, id)
+		return 0, false
+	}
+
+	log.Printf("[admin] 引导跳过：找不到名为 %q 的账号（注册后再重启）", trimmed)
+	return 0, false
 }
 
 // seedInto 走 AdminDirectory 的公开方法完成补种。

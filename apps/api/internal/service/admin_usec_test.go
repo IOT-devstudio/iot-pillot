@@ -311,6 +311,59 @@ func TestSeedAdmins_EmptyListIsNoop(t *testing.T) {
 	}
 }
 
+// 引导项写成纯数字时要按 **userID** 解释。
+//
+// 回归测试：运维在 auth.admin_users 里写 "1" 表达的是 ID，
+// 只认用户名的话会静默失效（配了却没有任何管理员）。
+func TestSeedAdmins_AcceptsNumericUserID(t *testing.T) {
+	directory := &stubAdminDirectory{ids: map[int]bool{}}
+	useCase := newTestAdminUseCase(sampleUsers(), directory, &stubSessionRevoker{})
+
+	if err := useCase.SeedAdmins(context.Background(), []string{"2"}); err != nil {
+		t.Fatalf("按 userID 引导不该报错: %v", err)
+	}
+
+	if !directory.ids[2] {
+		t.Error("userID=2 应当被补种为管理员")
+	}
+}
+
+// 用户名优先：即使存在同名歧义，也不会被当成 ID 抢走。
+func TestSeedAdmins_PrefersUsernameOverUserID(t *testing.T) {
+	repo := sampleUsers()
+	// 造一个名字就叫 "2" 的用户，它的 userID 是 50
+	namedTwo := &domain.User{ID: 50, Name: "2", CreatedAt: time.Now()}
+	repo.byName["2"] = namedTwo
+	repo.byID[50] = namedTwo
+
+	directory := &stubAdminDirectory{ids: map[int]bool{}}
+	useCase := newTestAdminUseCase(repo, directory, &stubSessionRevoker{})
+
+	if err := useCase.SeedAdmins(context.Background(), []string{"2"}); err != nil {
+		t.Fatalf("引导不该报错: %v", err)
+	}
+
+	if !directory.ids[50] {
+		t.Error("应当按用户名匹配到 userID=50")
+	}
+	if directory.ids[2] {
+		t.Error("存在同名用户时不该按 userID=2 解释")
+	}
+}
+
+// 非数字项按用户名查，查不到只记日志、不报错。
+func TestSeedAdmins_SkipsUnknownUsername(t *testing.T) {
+	directory := &stubAdminDirectory{ids: map[int]bool{}}
+	useCase := newTestAdminUseCase(sampleUsers(), directory, &stubSessionRevoker{})
+
+	if err := useCase.SeedAdmins(context.Background(), []string{"nobody"}); err != nil {
+		t.Fatalf("找不到用户名时不该报错: %v", err)
+	}
+	if len(directory.ids) != 0 {
+		t.Error("找不到账号时不该写名单")
+	}
+}
+
 // 引导失败（Redis 报错）必须透出去：这时名单不可信，管理端行为无法预期。
 func TestSeedAdmins_PropagatesRedisFailure(t *testing.T) {
 	directory := &stubAdminDirectory{ids: map[int]bool{}, err: errors.New("redis down")}
