@@ -21,19 +21,23 @@ func InitializeApp() (*handler.Router, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	healthHandler := handler.NewHealthHandler()
 	db, cleanup, err := repository.ProvideDB(configConfig)
 	if err != nil {
 		return nil, nil, err
 	}
-	userRepo := repository.NewUserRepo(db)
+	databasePinger := repository.NewDatabasePinger(db)
 	client := utils.ConnectRedis(configConfig)
+	redisPinger := utils.NewRedisPinger(client)
+	healthHandler := handler.NewHealthHandler(databasePinger, redisPinger)
+	userRepo := repository.NewUserRepo(db)
 	tokenManager := utils.NewTokenManager(client, configConfig)
 	mailManager := utils.NewMailManager(configConfig, client)
 	codeManager := utils.NewCodeManager(client, mailManager)
 	adminStore := utils.NewAdminStore(client)
-	authUseCase := service.NewAuthUseCase(userRepo, tokenManager, codeManager, adminStore)
-	authHandler := handler.NewAuthHandler(authUseCase)
+	redisCounter := utils.NewRedisCounter(client)
+	limiter := utils.NewLimiter(redisCounter)
+	authUseCase := service.NewAuthUseCase(userRepo, tokenManager, codeManager, adminStore, limiter)
+	authHandler := handler.NewAuthHandler(authUseCase, limiter)
 	adminUseCase, err := provideAdminUseCase(userRepo, adminStore, tokenManager, configConfig)
 	if err != nil {
 		cleanup()

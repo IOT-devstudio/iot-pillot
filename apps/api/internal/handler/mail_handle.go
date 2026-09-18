@@ -37,7 +37,7 @@ func NewMailHandler(mailService *service.MailUseCase) *MailHandler {
 func (h *MailHandler) ListMailTemplates(c *gin.Context) {
 	result, err := h.mailService.ListTemplates(c.Request.Context())
 	if err != nil {
-		response.FailServer(c, err.Error())
+		failInternal(c, err)
 		return
 	}
 	response.OK(c, result)
@@ -215,7 +215,7 @@ func (h *MailHandler) ListMails(c *gin.Context) {
 
 	result, err := h.mailService.ListMails(c.Request.Context(), page, pageSize)
 	if err != nil {
-		response.FailServer(c, err.Error())
+		failInternal(c, err)
 		return
 	}
 	response.OK(c, result)
@@ -251,7 +251,7 @@ func failMailRequest(c *gin.Context, err error) {
 	case errors.Is(err, repository.ErrDuplicateMailModel):
 		response.FailInvalidParam(c, err.Error())
 	case errors.Is(err, service.ErrMailDelivery):
-		response.FailServer(c, err.Error())
+		failInternal(c, err)
 	default:
 		response.FailInvalidParam(c, err.Error())
 	}

@@ -1,7 +1,15 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/middleware"
@@ -29,13 +37,26 @@ func NewRouter(
 	}
 
 	r := gin.Default()
+
+	// 不信任任何转发头。
+	//
+	// gin 默认信任所有代理，ClientIP() 会采信 X-Forwarded-For —— 而限流正好以
+	// ClientIP() 作为 key（验证码的 IP 配额），伪造这个头就能绕过限流。
+	// 真实来源 IP 由 nginx 层负责，应用层只认直连地址。
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Printf("[router] 设置可信代理失败，将沿用 gin 默认值: %v", err)
+	}
+
 	r.Use(
 		gin.Logger(),
 		gin.Recovery(),
 		middleware.CORS(*cfg.CORS),
 	)
 
+	// 存活探针：不依赖外部，容器存活判断用
 	r.GET("/health", healthHandler.Health)
+	// 就绪探针：探活 DB 与 Redis，任一不可用返回 503
+	r.GET("/health/ready", healthHandler.Ready)
 
 	// *utils.TokenManager 满足 middleware.TokenValidator，
 	// *utils.AdminStore 满足 middleware.AdminChecker —— 这里做一次接口转换，
@@ -79,7 +100,43 @@ func NewRouter(
 	return &Router{eng: r, cfg: cfg}
 }
 
+// Run 启动 HTTP 服务，并在收到 SIGINT/SIGTERM 时优雅退出。
+//
+// 为什么需要优雅退出：发信、群发是长请求，直接杀进程会让调用方拿到连接重置，
+// 而且无法判断"邮件到底发出去没有"。这里停止接收新请求后，给在途请求 10 秒收尾。
+//
+// 刻意没有设置 ReadTimeout/WriteTimeout：本轮只按要求加优雅退出；
+// 详见后续待办（超时交给 nginx 层处理）。
 func (r *Router) Run() error {
 	addr := fmt.Sprintf(":%d", r.cfg.SERVICE.Port)
-	return r.eng.Run(addr)
+
+	server := &http.Server{
+		Addr:    addr,
+		Handler: r.eng,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	serveErr := make(chan error, 1)
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- err
+		}
+	}()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-ctx.Done():
+		log.Println("[router] 收到退出信号，停止接收新请求并等待在途请求收尾…")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
+	defer cancel()
+
+	return server.Shutdown(shutdownCtx)
 }
+
+// shutdownGracePeriod 优雅退出的等待上限。
+const shutdownGracePeriod = 10 * time.Second

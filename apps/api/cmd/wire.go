@@ -22,11 +22,26 @@ func InitializeApp() (*handler.Router, func(), error) {
 		utils.NewMailManager,
 		utils.NewTokenManager,
 		utils.NewAdminStore,
+		utils.NewRedisCounter,
+		utils.NewLimiter,
+
+		// 健康检查的依赖探针：实现在各自的包（repository 认识 gorm、utils 认识 rueidis），
+		// handler 只依赖它自己定义的 DependencyPinger 接口。
+		repository.NewDatabasePinger,
+		utils.NewRedisPinger,
 
 		// Go 的隐式接口满足对 wire 无效：它的依赖图按**类型**连线，
 		// 不会自动把 *utils.AdminStore 当成 utils.AdminDirectory。
 		// 所以凡是 provider 参数用接口的地方，都要显式 Bind 一次。
 		wire.Bind(new(utils.AdminDirectory), new(*utils.AdminStore)),
+		wire.Bind(new(utils.Counter), new(*utils.RedisCounter)),
+		// 认证服务依赖的是收窄后的接口（便于注入桩测试）
+		wire.Bind(new(service.TokenIssuer), new(*utils.TokenManager)),
+		wire.Bind(new(service.VerifyCodeChecker), new(*utils.CodeManager)),
+		// 健康检查的两个探针：handler 侧是两个**不同的命名接口**，
+		// 这样绑定唯一，不会出现"两个同类型参数该注入谁"的歧义。
+		wire.Bind(new(handler.DatabasePinger), new(*repository.DatabasePinger)),
+		wire.Bind(new(handler.RedisPinger), new(*utils.RedisPinger)),
 
 		repository.NewUserRepo,
 		repository.NewMailModelRepo,

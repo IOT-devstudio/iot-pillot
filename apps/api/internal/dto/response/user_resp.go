@@ -6,10 +6,20 @@ type LoginResp struct {
 	UserID       int    `json:"user_id"`
 }
 
+// RefreshResp 刷新令牌的响应。
+//
+// 刻意**不含 user_id**：刷新只轮换令牌，不解出用户身份。
+// 原实现复用了 LoginResp 并塞进 user_id=-1 当哨兵值，前端一旦照抄就会把 -1
+// 写进用户状态（类型上是合法的 number，看不出是假的）。
+type RefreshResp struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
 // MeResp 当前登录用户的身份。
 //
-// 角色真源是 Redis 里的管理员名单；JWT 也带一份 role 作为前端可见性提示，
-// 但服务端强制 403 时读的是 Redis，所以撤销管理员会立即生效。
+// Role 由服务端**现查 Redis 名单**得到（不是令牌里的快照），
+// 因此前端看到的可见性判断与服务端强制的 403 永远一致。
 type MeResp struct {
 	UserID   int    `json:"user_id"`
 	Username string `json:"username"`
