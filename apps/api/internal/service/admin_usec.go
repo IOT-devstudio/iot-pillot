@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
@@ -21,6 +22,14 @@ type SessionRevoker interface {
 	RevokeUserSessions(ctx context.Context, userID int) error
 }
 
+// NewSessionRevoker 把 *utils.TokenManager 作为 SessionRevoker 提供给装配层。
+//
+// 与 NewTokenIssuer 同理：wire 按类型连线，隐式接口满足对它无效；
+// 接口声明在本包，转换函数就写在本包（utils 反向 import service 会成环）。
+func NewSessionRevoker(manager *utils.TokenManager) SessionRevoker {
+	return manager
+}
+
 // AdminUseCase 管理端用例：用户列表、管理员名单、角色变更。
 //
 // 从 AuthUseCase 里拆出来的原因：认证（谁能登录）与管理（谁能管理别人）
@@ -32,12 +41,31 @@ type AdminUseCase struct {
 	sessions SessionRevoker
 }
 
-func NewAdminUseCase(userRepo repository.UserRepo, admins utils.AdminDirectory, sessions SessionRevoker) *AdminUseCase {
-	return &AdminUseCase{
+// NewAdminUseCase 构造管理员用例，并执行一次启动期引导：把配置里的管理员补种进 Redis。
+//
+// 引导为什么放在构造函数里：它需要 DB（把用户名解析成 userID）与 Redis，而两者都由 wire
+// 装配。放在这里就不必把依赖一路透传到 main，也不需要在 cmd 里留一个非 NewXxx 的胶水 provider。
+//
+// 引导是**尽力而为**的：名单里的用户名找不到账号时只记日志（新环境里管理员往往还没注册），
+// 因此配置里写错一个名字不会让服务起不来；但 Redis 报错会返回 error —— 那种情况下
+// 管理员名单不可信，管理端行为无法预期，宁可拒绝启动。只增不删的理由见 SeedAdmins。
+func NewAdminUseCase(
+	userRepo repository.UserRepo,
+	admins utils.AdminDirectory,
+	sessions SessionRevoker,
+	cfg *config.Config,
+) (*AdminUseCase, error) {
+	useCase := &AdminUseCase{
 		userRepo: userRepo,
 		admins:   admins,
 		sessions: sessions,
 	}
+
+	if err := useCase.SeedAdmins(context.Background(), cfg.AUTH.AdminUsers); err != nil {
+		return nil, err
+	}
+
+	return useCase, nil
 }
 
 /* ------------------------------------------------------------------ *

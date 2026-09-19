@@ -23,6 +23,14 @@ type MailSender interface {
 	SendEmail(email utils.Email) error
 }
 
+// NewMailSender 把 *utils.MailManager 作为 MailSender 提供给装配层。
+//
+// 位置理由同 auth_usec.go 的 NewTokenIssuer：接口由消费者（本包）声明，
+// utils 不能反向依赖 service，转换函数只能写在声明接口的这一侧。
+func NewMailSender(manager *utils.MailManager) MailSender {
+	return manager
+}
+
 // MaxBulkRecipients 单次群发的收件人上限。
 //
 // 目的是防手滑：一次点错就对着几百个真实邮箱连发，是收不回来的操作。

@@ -33,10 +33,23 @@ type TokenIssuer interface {
 	RevokeSession(ctx context.Context, accessToken string, refreshToken string) error
 }
 
+// NewTokenIssuer 把 *utils.TokenManager 作为 TokenIssuer 提供给装配层。
+//
+// 为什么转换函数在 service 而不是 utils：接口是**消费者**声明的（这里收窄是因为
+// 单测要注入桩），而 utils 反过来 import service 会成环 —— 只有 service 能同时看到两边。
+func NewTokenIssuer(manager *utils.TokenManager) TokenIssuer {
+	return manager
+}
+
 // VerifyCodeChecker 认证服务对验证码的全部依赖。
 type VerifyCodeChecker interface {
 	VerifyCode(ctx context.Context, verifier string, code string) error
 	SendVerifyCode(ctx context.Context, verifier string, verifierType utils.VerifierType) error
+}
+
+// NewVerifyCodeChecker 与 NewTokenIssuer 同理，只是换了 CodeManager。
+func NewVerifyCodeChecker(manager *utils.CodeManager) VerifyCodeChecker {
+	return manager
 }
 
 // AuthUseCase 只负责"谁能登录"。

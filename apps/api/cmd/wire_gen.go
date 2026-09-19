@@ -16,6 +16,13 @@ import (
 
 // Injectors from wire.go:
 
+// 依赖装配图（生成物是 wire_gen.go：`wire gen ./cmd`，或 go generate ./cmd）。
+//
+// 关于接口：wire 按**类型**连线，Go 的隐式接口满足对它无效 —— provider 产出
+// *utils.AdminStore 时它不会当成 utils.AdminDirectory。原来靠一串
+// wire.Bind(new(接口), new(*实现)) 解决，现在改成"返回值就是接口"的 NewXxx，
+// 每个都写在接口声明的旁边（utils/admin_store.go、service/auth_usec.go、
+// handler/health_handle.go …）。本文件里因此既没有 new()，也没有 cmd 侧的胶水 provider。
 func InitializeApp() (*handler.Router, func(), error) {
 	configConfig, err := config.Load()
 	if err != nil {
@@ -26,19 +33,26 @@ func InitializeApp() (*handler.Router, func(), error) {
 		return nil, nil, err
 	}
 	databasePinger := repository.NewDatabasePinger(db)
+	handlerDatabasePinger := handler.NewDatabasePinger(databasePinger)
 	client := utils.ConnectRedis(configConfig)
 	redisPinger := utils.NewRedisPinger(client)
-	healthHandler := handler.NewHealthHandler(databasePinger, redisPinger)
+	handlerRedisPinger := handler.NewRedisPinger(redisPinger)
+	healthHandler := handler.NewHealthHandler(handlerDatabasePinger, handlerRedisPinger)
 	userRepo := repository.NewUserRepo(db)
 	tokenManager := utils.NewTokenManager(client, configConfig)
+	tokenIssuer := service.NewTokenIssuer(tokenManager)
 	mailManager := utils.NewMailManager(configConfig, client)
 	codeManager := utils.NewCodeManager(client, mailManager)
+	verifyCodeChecker := service.NewVerifyCodeChecker(codeManager)
 	adminStore := utils.NewAdminStore(client)
+	adminDirectory := utils.NewAdminDirectory(adminStore)
 	redisCounter := utils.NewRedisCounter(client)
-	limiter := utils.NewLimiter(redisCounter)
-	authUseCase := service.NewAuthUseCase(userRepo, tokenManager, codeManager, adminStore, limiter)
+	counter := utils.NewCounter(redisCounter)
+	limiter := utils.NewLimiter(counter)
+	authUseCase := service.NewAuthUseCase(userRepo, tokenIssuer, verifyCodeChecker, adminDirectory, limiter)
 	authHandler := handler.NewAuthHandler(authUseCase, limiter)
-	adminUseCase, err := provideAdminUseCase(userRepo, adminStore, tokenManager, configConfig)
+	sessionRevoker := service.NewSessionRevoker(tokenManager)
+	adminUseCase, err := service.NewAdminUseCase(userRepo, adminDirectory, sessionRevoker, configConfig)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -46,7 +60,8 @@ func InitializeApp() (*handler.Router, func(), error) {
 	adminHandler := handler.NewAdminHandler(adminUseCase)
 	mailModelRepo := repository.NewMailModelRepo(db)
 	mailRepo := repository.NewMailRepo(db)
-	mailUseCase := service.NewMailUseCase(mailModelRepo, mailRepo, userRepo, mailManager)
+	mailSender := service.NewMailSender(mailManager)
+	mailUseCase := service.NewMailUseCase(mailModelRepo, mailRepo, userRepo, mailSender)
 	mailHandler := handler.NewMailHandler(mailUseCase)
 	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, tokenManager, adminStore)
 	return router, func() {
