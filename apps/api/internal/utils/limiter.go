@@ -33,6 +33,14 @@ func NewRedisCounter(redis rueidis.Client) *RedisCounter {
 	return &RedisCounter{redis: redis}
 }
 
+// NewCounter 把 *RedisCounter 作为 Counter 提供给装配层。
+//
+// 与 NewAdminDirectory 同理：wire 不会自动把具体类型当作接口，
+// 接口声明在本包，转换函数就放在本包。
+func NewCounter(counter *RedisCounter) Counter {
+	return counter
+}
+
 func (c *RedisCounter) Incr(ctx context.Context, key string, window time.Duration) (int64, error) {
 	count, err := c.redis.Do(ctx, c.redis.B().Incr().Key(key).Build()).ToInt64()
 	if err != nil {

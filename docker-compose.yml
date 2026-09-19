@@ -1,3 +1,15 @@
+# 本地开发编排：依赖服务（Postgres + Redis）与可选的全栈应用。
+#
+#   docker compose up -d postgres redis   # 只起依赖；前后端仍用 go run ./cmd 与 pnpm dev
+#   docker compose up -d --build          # 起全栈（首次构建较慢：要装 pnpm 依赖 + 编译 Go）
+#
+# 环境变量从仓库根的 .env 读取（参见 .env.example）。注意 .env 只在 compose 里生效，
+# 本地 go run 不会自动读取它。
+#
+# 端口注意：5432 / 6379 是常用端口，宿主机已装 Postgres / Redis 时会冲突。
+# 需要并存就用 override 文件改宿主端口，例如：
+#   docker compose -f docker-compose.yml -f my-override.yml up -d postgres redis
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,6 +27,71 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # 后端启动期硬依赖：utils.ConnectRedis 连不上会直接 log.Fatalf 退出，
+  # 所以它与 postgres 一样是 app 的前置条件，不能只靠"用到了再连"。
+  redis:
+    image: redis:7-alpine
+    container_name: iot-pillot-redis
+    # 关闭持久化：Redis 只存会话唯一码、验证码与限流计数，重启即失效是预期行为。
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 全栈应用 = 仓库根 Dockerfile（前端静态产物 + nginx + Go 二进制）。
+  # 只做本地前后端开发时不用起它：docker compose up -d postgres redis
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Go module 源只作用于构建阶段：Dockerfile 的默认值是官方源（CI/生产用），
+      # 国内网络访问 proxy.golang.org 会被拒，所以本地 compose 默认走镜像。
+      # 需要改回来（或换企业私服）就在 .env 里设 IOT_PILLOT_GOPROXY。
+      args:
+        GOPROXY: ${IOT_PILLOT_GOPROXY:-https://goproxy.cn,direct}
+    container_name: iot-pillot-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    environment:
+      # 容器内用服务名互访，不能写 localhost（那是容器自己）。
+      IOT_PILOT_DB_HOST: postgres
+      IOT_PILOT_DB_PORT: "5432"
+      IOT_PILOT_DB_USER: iot_pillot
+      IOT_PILOT_DB_PASSWORD: iot_pillot
+      IOT_PILOT_DB_NAME: iot_pillot
+      IOT_PILOT_REDIS_HOST: redis
+      IOT_PILOT_REDIS_PORT: "6379"
+      IOT_PILOT_MODE: ${IOT_PILOT_MODE:-release}
+      # JWT secret 没有默认值（留空会被 Config.validate 拒绝），这里是本地占位值。
+      # 需要固定密钥就在 .env 里设 IOT_PILOT_JWT_SECRET。
+      IOT_PILOT_JWT_SECRET: ${IOT_PILOT_JWT_SECRET:-dev-only-change-me}
+    healthcheck:
+      # 用就绪探针而不是 /health：/health 是存活探针，依赖全挂时也返回 ok。
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+  registry:
+    image: registry:2
+    container_name: registry
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./registry-data:/var/lib/registry
+    environment:
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /var/lib/registry
+    restart: unless-stopped
 
 volumes:
   postgres_data:

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,6 +24,20 @@ type DatabasePinger interface {
 
 type RedisPinger interface {
 	Ping(ctx context.Context) error
+}
+
+// NewDatabasePinger / NewRedisPinger 把具体实现作为上面两个接口提供给装配层。
+//
+// 与 utils.NewAdminDirectory 同理：wire 按类型连线，隐式接口满足对它无效
+// （原写法是 wire.Bind(new(DatabasePinger), new(*repository.DatabasePinger))）。
+// 放在 handler 是因为接口声明在这一侧 —— repository / utils 反过来 import handler 会成环。
+// 这不新增层次依赖：handler 早已使用 repository 的仓储接口（auth_handle、mail_handle）。
+func NewDatabasePinger(pinger *repository.DatabasePinger) DatabasePinger {
+	return pinger
+}
+
+func NewRedisPinger(pinger *utils.RedisPinger) RedisPinger {
+	return pinger
 }
 
 type HealthHandler struct {

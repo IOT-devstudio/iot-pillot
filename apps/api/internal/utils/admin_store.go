@@ -38,6 +38,15 @@ func NewAdminStore(redis rueidis.Client) *AdminStore {
 	return &AdminStore{redis: redis}
 }
 
+// NewAdminDirectory 把 *AdminStore 作为 AdminDirectory 提供给装配层。
+//
+// wire 按**类型**连线，Go 的隐式接口满足对它无效，所以装配层需要一个"返回值就是
+// 接口"的 provider（原来的写法是 wire.Bind(new(AdminDirectory), new(*AdminStore))）。
+// 这类函数只能放在接口所在的包：AdminDirectory 定义在这里，转换也就写在这里。
+func NewAdminDirectory(store *AdminStore) AdminDirectory {
+	return store
+}
+
 // IsAdmin 判定某个用户当前是不是管理员。
 //
 // 每次请求都查 Redis，而不是信任 JWT 里的 role claim：

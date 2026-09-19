@@ -12,6 +12,13 @@ import (
 	"github.com/google/wire"
 )
 
+// 依赖装配图（生成物是 wire_gen.go：`wire gen ./cmd`，或 go generate ./cmd）。
+//
+// 关于接口：wire 按**类型**连线，Go 的隐式接口满足对它无效 —— provider 产出
+// *utils.AdminStore 时它不会当成 utils.AdminDirectory。原来靠一串
+// wire.Bind(new(接口), new(*实现)) 解决，现在改成"返回值就是接口"的 NewXxx，
+// 每个都写在接口声明的旁边（utils/admin_store.go、service/auth_usec.go、
+// handler/health_handle.go …）。本文件里因此既没有 new()，也没有 cmd 侧的胶水 provider。
 func InitializeApp() (*handler.Router, func(), error) {
 	wire.Build(
 		config.Load,
@@ -25,37 +32,25 @@ func InitializeApp() (*handler.Router, func(), error) {
 		utils.NewRedisCounter,
 		utils.NewLimiter,
 
-		// 健康检查的依赖探针：实现在各自的包（repository 认识 gorm、utils 认识 rueidis），
-		// handler 只依赖它自己定义的 DependencyPinger 接口。
 		repository.NewDatabasePinger,
 		utils.NewRedisPinger,
 
-		// Go 的隐式接口满足对 wire 无效：它的依赖图按**类型**连线，
-		// 不会自动把 *utils.AdminStore 当成 utils.AdminDirectory。
-		// 所以凡是 provider 参数用接口的地方，都要显式 Bind 一次。
-		wire.Bind(new(utils.AdminDirectory), new(*utils.AdminStore)),
-		wire.Bind(new(utils.Counter), new(*utils.RedisCounter)),
-		// 认证服务依赖的是收窄后的接口（便于注入桩测试）
-		wire.Bind(new(service.TokenIssuer), new(*utils.TokenManager)),
-		wire.Bind(new(service.VerifyCodeChecker), new(*utils.CodeManager)),
-		// 健康检查的两个探针：handler 侧是两个**不同的命名接口**，
-		// 这样绑定唯一，不会出现"两个同类型参数该注入谁"的歧义。
-		wire.Bind(new(handler.DatabasePinger), new(*repository.DatabasePinger)),
-		wire.Bind(new(handler.RedisPinger), new(*utils.RedisPinger)),
+		utils.NewAdminDirectory,
+		utils.NewCounter,
+		service.NewTokenIssuer,
+		service.NewVerifyCodeChecker,
+		service.NewMailSender,
+		service.NewSessionRevoker,
+		handler.NewDatabasePinger,
+		handler.NewRedisPinger,
 
 		repository.NewUserRepo,
 		repository.NewMailModelRepo,
 		repository.NewMailRepo,
 
-		// 邮件服务依赖 MailSender 接口而非 *utils.MailManager：
-		// 同样需要显式 Bind，理由见上面的 AdminDirectory。
-		wire.Bind(new(service.MailSender), new(*utils.MailManager)),
-
 		service.NewAuthUseCase,
 		service.NewMailUseCase,
-		// provideAdminUseCase 代替 service.NewAdminUseCase：
-		// 它在构造管理员服务的同时执行一次配置引导（要把用户名查库解析成 userID）。
-		provideAdminUseCase,
+		service.NewAdminUseCase,
 
 		handler.NewHealthHandler,
 		handler.NewAuthHandler,
