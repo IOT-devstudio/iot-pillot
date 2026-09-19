@@ -5,7 +5,8 @@
 # buildx 在开始构建之前就先卡在传输上。
 #
 # 注意：dockerignore 只在 context 根目录被读取。
-# apps/api/.dockerignore 在 context 上移后已失效，故已删除，内容并入此文件。
+# apps/api/.dockerignore 对本文件（context = 仓库根）不生效，只服务
+# `docker build -f apps/api/Dockerfile apps/api` 那次独立 API 镜像构建。
 
 # 依赖
 node_modules

@@ -26,6 +26,12 @@ RUN pnpm --filter @iot-pillot/web build
 
 # ---- 阶段 2：后端 ----
 FROM golang:1.25-alpine AS backend
+# Go module 源。默认官方源：CI 与境外构建正常，且生产镜像就是在 CI 里构建的。
+# 国内网络访问 proxy.golang.org 会被拒（connect: connection refused），本地构建时覆盖：
+#   docker build --build-arg GOPROXY=https://goproxy.cn,direct …
+#   docker compose 的 app.build.args 已默认给国内镜像，见 docker-compose.yml
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /src
 COPY apps/api/go.mod apps/api/go.sum ./
 RUN go mod download

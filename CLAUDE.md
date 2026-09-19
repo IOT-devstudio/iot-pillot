@@ -36,7 +36,7 @@
 | 后端语言      | **Go**                                | 单二进制部署                                                     |
 | 后端框架      | **Gin**                                | 路由 + 中间件；已装在 `apps/api/go.mod`                          |
 | 配置管理      | **viper**                              | env prefix `IOT_PILOT_`，自动 ENV 覆盖；已装                     |
-| 数据库        | **PostgreSQL**                        | `docker-compose.yml` 启动本地实例                                 |
+| 数据库        | **PostgreSQL**                        | `docker-compose.yml` 启动本地实例；Redis 同文件，两者都是启动期硬依赖 |
 | ORM           | **GORM**                              | `apps/api/go.mod` 与 `internal/repository` 已实际使用               |
 | SMTP 库       | **gomail**                            | `apps/api/go.mod` 与 `internal/utils/mail_util.go` 已实际使用       |
 | Monorepo 工具 | **pnpm workspaces**                   | 前后端统一管理                                                   |
@@ -65,6 +65,8 @@ iot-pillot/
 ├── apps/
 │   ├── web/                # 前端（Vue 3 + Element Plus + TS）
 │   └── api/                # 后端 Go 服务（Gin + GORM），go.mod 在此
+│       ├── Dockerfile      # 独立 API 镜像（只有 Go 二进制；生产不走它）
+│       └── .dockerignore   # 该独立构建用；根 context 构建读仓库根的 .dockerignore
 ├── packages/
 │   └── shared-types/       # 前后端共享 TS 类型（DTO）
 ├── deploy/                 # 部署产物配置
@@ -78,7 +80,7 @@ iot-pillot/
 │   └── superpowers/specs/  # 设计文档
 ├── Dockerfile              # 单镜像：前端 + 后端 + nginx，context 为仓库根
 ├── .dockerignore           # 必须排除 node_modules
-├── docker-compose.yml      # 本地 Postgres
+├── docker-compose.yml      # 本地 Postgres + Redis，以及复用根 Dockerfile 的 app 服务
 ├── pnpm-workspace.yaml
 └── CLAUDE.md
 ```
