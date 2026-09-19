@@ -58,6 +58,7 @@ smtp:
   from: noreply@example.com
   # 拨号超时（秒）。gomail 默认不设超时，SMTP 半死不活时发信请求会一直挂着。
   timeout_seconds: 10
+  from: noreply@example.com
 
 auth:
   # 管理员**引导**名单：逗号分隔的用户名。
