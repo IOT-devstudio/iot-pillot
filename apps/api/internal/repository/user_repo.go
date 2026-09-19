@@ -66,7 +66,10 @@ func (r *gormUserRepo) GetByID(ctx context.Context, id int) (*domain.User, error
 	err := r.db.WithContext(ctx).First(&user, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			// 必须返回 ErrUserNotFound 这个哨兵：调用方用 errors.Is 判断"没有这个用户"，
+			// 就地 errors.New 出来的是另一个值（消息一样也判不中），
+			// 于是"查不到"被当成真故障，注册对任何新邮箱都会 500。
+			return nil, ErrUserNotFound
 		}
 		return nil, err // 返回其他数据库级别的异常
 	}
@@ -107,7 +110,9 @@ func (r *gormUserRepo) GetByEmail(ctx context.Context, email string) (*domain.Us
 	err := r.db.WithContext(ctx).Where("detail_email = ?", email).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			// 同 GetByID：返回哨兵而不是就地新建错误，否则注册的
+			// "邮箱是否已被占用" 判断会走成 500。
+			return nil, ErrUserNotFound
 		}
 		return nil, err
 	}
