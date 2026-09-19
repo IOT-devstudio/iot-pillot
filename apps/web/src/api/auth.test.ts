@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { login, register, sendVerifyCode } from "./auth";
+import {
+  listAdminUsers,
+  login,
+  logout,
+  refreshAuthSession,
+  register,
+  sendVerifyCode,
+} from "./auth";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -132,6 +139,88 @@ describe("auth api", () => {
 
     await expect(sendVerifyCode("ada@example.com")).rejects.toThrow(
       "验证码发送失败",
+    );
+  });
+
+  it("refreshes the session through the backend refresh endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 0,
+          message: "success",
+          data: { access_token: "new-a", refresh_token: "new-r", user_id: -1 },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(refreshAuthSession("old-r")).resolves.toEqual({
+      access_token: "new-a",
+      refresh_token: "new-r",
+      user_id: -1,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/refresh",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ refresh_token: "old-r" }),
+      }),
+    );
+  });
+
+  it("logs out with both bearer and refresh tokens", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 0, message: "退出登录成功" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(logout("access-token", "refresh-token")).resolves.toBe(
+      "退出登录成功",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/logout",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ refresh_token: "refresh-token" }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer access-token",
+        },
+      }),
+    );
+  });
+
+  it("loads the paginated admin user list with the access token", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 0,
+          message: "success",
+          data: {
+            items: [
+              { user_id: 7, name: "Ada", created_at: "2026-09-17T10:00:00Z" },
+            ],
+            total: 1,
+            page: 2,
+            page_size: 20,
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listAdminUsers("access-token", 2, 20)).resolves.toMatchObject({
+      total: 1,
+      page: 2,
+      page_size: 20,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/admin/users?page=2&page_size=20",
+      expect.objectContaining({
+        method: "GET",
+        headers: { Authorization: "Bearer access-token" },
+      }),
     );
   });
 });
