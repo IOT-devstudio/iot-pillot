@@ -54,6 +54,10 @@ smtp:
   port: 587
   username: ""
   password: ""
+  # 发件人地址必须是合法邮箱（写 "someone" 这类显示名会让部分服务商直接拒收）
+  from: noreply@example.com
+  # 拨号超时（秒）。gomail 默认不设超时，SMTP 半死不活时发信请求会一直挂着。
+  timeout_seconds: 10
   from: noreply@example.com
 
 auth:

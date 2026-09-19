@@ -3,26 +3,45 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 	"gorm.io/gorm"
 )
 
 // UserRepo 用户持久化。
-//
-// 注意：gormUserRepo 上还有 UpdateRole / UpdateStatus 两个方法，它们**不在本接口里**，
-// 而且更新的是 domain.User 上并不存在的 role / status 列（直接调用会报列不存在）。
-// 保留是因为它们可能对应尚未落地的字段规划；在补上那两列之前不要使用。
 type UserRepo interface {
 	GetByID(ctx context.Context, id int) (*domain.User, error)
+	// GetByName 按用户名查用户。
+	// 用户名**不保证唯一**（唯一性改为落在邮箱上，见迁移 0005），
+	// 因此匹配到多行时返回 ErrAmbiguousUsername 而不是随便取一行 ——
+	// 取任意一行会让"谁能登进去"取决于数据库返回顺序。
 	GetByName(ctx context.Context, name string) (*domain.User, error)
 	// GetByEmail 按邮箱查用户（邮箱在 detail_email 列）。
-	// 邮件模块用：按邮箱直发时先看对方是不是已注册用户，是的话记录里带上 userID。
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	Update(ctx context.Context, user *domain.User) error
 	SelectUserByNameAndPassword(ctx context.Context, name string, password string) (*domain.User, error)
 	Save(ctx context.Context, user *domain.User) error
 	GetAll(ctx context.Context, page int, pageSize int) ([]*domain.User, int64, error)
+}
+
+// ErrAmbiguousUsername 同一个用户名对应多个账号。
+var ErrAmbiguousUsername = errors.New("用户名对应多个账号，请改用邮箱登录")
+
+// ErrUserNotFound 用户不存在。
+var ErrUserNotFound = errors.New("user not found")
+
+// IsDuplicateKey 判断是否为唯一约束冲突。
+//
+// 没有开 gorm 的 TranslateError，只能看驱动返回的文本：PostgreSQL 唯一约束冲突的
+// SQLSTATE 是 23505，驱动同时会带上 "duplicate key"。
+// 只认这两个特征，其他错误原样上抛，不吞掉真正的问题。
+func IsDuplicateKey(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "23505") || strings.Contains(message, "duplicate key")
 }
 
 // gormUserRepo 包含 GORM 的 DB 实例
@@ -54,16 +73,26 @@ func (r *gormUserRepo) GetByID(ctx context.Context, id int) (*domain.User, error
 	return &user, nil
 }
 
+// GetByName 按用户名查用户。
+//
+// 只取两行就能判断唯一性：0 行 = 不存在，1 行 = 命中，2 行 = 重名。
+// 重名时返回 ErrAmbiguousUsername，而不是像 First() 那样返回任意一行 ——
+// 用户名唯一约束已移除（唯一性改到邮箱上），重名是可能出现的正常状态。
 func (r *gormUserRepo) GetByName(ctx context.Context, name string) (*domain.User, error) {
-	var user domain.User
-	err := r.db.WithContext(ctx).Where("name = ?", name).First(&user).Error
+	var users []*domain.User
+	err := r.db.WithContext(ctx).Where("name = ?", name).Limit(2).Find(&users).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
-		}
 		return nil, err
 	}
-	return &user, nil
+
+	switch len(users) {
+	case 0:
+		return nil, ErrUserNotFound
+	case 1:
+		return users[0], nil
+	default:
+		return nil, ErrAmbiguousUsername
+	}
 }
 
 // GetByEmail 按邮箱查用户。
@@ -119,12 +148,4 @@ func (r *gormUserRepo) GetAll(ctx context.Context, page int, pageSize int) ([]*d
 		return nil, 0, err
 	}
 	return users, total, nil
-}
-
-func (r *gormUserRepo) UpdateRole(ctx context.Context, userID int, role string) error {
-	return r.db.WithContext(ctx).Model(&domain.User{}).Where("id = ?", userID).Update("role", role).Error
-}
-
-func (r *gormUserRepo) UpdateStatus(ctx context.Context, userID int, status int) error {
-	return r.db.WithContext(ctx).Model(&domain.User{}).Where("id = ?", userID).Update("status", status).Error
 }

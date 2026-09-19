@@ -74,6 +74,9 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+	// TimeoutSeconds SMTP 拨号超时（秒）。<=0 时由发送方回落到内置默认值。
+	// 单位是纯秒数，读取时只乘一次 time.Second（不要重蹈 conn_with_timeout 的覆辙）。
+	TimeoutSeconds int
 }
 
 type CacheConfig struct {
@@ -111,11 +114,12 @@ func Load() (*Config, error) {
 			Name:     viper.GetString("db.name"),
 		},
 		SMTP: &SMTPConfig{
-			Host:     viper.GetString("smtp.host"),
-			Port:     viper.GetInt("smtp.port"),
-			Username: viper.GetString("smtp.username"),
-			Password: viper.GetString("smtp.password"),
-			From:     viper.GetString("smtp.from"),
+			Host:           viper.GetString("smtp.host"),
+			Port:           viper.GetInt("smtp.port"),
+			Username:       viper.GetString("smtp.username"),
+			Password:       viper.GetString("smtp.password"),
+			From:           viper.GetString("smtp.from"),
+			TimeoutSeconds: viper.GetInt("smtp.timeout_seconds"),
 		},
 		REDIS: &RedisConfig{
 			Host:            viper.GetString("redis.host"),
@@ -267,6 +271,8 @@ func setDefaults() {
 	viper.SetDefault("db.password", "iot_pillot")
 	viper.SetDefault("db.name", "iot_pillot")
 	viper.SetDefault("smtp.port", 587)
+	// SMTP 拨号超时（秒）。没有超时的 SMTP 调用会永久挂住发信请求。
+	viper.SetDefault("smtp.timeout_seconds", 10)
 	viper.SetDefault("redis.host", "localhost")
 	viper.SetDefault("redis.port", 6379)
 	viper.SetDefault("redis.password", "")

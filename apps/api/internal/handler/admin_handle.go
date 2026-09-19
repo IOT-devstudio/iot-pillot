@@ -64,7 +64,7 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 
 	result, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize)
 	if err != nil {
-		response.FailServer(c, err.Error())
+		failInternal(c, err)
 		return
 	}
 
@@ -83,7 +83,7 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 func (h *AdminHandler) ListAdmins(c *gin.Context) {
 	result, err := h.adminService.ListAdmins(c.Request.Context())
 	if err != nil {
-		response.FailServer(c, err.Error())
+		failInternal(c, err)
 		return
 	}
 
@@ -145,7 +145,7 @@ func (h *AdminHandler) RevokeAdmin(c *gin.Context) {
 
 	result, err := h.adminService.RevokeAdmin(c.Request.Context(), userID)
 	if err != nil {
-		response.FailServer(c, err.Error())
+		failInternal(c, err)
 		return
 	}
 
