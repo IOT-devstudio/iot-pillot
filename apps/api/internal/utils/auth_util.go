@@ -84,7 +84,7 @@ func (tm *TokenManager) GenerateTokens(ctx context.Context, userID int, username
 	if err != nil {
 		return "", "", err
 	}
-	refreshToken, err = generateToken(userID, username, role, "refresh", tm.Expire, tm.Secret, uniqueCode)
+	refreshToken, err = generateToken(userID, username, role, "refresh", tm.Expire*720, tm.Secret, uniqueCode)
 	if err != nil {
 		return "", "", err
 	}
@@ -208,6 +208,16 @@ func (tm *TokenManager) RevokeSession(ctx context.Context, accessToken string, r
 func (tm *TokenManager) revokeByUserID(ctx context.Context, userID int) error {
 	delCmd := tm.redis.B().Del().Key(tm.uniqueKey(userID)).Build()
 	return tm.redis.Do(ctx, delCmd).Error()
+}
+
+// RevokeUserSessions 撤销某用户的**全部**会话（删除会话唯一码），其所有令牌立即失效。
+//
+// 用途：角色变更（提升/撤销管理员）后必须让旧令牌失效。
+// JWT 里的 role claim 是签发时写死的，旧令牌会一直声称"我是 member"（或反过来
+// 一直声称 admin），前端守卫据此判断就会与服务端不一致。
+// 强制重新登录后拿到的令牌才与 Redis 里的真实角色一致。
+func (tm *TokenManager) RevokeUserSessions(ctx context.Context, userID int) error {
+	return tm.revokeByUserID(ctx, userID)
 }
 
 // IsTokenInRedis 检查 token 是否有效（JWT 解析 + Redis 会话唯一码比对）。
