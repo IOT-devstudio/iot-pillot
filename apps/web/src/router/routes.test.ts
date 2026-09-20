@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/views/Home.vue", () => ({ default: { name: "HomeView" } }));
+vi.mock("@/modules/dashboard/views/DashboardView.vue", () => ({
+  default: { name: "DashboardView" },
+}));
 vi.mock("@/views/PlaceholderView.vue", () => ({
   default: { name: "PlaceholderView" },
 }));
@@ -17,9 +19,6 @@ vi.mock("@/modules/home/views/UserHomeView.vue", () => ({
 }));
 vi.mock("@/modules/about/views/AboutView.vue", () => ({
   default: { name: "AboutView" },
-}));
-vi.mock("@/modules/admin/views/AdminDashboardView.vue", () => ({
-  default: { name: "AdminDashboardView" },
 }));
 vi.mock("@/modules/recruitment/views/ProspectsView.vue", () => ({
   default: { name: "ProspectsView" },
@@ -50,27 +49,28 @@ describe("application routes", () => {
     expect(adminRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
   });
 
-  it("mounts the real admin dashboard separately from placeholder pages", () => {
+  it("mounts the admin dashboard separately from placeholder pages", () => {
     const dashboardRoutes = routes.filter((route) => route.path === "/dashboard");
 
     expect(dashboardRoutes).toHaveLength(1);
     expect(dashboardRoutes[0]?.component).toMatchObject({
-      name: "AdminDashboardView",
+      name: "DashboardView",
     });
+    // 管理台含后端健康状态与用户名单，必须是成员专属
     expect(dashboardRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
   });
 
-  it("keeps the fallback login page and the health page on their own paths", () => {
+  it("keeps the fallback login page public and retires the old home path", () => {
     const loginRoutes = routes.filter((route) => route.path === "/login");
     expect(loginRoutes).toHaveLength(1);
     expect(loginRoutes[0]?.component).toMatchObject({ name: "AuthView" });
     // 后备登录页必须公开：3D 渲染失败转投过来时，守卫不能把它再挡走
     expect(loginRoutes[0]?.meta?.allowRoles).toBeUndefined();
 
-    // 根路径让给开屏后，健康检查页必须还在，否则会丢掉这个入口
-    const homeRoutes = routes.filter((route) => route.path === "/home");
-    expect(homeRoutes).toHaveLength(1);
-    expect(homeRoutes[0]?.component).toMatchObject({ name: "HomeView" });
+    // 内容首页已并入管理台，旧路径必须重定向过去，否则收藏夹和旧链接会变成死链
+    const retiredHome = routes.filter((route) => route.path === "/home");
+    expect(retiredHome).toHaveLength(1);
+    expect(retiredHome[0]?.redirect).toBe("/dashboard");
   });
 
   it("guards the user-side pages for signed-in users", () => {

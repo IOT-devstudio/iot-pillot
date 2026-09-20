@@ -1,9 +1,22 @@
 <script setup lang="ts">
+/**
+ * 管理台 `/dashboard`（工作室成员的工作区）。
+ *
+ * 内容 = 原来的内容首页（健康检查 + 快捷入口卡片）+ 注册用户表：
+ *   components/AdminUserTable  注册用户名单（消费 /api/v1/admin/users）
+ *   本组件                      布局 + 接线，并持有后端健康状态这一个状态
+ *
+ * 原来的 /home 内容首页已并入这里，旧路径由 router/routes.ts 重定向过来。
+ * 页面令牌全部来自全局 styles/theme.css，这里不再自带一套颜色。
+ */
 import { computed, onMounted, ref } from "vue";
 
 import { fetchHealth } from "@/api/health";
 import AppHeader from "@/components/common/AppHeader.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
+import SignOutButton from "@/components/SignOutButton.vue";
+
+import AdminUserTable from "../components/AdminUserTable.vue";
 
 const health = ref<string>("检测中…");
 
@@ -32,7 +45,11 @@ const entries = [
     <AppHeader />
 
     <main class="page__body">
-      <PageHeader eyebrow="iot-pillot · 招新管理" title="控制台" />
+      <PageHeader eyebrow="iot-pillot · 招新管理" title="控制台">
+        <template #actions>
+          <SignOutButton />
+        </template>
+      </PageHeader>
 
       <section class="health" :class="healthy ? 'health--ok' : 'health--down'">
         <span class="health__dot" aria-hidden="true"></span>
@@ -48,6 +65,8 @@ const entries = [
           <span class="entry__arrow" aria-hidden="true">→</span>
         </router-link>
       </section>
+
+      <AdminUserTable />
     </main>
   </div>
 </template>
