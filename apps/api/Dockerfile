@@ -21,6 +21,8 @@ FROM golang:1.25-alpine AS builder
 # 本地构建时覆盖：--build-arg GOPROXY=https://goproxy.cn,direct
 ARG GOPROXY=https://proxy.golang.org,direct
 ENV GOPROXY=${GOPROXY}
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GO111MODULE=on
 
 WORKDIR /src
 
