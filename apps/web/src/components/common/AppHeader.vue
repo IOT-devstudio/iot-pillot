@@ -15,7 +15,9 @@ interface NavItem {
 }
 
 const nav: NavItem[] = [
-  { label: "控制台", to: "/" },
+  // 控制台 = 管理台 /dashboard（管理员登录落点）；根路径 / 是 3D 登录开屏，
+  // /home 是独立的内容首页，都不在这套导航里。
+  { label: "控制台", to: "/dashboard" },
   { label: "意向成员", to: "/recruitment/prospects", match: "/recruitment" },
   { label: "表单管理", to: "/forms" },
   { label: "邮件模板", to: "/templates" },
