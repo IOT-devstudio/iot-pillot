@@ -68,3 +68,5 @@ temp/
 
 # Local agent notes
 AGENTS.md
+# 本地视觉工具（截图/取色等）在仓库根留下的产物目录
+.dsh-vision-router/

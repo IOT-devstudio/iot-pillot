@@ -55,12 +55,17 @@ func NewAdminDirectory(store *AdminStore) AdminDirectory {
 func (s *AdminStore) IsAdmin(ctx context.Context, userID int) (bool, error) {
 	cmd := s.redis.B().Sismember().Key(adminSetKey).Member(strconv.Itoa(userID)).Build()
 
-	ok, err := s.redis.Do(ctx, cmd).ToBool()
+	// SISMEMBER 按协议返回**整数**（0/1），不是 RESP3 布尔。
+	// 原来用 ToBool() 读它，rueidis 会以
+	// "redis message type int64 is not a RESP3 bool" 失败 ——
+	// 而 roleFor 在注册收尾、登录、/me 里都会调到这里，于是所有需要登录的接口全部 500。
+	// 用 ToInt64 显式按协议取值，不依赖 ToBool/AsBool 的隐式转换。
+	member, err := s.redis.Do(ctx, cmd).ToInt64()
 	if err != nil {
 		return false, fmt.Errorf("读取管理员名单失败: %w", err)
 	}
 
-	return ok, nil
+	return member == 1, nil
 }
 
 // AddAdmin 把用户加入管理员名单（幂等）。

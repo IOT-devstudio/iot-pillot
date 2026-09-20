@@ -33,6 +33,7 @@ func NewMailHandler(mailService *service.MailUseCase) *MailHandler {
 // @Success 200 {object} response.Result{data=response.MailModelListResp} "成功"
 // @Failure 401 {object} response.Result "未认证"
 // @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
 // @Router /api/v1/admin/mail-templates [get]
 func (h *MailHandler) ListMailTemplates(c *gin.Context) {
 	result, err := h.mailService.ListTemplates(c.Request.Context())
@@ -52,6 +53,7 @@ func (h *MailHandler) ListMailTemplates(c *gin.Context) {
 // @Param request body request.MailTemplateReq true "模板内容"
 // @Success 200 {object} response.Result{data=response.MailModelResp} "成功"
 // @Failure 400 {object} response.Result "参数错误或模板名/类型重复"
+// @Security BearerAuth
 // @Router /api/v1/admin/mail-templates [post]
 func (h *MailHandler) CreateMailTemplate(c *gin.Context) {
 	var req request.MailTemplateReq
@@ -77,6 +79,7 @@ func (h *MailHandler) CreateMailTemplate(c *gin.Context) {
 // @Param request body request.MailTemplateReq true "模板内容"
 // @Success 200 {object} response.Result{data=response.MailModelResp} "成功"
 // @Failure 400 {object} response.Result "参数错误、模板不存在或名称重复"
+// @Security BearerAuth
 // @Router /api/v1/admin/mail-templates/{id} [put]
 func (h *MailHandler) UpdateMailTemplate(c *gin.Context) {
 	id, err := parsePositiveParam(c, "id")
@@ -107,6 +110,7 @@ func (h *MailHandler) UpdateMailTemplate(c *gin.Context) {
 // @Param id path int true "模板 ID"
 // @Success 200 {object} response.Result "成功"
 // @Failure 400 {object} response.Result "模板不存在"
+// @Security BearerAuth
 // @Router /api/v1/admin/mail-templates/{id} [delete]
 func (h *MailHandler) DeleteMailTemplate(c *gin.Context) {
 	id, err := parsePositiveParam(c, "id")
@@ -131,6 +135,7 @@ func (h *MailHandler) DeleteMailTemplate(c *gin.Context) {
 // @Param request body request.SendMailToUserReq true "发送参数"
 // @Success 200 {object} response.Result{data=response.MailSendResp} "成功"
 // @Failure 400 {object} response.Result "参数错误、模板不存在、缺少变量或用户没有邮箱"
+// @Security BearerAuth
 // @Router /api/v1/admin/mails/send [post]
 func (h *MailHandler) SendMailToUser(c *gin.Context) {
 	var req request.SendMailToUserReq
@@ -157,6 +162,7 @@ func (h *MailHandler) SendMailToUser(c *gin.Context) {
 // @Param request body request.SendMailToEmailReq true "发送参数"
 // @Success 200 {object} response.Result{data=response.MailSendResp} "成功"
 // @Failure 400 {object} response.Result "参数错误、模板不存在或缺少变量"
+// @Security BearerAuth
 // @Router /api/v1/admin/mails/send-by-email [post]
 func (h *MailHandler) SendMailToEmail(c *gin.Context) {
 	var req request.SendMailToEmailReq
@@ -183,6 +189,7 @@ func (h *MailHandler) SendMailToEmail(c *gin.Context) {
 // @Param request body request.SendMailBulkReq true "群发参数"
 // @Success 200 {object} response.Result{data=response.MailBulkSendResp} "成功（含逐条结果）"
 // @Failure 400 {object} response.Result "参数错误、模板不存在或收件人超过上限"
+// @Security BearerAuth
 // @Router /api/v1/admin/mails/send-bulk [post]
 func (h *MailHandler) SendMailBulk(c *gin.Context) {
 	var req request.SendMailBulkReq
@@ -208,6 +215,7 @@ func (h *MailHandler) SendMailBulk(c *gin.Context) {
 // @Param page query int false "页码，从 1 开始" default(1)
 // @Param page_size query int false "每页条数，最大 100" default(20)
 // @Success 200 {object} response.Result{data=response.MailRecordListResp} "成功"
+// @Security BearerAuth
 // @Router /api/v1/admin/mails [get]
 func (h *MailHandler) ListMails(c *gin.Context) {
 	page := parseBoundedInt(c.Query("page"), 1, 1, 100000)

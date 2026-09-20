@@ -11,11 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/IOT-devstudio/iot-pillot/apps/api/docs"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/middleware"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 type Router struct {
@@ -57,6 +60,34 @@ func NewRouter(
 	r.GET("/health", healthHandler.Health)
 	// 就绪探针：探活 DB 与 Redis，任一不可用返回 503
 	r.GET("/health/ready", healthHandler.Ready)
+
+	// 接口文档与在线调试页（Swagger UI），对应 FastAPI 的 /openapi.json + /docs：
+	//   GET /openapi.json  —— spec 本体，由 swag 从 handler 注解生成（docs/ 是生成物）
+	//   GET /docs/*any     —— Swagger UI，静态资源内嵌在二进制里，不依赖任何 CDN
+	//
+	// 默认 debug 开、release 关（config.DocsConfig）：文档会把整个接口面暴露出来，
+	// 生产环境不该默认开放。需要时用 docs.enabled / IOT_PILOT_DOCS_ENABLED 显式打开。
+	//
+	// spec 里刻意不写 host（见 cmd/main.go 的注解）：Swagger UI 用访问它的域名，
+	// 本地 localhost:8080 与线上域名都能直接 "Try it out"。
+	if cfg.DOCS != nil && cfg.DOCS.Enabled {
+		r.GET("/openapi.json", func(c *gin.Context) {
+			c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(docs.SwaggerInfo.ReadDoc()))
+		})
+
+		// UI 的静态资源由 swaggo/files 内嵌提供；只补一条：裸访问 /docs 或 /docs/
+		// （webdav 把 "/" 当目录）时把人送到 index.html，免得看到 404。
+		swaggerUI := ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.URL("/openapi.json"))
+		serveDocs := func(c *gin.Context) {
+			if p := c.Param("any"); p == "" || p == "/" {
+				c.Redirect(http.StatusFound, "/docs/index.html")
+				return
+			}
+			swaggerUI(c)
+		}
+		r.GET("/docs", serveDocs)
+		r.GET("/docs/*any", serveDocs)
+	}
 
 	// *utils.TokenManager 满足 middleware.TokenValidator，
 	// *utils.AdminStore 满足 middleware.AdminChecker —— 这里做一次接口转换，

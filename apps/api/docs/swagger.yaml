@@ -1,0 +1,938 @@
+basePath: /
+definitions:
+  request.AdminUserIDReq:
+    properties:
+      user_id:
+        minimum: 1
+        type: integer
+    required:
+    - user_id
+    type: object
+  request.LoginReq:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  request.MailRecipientReq:
+    properties:
+      to_user_id:
+        minimum: 1
+        type: integer
+      vars:
+        $ref: '#/definitions/request.MailVars'
+    required:
+    - to_user_id
+    type: object
+  request.MailTemplateReq:
+    properties:
+      mail_example:
+        maxLength: 5000
+        type: string
+      mail_model:
+        maxLength: 20000
+        minLength: 1
+        type: string
+      name:
+        maxLength: 50
+        minLength: 1
+        type: string
+      title:
+        maxLength: 200
+        minLength: 1
+        type: string
+      type:
+        maxLength: 30
+        minLength: 1
+        type: string
+    required:
+    - mail_model
+    - name
+    - title
+    - type
+    type: object
+  request.MailVars:
+    additionalProperties:
+      type: string
+    type: object
+  request.RefreshReq:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  request.RegisterReq:
+    properties:
+      code:
+        maxLength: 6
+        minLength: 6
+        type: string
+      email:
+        maxLength: 50
+        type: string
+      name:
+        maxLength: 20
+        minLength: 3
+        type: string
+      password:
+        maxLength: 20
+        minLength: 6
+        type: string
+    required:
+    - code
+    - email
+    - name
+    - password
+    type: object
+  request.SendMailBulkReq:
+    properties:
+      recipients:
+        items:
+          $ref: '#/definitions/request.MailRecipientReq'
+        minItems: 1
+        type: array
+      template_id:
+        minimum: 1
+        type: integer
+    required:
+    - recipients
+    - template_id
+    type: object
+  request.SendMailToEmailReq:
+    properties:
+      email:
+        maxLength: 50
+        type: string
+      template_id:
+        minimum: 1
+        type: integer
+      vars:
+        $ref: '#/definitions/request.MailVars'
+    required:
+    - email
+    - template_id
+    type: object
+  request.SendMailToUserReq:
+    properties:
+      template_id:
+        minimum: 1
+        type: integer
+      to_user_id:
+        minimum: 1
+        type: integer
+      vars:
+        $ref: '#/definitions/request.MailVars'
+    required:
+    - template_id
+    - to_user_id
+    type: object
+  request.VerifyCodeReq:
+    properties:
+      verifier:
+        maxLength: 50
+        minLength: 6
+        type: string
+      verifier_type:
+        enum:
+        - email
+        - phone
+        type: string
+    required:
+    - verifier
+    - verifier_type
+    type: object
+  response.AdminListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.AdminUserResp'
+        type: array
+      total:
+        type: integer
+    type: object
+  response.AdminMutationResp:
+    properties:
+      is_admin:
+        type: boolean
+      session_revoked:
+        type: boolean
+      user_id:
+        type: integer
+    type: object
+  response.AdminUserListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.AdminUserResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.AdminUserResp:
+    properties:
+      created_at:
+        type: string
+      is_admin:
+        description: IsAdmin 由 Redis 名单现算，方便管理端直接标注"当前是不是管理员"
+        type: boolean
+      name:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  response.LoginResp:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  response.MailBulkSendResp:
+    properties:
+      failed:
+        items:
+          $ref: '#/definitions/response.MailSendFailure'
+        type: array
+      sent:
+        items:
+          $ref: '#/definitions/response.MailSendResp'
+        type: array
+      total:
+        type: integer
+    type: object
+  response.MailModelListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.MailModelResp'
+        type: array
+      total:
+        type: integer
+    type: object
+  response.MailModelResp:
+    properties:
+      id:
+        type: integer
+      mail_example:
+        type: string
+      mail_model:
+        type: string
+      name:
+        type: string
+      title:
+        type: string
+      type:
+        type: string
+      variables:
+        description: Variables 模板里用到的变量名，管理端据此提示"这封模板需要哪些变量"
+        items:
+          type: string
+        type: array
+    type: object
+  response.MailRecordListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.MailRecordResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.MailRecordResp:
+    properties:
+      created_at:
+        type: string
+      from_user_id:
+        type: integer
+      id:
+        type: integer
+      title:
+        type: string
+      to_email:
+        type: string
+      to_user_id:
+        type: integer
+    type: object
+  response.MailSendFailure:
+    properties:
+      reason:
+        type: string
+      to_email:
+        type: string
+      to_user_id:
+        type: integer
+    type: object
+  response.MailSendResp:
+    properties:
+      title:
+        description: Title 是渲染之后的实际主题（不是模板原文），便于确认变量替换是否正确
+        type: string
+      to_email:
+        type: string
+      to_user_id:
+        type: integer
+    type: object
+  response.MeResp:
+    properties:
+      role:
+        type: string
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  response.RefreshResp:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+    type: object
+  response.Result:
+    properties:
+      code:
+        description: 业务码：0 成功，非 0 失败
+        type: integer
+      data:
+        description: 业务数据
+      message:
+        description: 提示信息
+        type: string
+    type: object
+info:
+  contact: {}
+  description: |-
+    IoT 全栈开发工作室的招新管理后台 API。
+    统一响应体是 {code, message, data}；除公开端点（注册/登录/发码/刷新/登出）外都需要 Authorization: Bearer <access_token>。
+  title: iot-pillot API
+  version: 0.1.0
+paths:
+  /api/v1/admin/admins:
+    get:
+      description: 列出当前具备管理权限的账号。名单真源在 Redis。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.AdminListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 管理员名单
+      tags:
+      - 管理端
+    post:
+      consumes:
+      - application/json
+      description: 把已注册用户加入管理员名单，并撤销其现有会话（旧令牌的 role 已过时，需重新登录）。
+      parameters:
+      - description: 目标用户
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.AdminUserIDReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.AdminMutationResp'
+              type: object
+        "400":
+          description: 参数错误或用户不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 提升为管理员
+      tags:
+      - 管理端
+  /api/v1/admin/admins/{user_id}:
+    delete:
+      description: 把用户移出管理员名单，并撤销其现有会话。服务端强制 403 读的就是这份名单，因此立即生效。
+      parameters:
+      - description: 目标用户 ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.AdminMutationResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 撤销管理员
+      tags:
+      - 管理端
+  /api/v1/admin/mail-templates:
+    get:
+      description: 列出全部邮件模板；每个模板附带它用到的变量名，便于管理端提示。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MailModelListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 邮件模板列表
+      tags:
+      - 管理端-邮件
+    post:
+      consumes:
+      - application/json
+      description: 主题与正文都支持 {{变量}} 占位符；括号不成对会被拒绝（那是会静默发出错信的错误）。
+      parameters:
+      - description: 模板内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.MailTemplateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MailModelResp'
+              type: object
+        "400":
+          description: 参数错误或模板名/类型重复
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 新建邮件模板
+      tags:
+      - 管理端-邮件
+  /api/v1/admin/mail-templates/{id}:
+    delete:
+      description: 只删模板，不动已发出的邮件记录——记录是审计凭据，不该因为模板被删就消失。
+      parameters:
+      - description: 模板 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 模板不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 删除邮件模板
+      tags:
+      - 管理端-邮件
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 模板 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 模板内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.MailTemplateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MailModelResp'
+              type: object
+        "400":
+          description: 参数错误、模板不存在或名称重复
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 更新邮件模板
+      tags:
+      - 管理端-邮件
+  /api/v1/admin/mails:
+    get:
+      description: 按发送时间倒序分页。只返回记录元信息，不返回正文（正文可能很长且含个人信息）。
+      parameters:
+      - default: 1
+        description: 页码，从 1 开始
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MailRecordListResp'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 发信记录
+      tags:
+      - 管理端-邮件
+  /api/v1/admin/mails/send:
+    post:
+      consumes:
+      - application/json
+      description: 变量不传也行：服务端会用收件人资料（姓名/邮箱/班级/方向/学号/轮次）预填，请求里的同键覆盖。
+      parameters:
+      - description: 发送参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.SendMailToUserReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MailSendResp'
+              type: object
+        "400":
+          description: 参数错误、模板不存在、缺少变量或用户没有邮箱
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 按 userID 发送邮件
+      tags:
+      - 管理端-邮件
+  /api/v1/admin/mails/send-bulk:
+    post:
+      consumes:
+      - application/json
+      description: 逐条独立投递，单个失败不影响其他收件人；响应里分别给出成功与失败清单。
+      parameters:
+      - description: 群发参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.SendMailBulkReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功（含逐条结果）
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MailBulkSendResp'
+              type: object
+        "400":
+          description: 参数错误、模板不存在或收件人超过上限
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 群发邮件（同一模板，逐个替换内容）
+      tags:
+      - 管理端-邮件
+  /api/v1/admin/mails/send-by-email:
+    post:
+      consumes:
+      - application/json
+      description: 用于发给还没注册的报名者；邮箱能对上已注册用户时会按用户记录。
+      parameters:
+      - description: 发送参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.SendMailToEmailReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MailSendResp'
+              type: object
+        "400":
+          description: 参数错误、模板不存在或缺少变量
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 按邮箱地址发送邮件
+      tags:
+      - 管理端-邮件
+  /api/v1/admin/users:
+    get:
+      description: 分页读取已注册用户，并标注其当前是否为管理员。响应不含密码哈希。
+      parameters:
+      - default: 1
+        description: 页码，从 1 开始
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.AdminUserListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 用户列表
+      tags:
+      - 管理端
+  /api/v1/login:
+    post:
+      consumes:
+      - application/json
+      description: 通过用户名**或邮箱** + 密码登录，返回双令牌（access_token + refresh_token）。
+      parameters:
+      - description: 登录请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.LoginReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功返回双令牌
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.LoginResp'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 用户名或密码错误（不区分二者）
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 用户登录
+      tags:
+      - 认证模块
+  /api/v1/logout:
+    post:
+      consumes:
+      - application/json
+      description: 退出登录接口（需要 access token 和 refresh token）
+      parameters:
+      - description: 退出登录请求参数（refresh_token）
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.RefreshReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 退出登录成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 用户退出登录接口
+      tags:
+      - 认证模块
+  /api/v1/me:
+    get:
+      description: 角色由服务端**现查 Redis 管理员名单**得到，而不是回显令牌里的快照，
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MeResp'
+              type: object
+        "401":
+          description: 未认证或令牌失效
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 获取当前登录用户
+      tags:
+      - 认证模块
+  /api/v1/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 使用 refresh token 获取新的一对令牌，旧令牌立即失效（单端登录）。不返回用户 ID。
+      parameters:
+      - description: 刷新令牌请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.RefreshReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功返回新的双令牌
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.RefreshResp'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: refresh token 无效或已失效
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 刷新令牌
+      tags:
+      - 认证模块
+  /api/v1/register:
+    post:
+      consumes:
+      - application/json
+      description: 注册新用户，返回双令牌。邮箱唯一；必须先通过 /send-verify-code 取得验证码。
+      parameters:
+      - description: 注册请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.RegisterReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功返回双令牌
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.LoginResp'
+              type: object
+        "400":
+          description: 参数错误、邮箱已注册或验证码错误
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 用户注册
+      tags:
+      - 认证模块
+  /api/v1/send-verify-code:
+    post:
+      consumes:
+      - application/json
+      description: 发送邮箱验证码，5 分钟内有效、只能使用一次、猜错 5 次即作废。
+      parameters:
+      - description: 验证目标
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.VerifyCodeReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 发送验证码成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/response.Result'
+        "429":
+          description: 请求过于频繁
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 发送验证码接口
+      tags:
+      - 认证模块
+  /health:
+    get:
+      description: 不检查任何外部依赖，供容器存活探针使用。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 服务存活
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 健康检查（存活）
+      tags:
+      - 系统
+  /health/ready:
+    get:
+      description: 探活 PostgreSQL 与 Redis；任一不可用返回 503。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 依赖均可用
+          schema:
+            $ref: '#/definitions/response.Result'
+        "503":
+          description: 依赖不可用
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 健康检查（就绪）
+      tags:
+      - 系统
+securityDefinitions:
+  BearerAuth:
+    description: 登录得到的 access_token。Swagger UI 的 Authorize 里只填 token 本身，前缀由 UI 补。
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -21,6 +21,7 @@ type Config struct {
 	JWT     *JWTConfig
 	CACHE   *CacheConfig
 	AUTH    *AuthConfig
+	DOCS    *DocsConfig
 }
 
 // AuthConfig 授权相关的配置。
@@ -84,6 +85,72 @@ type CacheConfig struct {
 	Expire  int
 }
 
+// Dump 返回脱敏后的配置摘要，用于启动时打印排查。
+// 密码类字段只显示长度和首尾字符，避免日志泄露。
+func (c *Config) Dump() string {
+	var b strings.Builder
+
+	writeLine := func(key, value string) {
+		b.WriteString(fmt.Sprintf("  %-32s = %s\n", key, value))
+	}
+
+	mask := func(s string) string {
+		if s == "" {
+			return "<empty>"
+		}
+		if len(s) <= 4 {
+			return "****"
+		}
+		return fmt.Sprintf("%s...%s (len=%d)", s[:2], s[len(s)-2:], len(s))
+	}
+
+	b.WriteString("===== 最终生效配置 =====\n")
+
+	b.WriteString("[service]\n")
+	writeLine("port", strconv.Itoa(c.SERVICE.Port))
+	writeLine("mode", c.SERVICE.Mode)
+
+	b.WriteString("[db]\n")
+	writeLine("host", c.DB.Host)
+	writeLine("port", strconv.Itoa(c.DB.Port))
+	writeLine("user", c.DB.Username)
+	writeLine("password", mask(c.DB.Password))
+	writeLine("name", c.DB.Name)
+
+	b.WriteString("[redis]\n")
+	writeLine("host", c.REDIS.Host)
+	writeLine("port", strconv.Itoa(c.REDIS.Port))
+	writeLine("password", mask(c.REDIS.Password))
+	writeLine("db", strconv.Itoa(c.REDIS.DB))
+	writeLine("pool_size", strconv.Itoa(c.REDIS.PoolSize))
+	writeLine("conn_with_timeout", c.REDIS.ConnWithTimeout.String())
+
+	b.WriteString("[jwt]\n")
+	writeLine("secret", mask(c.JWT.Secret))
+	writeLine("expire", strconv.Itoa(c.JWT.Expire))
+
+	b.WriteString("[smtp]\n")
+	writeLine("host", c.SMTP.Host)
+	writeLine("port", strconv.Itoa(c.SMTP.Port))
+	writeLine("username", c.SMTP.Username)
+	writeLine("password", mask(c.SMTP.Password))
+	writeLine("from", c.SMTP.From)
+	writeLine("timeout_seconds", strconv.Itoa(c.SMTP.TimeoutSeconds))
+
+	b.WriteString("[cors]\n")
+	writeLine("allowed_origins", strings.Join(c.CORS.AllowedOrigins, ", "))
+
+	b.WriteString("[auth]\n")
+	writeLine("admin_users", strings.Join(c.AUTH.AdminUsers, ", "))
+
+	b.WriteString("[docs]\n")
+	writeLine("enabled", strconv.FormatBool(c.DOCS.Enabled))
+
+	b.WriteString("========================\n")
+
+	return b.String()
+}
+
 func Load() (*Config, error) {
 	viper.SetEnvPrefix("IOT_PILOT")
 	viper.AutomaticEnv()
@@ -136,11 +203,19 @@ func Load() (*Config, error) {
 		AUTH: &AuthConfig{
 			AdminUsers: loadAdminUsers(),
 		},
+		DOCS: &DocsConfig{
+			Enabled: viper.GetBool("docs.enabled"),
+		},
 	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
+
+	// 用 Print 而不是 Printf：dump 是数据不是格式化串。当格式化串用时，
+	// 配置值里出现 % 就会被 fmt 当成动词（打印出 %!s(MISSING) 之类），
+	// 而且 go vet 会直接拦下（non-constant format string）。
+	fmt.Print(cfg.Dump())
 
 	return cfg, nil
 }
@@ -281,4 +356,9 @@ func setDefaults() {
 	viper.SetDefault("redis.conn_with_timeout", 5*time.Second)
 	viper.SetDefault("jwt.expire", 3600)
 	viper.SetDefault("auth.admin_users", "")
+
+	// 接口文档默认跟随运行模式：debug 开、release 关。
+	// 这里用 GetString 取 mode 是安全的 —— 上面刚设过它的默认值，
+	// 而 SetDefault 优先级最低，配置文件与环境变量仍会覆盖它。
+	viper.SetDefault("docs.enabled", viper.GetString("mode") != "release")
 }

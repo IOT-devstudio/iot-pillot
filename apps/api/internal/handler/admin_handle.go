@@ -57,6 +57,7 @@ func parseBoundedInt(raw string, fallback int, min int, max int) int {
 // @Success 200 {object} response.Result{data=response.AdminUserListResp} "成功"
 // @Failure 401 {object} response.Result "未认证"
 // @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
 // @Router /api/v1/admin/users [get]
 func (h *AdminHandler) ListUsers(c *gin.Context) {
 	page := parseBoundedInt(c.Query("page"), 1, 1, 100000)
@@ -79,6 +80,7 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 // @Success 200 {object} response.Result{data=response.AdminListResp} "成功"
 // @Failure 401 {object} response.Result "未认证"
 // @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
 // @Router /api/v1/admin/admins [get]
 func (h *AdminHandler) ListAdmins(c *gin.Context) {
 	result, err := h.adminService.ListAdmins(c.Request.Context())
@@ -101,6 +103,7 @@ func (h *AdminHandler) ListAdmins(c *gin.Context) {
 // @Failure 400 {object} response.Result "参数错误或用户不存在"
 // @Failure 401 {object} response.Result "未认证"
 // @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
 // @Router /api/v1/admin/admins [post]
 func (h *AdminHandler) GrantAdmin(c *gin.Context) {
 	var req request.AdminUserIDReq
@@ -128,6 +131,7 @@ func (h *AdminHandler) GrantAdmin(c *gin.Context) {
 // @Failure 400 {object} response.Result "参数错误"
 // @Failure 401 {object} response.Result "未认证"
 // @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
 // @Router /api/v1/admin/admins/{user_id} [delete]
 func (h *AdminHandler) RevokeAdmin(c *gin.Context) {
 	userID, err := strconv.Atoi(c.Param("user_id"))
