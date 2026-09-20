@@ -70,3 +70,10 @@ auth:
   # 留空 = 本次启动不补种任何管理员（已有 Redis 里的管理员不受影响）。
   # 若 Redis 为空且这里是空，系统里就没有任何管理员，管理端对所有账号返回 403。
   admin_users: ""
+
+# 接口文档与在线调试页（/openapi.json + /docs）。
+# 默认**跟随 mode**：debug 开、release 关 —— 文档会暴露整个接口面。
+# 需要单独控制时才写这里，或用 IOT_PILOT_DOCS_ENABLED 覆盖。
+docs:
+  enabled: true
+

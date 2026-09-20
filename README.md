@@ -87,6 +87,24 @@ cd apps/web && pnpm dev             # 监听 :5173，/api 代理到 :8080
 #    后端健康检查地址为 http://localhost:8080/health，就绪探针为 /health/ready
 ```
 
+### 接口文档与在线调试（Swagger UI）
+
+后端起来之后：
+
+- `http://localhost:8080/docs` —— Swagger UI，与 FastAPI 的 `/docs` 是同一套界面。
+  右上角 **Authorize** 填登录拿到的 access_token，就能在页面上直接 "Try it out"。
+- `http://localhost:8080/openapi.json` —— spec 本体。
+
+默认**跟随运行模式**：`mode: debug` 开、`release` 关（文档会把整个接口面暴露出来）。
+要单独控制就设 `docs.enabled`（或环境变量 `IOT_PILOT_DOCS_ENABLED`）。
+
+spec 由 handler 上的 swaggo 注解生成，改完接口重新生成（生成物随源码入库，镜像与 CI
+只跑 `go build`，不装 swag CLI）：
+
+```bash
+cd apps/api && go generate ./cmd
+```
+
 ### 一键起全栈（可选，不调代码时用）
 
 ```bash

@@ -18,7 +18,9 @@ node_modules
 .gitignore
 .gitattributes
 .github
-docs
+# 锚定到仓库根：不锚定的 `docs` 会连 apps/api/docs（swag 生成的 OpenAPI 包）一起排掉，
+# 而那个包被 handler 导入，排掉后镜像构建会以找不到包失败。
+/docs
 *.md
 .claude
 

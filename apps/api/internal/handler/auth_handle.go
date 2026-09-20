@@ -201,6 +201,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} response.Result{data=response.MeResp} "成功"
 // @Failure 401 {object} response.Result "未认证或令牌失效"
+// @Security BearerAuth
 // @Router /api/v1/me [get]
 func (h *AuthHandler) Me(c *gin.Context) {
 	userID, username, _, ok := middleware.CurrentUser(c)
