@@ -37,3 +37,8 @@ func FailUnauthorized(c *gin.Context, msg string) {
 func FailServer(c *gin.Context, msg string) {
 	Fail(c, http.StatusInternalServerError, CodeServerError, msg)
 }
+
+// FailTooManyRequests 请求过于频繁（HTTP 429）
+func FailTooManyRequests(c *gin.Context, msg string) {
+	Fail(c, http.StatusTooManyRequests, CodeTooManyRequests, msg)
+}

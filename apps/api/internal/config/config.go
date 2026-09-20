@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,16 +21,20 @@ type Config struct {
 	JWT     *JWTConfig
 	CACHE   *CacheConfig
 	AUTH    *AuthConfig
+	DOCS    *DocsConfig
 }
 
-// AuthConfig 授权相关的部署级配置。
+// AuthConfig 授权相关的配置。
 //
-// 角色**不落库**：role 只是「谁能进管理端」这一授权事实，属于部署配置而不是
-// 用户数据，放配置里既能审计（改配置要走发布流程）又不需要 schema 迁移。
-// 等 M7 要做「用户列表里运行时改角色」时，再给 User 加 role 列并配迁移。
+// 这里**只有引导名单**：管理员名单的真源在 Redis（SET auth:admins，存 userID），
+// 配置里的用户名只在启动时用来把账号补种进 Redis（见 service.AdminUseCase.SeedAdmins）。
+//
+// 曾经的 AuthConfig.IsAdmin 已经被删除：它会成为"谁是管理员"的第二个判定入口，
+// 与 Redis 名单不一致时就会出现"配置说是、Redis 说不是"的分裂状态。
+// 判定只能有一个真源。
 type AuthConfig struct {
-	// AdminUsers 具备 admin 角色的用户名白名单。
-	// 为空表示系统里没有管理员，管理端路由对所有人都是 403。
+	// AdminUsers 启动引导用的用户名列表。
+	// 为空表示本次启动不补种任何管理员（Redis 里已有的管理员不受影响）。
 	AdminUsers []string
 }
 
@@ -70,11 +75,80 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+	// TimeoutSeconds SMTP 拨号超时（秒）。<=0 时由发送方回落到内置默认值。
+	// 单位是纯秒数，读取时只乘一次 time.Second（不要重蹈 conn_with_timeout 的覆辙）。
+	TimeoutSeconds int
 }
 
 type CacheConfig struct {
 	BaseKey string
 	Expire  int
+}
+
+// Dump 返回脱敏后的配置摘要，用于启动时打印排查。
+// 密码类字段只显示长度和首尾字符，避免日志泄露。
+func (c *Config) Dump() string {
+	var b strings.Builder
+
+	writeLine := func(key, value string) {
+		b.WriteString(fmt.Sprintf("  %-32s = %s\n", key, value))
+	}
+
+	mask := func(s string) string {
+		if s == "" {
+			return "<empty>"
+		}
+		if len(s) <= 4 {
+			return "****"
+		}
+		return fmt.Sprintf("%s...%s (len=%d)", s[:2], s[len(s)-2:], len(s))
+	}
+
+	b.WriteString("===== 最终生效配置 =====\n")
+
+	b.WriteString("[service]\n")
+	writeLine("port", strconv.Itoa(c.SERVICE.Port))
+	writeLine("mode", c.SERVICE.Mode)
+
+	b.WriteString("[db]\n")
+	writeLine("host", c.DB.Host)
+	writeLine("port", strconv.Itoa(c.DB.Port))
+	writeLine("user", c.DB.Username)
+	writeLine("password", mask(c.DB.Password))
+	writeLine("name", c.DB.Name)
+
+	b.WriteString("[redis]\n")
+	writeLine("host", c.REDIS.Host)
+	writeLine("port", strconv.Itoa(c.REDIS.Port))
+	writeLine("password", mask(c.REDIS.Password))
+	writeLine("db", strconv.Itoa(c.REDIS.DB))
+	writeLine("pool_size", strconv.Itoa(c.REDIS.PoolSize))
+	writeLine("conn_with_timeout", c.REDIS.ConnWithTimeout.String())
+
+	b.WriteString("[jwt]\n")
+	writeLine("secret", mask(c.JWT.Secret))
+	writeLine("expire", strconv.Itoa(c.JWT.Expire))
+
+	b.WriteString("[smtp]\n")
+	writeLine("host", c.SMTP.Host)
+	writeLine("port", strconv.Itoa(c.SMTP.Port))
+	writeLine("username", c.SMTP.Username)
+	writeLine("password", mask(c.SMTP.Password))
+	writeLine("from", c.SMTP.From)
+	writeLine("timeout_seconds", strconv.Itoa(c.SMTP.TimeoutSeconds))
+
+	b.WriteString("[cors]\n")
+	writeLine("allowed_origins", strings.Join(c.CORS.AllowedOrigins, ", "))
+
+	b.WriteString("[auth]\n")
+	writeLine("admin_users", strings.Join(c.AUTH.AdminUsers, ", "))
+
+	b.WriteString("[docs]\n")
+	writeLine("enabled", strconv.FormatBool(c.DOCS.Enabled))
+
+	b.WriteString("========================\n")
+
+	return b.String()
 }
 
 func Load() (*Config, error) {
@@ -107,11 +181,12 @@ func Load() (*Config, error) {
 			Name:     viper.GetString("db.name"),
 		},
 		SMTP: &SMTPConfig{
-			Host:     viper.GetString("smtp.host"),
-			Port:     viper.GetInt("smtp.port"),
-			Username: viper.GetString("smtp.username"),
-			Password: viper.GetString("smtp.password"),
-			From:     viper.GetString("smtp.from"),
+			Host:           viper.GetString("smtp.host"),
+			Port:           viper.GetInt("smtp.port"),
+			Username:       viper.GetString("smtp.username"),
+			Password:       viper.GetString("smtp.password"),
+			From:           viper.GetString("smtp.from"),
+			TimeoutSeconds: viper.GetInt("smtp.timeout_seconds"),
 		},
 		REDIS: &RedisConfig{
 			Host:            viper.GetString("redis.host"),
@@ -119,7 +194,7 @@ func Load() (*Config, error) {
 			Password:        viper.GetString("redis.password"),
 			DB:              viper.GetInt("redis.db"),
 			PoolSize:        viper.GetInt("redis.pool_size"),
-			ConnWithTimeout: viper.GetDuration("redis.conn_with_timeout") * time.Second,
+			ConnWithTimeout: loadSeconds("redis.conn_with_timeout", 5*time.Second),
 		},
 		JWT: &JWTConfig{
 			Secret: viper.GetString("jwt.secret"),
@@ -128,21 +203,32 @@ func Load() (*Config, error) {
 		AUTH: &AuthConfig{
 			AdminUsers: loadAdminUsers(),
 		},
+		DOCS: &DocsConfig{
+			Enabled: viper.GetBool("docs.enabled"),
+		},
 	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
 
+	// 用 Print 而不是 Printf：dump 是数据不是格式化串。当格式化串用时，
+	// 配置值里出现 % 就会被 fmt 当成动词（打印出 %!s(MISSING) 之类），
+	// 而且 go vet 会直接拦下（non-constant format string）。
+	fmt.Print(cfg.Dump())
+
 	return cfg, nil
 }
 
-// loadAdminUsers 读取管理员用户名白名单。
+// loadAdminUsers 读取管理员引导名单（用户名或 userID，见 AdminUseCase.SeedAdmins）。
 //
 // 刻意不用 viper.GetStringSlice：它内部走 cast.ToStringSlice，对字符串类型用的是
 // strings.Fields（**按空白切分**）。于是 IOT_PILOT_AUTH_ADMIN_USERS=drayee,alice
 // 会得到 ["drayee,alice"] 这一个元素 —— 名单静默失效、谁都不是管理员，且不报错。
-// 所以这里按值的实际类型分派：字符串按逗号切，配置文件里的 YAML 列表直接用。
+// 所以这里按值的实际类型分派。
+//
+// 数字类型也要收：YAML 里写 admin_users: 1（不带引号）viper 返回的就是 int，
+// 若落到 default 分支会被静默丢掉，表现同样是"配了却没生效"。
 func loadAdminUsers() []string {
 	switch raw := viper.Get("auth.admin_users").(type) {
 	case []string:
@@ -150,13 +236,26 @@ func loadAdminUsers() []string {
 	case []any:
 		names := make([]string, 0, len(raw))
 		for _, item := range raw {
-			if name, ok := item.(string); ok {
-				names = append(names, name)
+			switch value := item.(type) {
+			case string:
+				names = append(names, value)
+			case int:
+				names = append(names, strconv.Itoa(value))
+			case int64:
+				names = append(names, strconv.FormatInt(value, 10))
+			case float64:
+				names = append(names, strconv.FormatInt(int64(value), 10))
 			}
 		}
 		return normalizeNames(names)
 	case string:
 		return normalizeNames(strings.Split(raw, ","))
+	case int:
+		return normalizeNames([]string{strconv.Itoa(raw)})
+	case int64:
+		return normalizeNames([]string{strconv.FormatInt(raw, 10)})
+	case float64:
+		return normalizeNames([]string{strconv.FormatInt(int64(raw), 10)})
 	default:
 		return nil
 	}
@@ -182,17 +281,44 @@ func normalizeNames(names []string) []string {
 	return result
 }
 
-// IsAdmin 判断用户名是否在管理员白名单中。
-func (a *AuthConfig) IsAdmin(username string) bool {
-	if a == nil {
-		return false
-	}
-	for _, name := range a.AdminUsers {
-		if name == username {
-			return true
+// loadSeconds 读取以「秒」为单位的时长配置。
+//
+// 同一个键要同时接受三种来源，否则会静默失效：
+//   - 配置文件/环境变量里的纯数字 5   → 5 秒（configs/config.example.yaml 的写法）
+//   - 时长字符串 "5s"                → 5 秒
+//   - SetDefault 传进来的 time.Duration → 原样返回
+//
+// 历史坑（已由 TestLoad_RedisConnWithTimeout* 锁住）：原来是
+// `viper.GetDuration(key) * time.Second`。SetDefault 传的是 5*time.Second（= 5e9 纳秒），
+// GetDuration 又把它当纳秒原样返回 5e9，再乘一次 time.Second 就成了 5e18 纳秒
+// ≈ 158 年 —— Redis 写超时形同不存在，而且不会报任何错。
+func loadSeconds(key string, fallback time.Duration) time.Duration {
+	switch raw := viper.Get(key).(type) {
+	case time.Duration:
+		// SetDefault 存进来的就是 Duration，直接用，不要再乘
+		return raw
+	case int:
+		return time.Duration(raw) * time.Second
+	case int64:
+		return time.Duration(raw) * time.Second
+	case float64:
+		return time.Duration(raw * float64(time.Second))
+	case string:
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return fallback
+		}
+		// 先按 "5s" / "1m30s" 这类时长字符串解析
+		if parsed, err := time.ParseDuration(trimmed); err == nil {
+			return parsed
+		}
+		// 再按纯数字秒解析（"5"）
+		if seconds, err := strconv.Atoi(trimmed); err == nil {
+			return time.Duration(seconds) * time.Second
 		}
 	}
-	return false
+
+	return fallback
 }
 
 // validate 校验没有安全默认值的配置项。
@@ -220,18 +346,19 @@ func setDefaults() {
 	viper.SetDefault("db.password", "iot_pillot")
 	viper.SetDefault("db.name", "iot_pillot")
 	viper.SetDefault("smtp.port", 587)
+	// SMTP 拨号超时（秒）。没有超时的 SMTP 调用会永久挂住发信请求。
+	viper.SetDefault("smtp.timeout_seconds", 10)
 	viper.SetDefault("redis.host", "localhost")
 	viper.SetDefault("redis.port", 6379)
 	viper.SetDefault("redis.password", "")
 	viper.SetDefault("redis.db", 0)
 	viper.SetDefault("redis.pool_size", 100)
 	viper.SetDefault("redis.conn_with_timeout", 5*time.Second)
-	// jwt.expire 单位是秒（auth_util.go: time.Duration(expireSeconds)*time.Second）。
-	// 没有默认值时为 0，会让 exp = time.Now()，令牌签发即过期、认证完全不可用。
 	viper.SetDefault("jwt.expire", 3600)
-	// jwt.secret 故意不设默认值，改由 Config.validate() 强制要求。
-	// 密钥没有"安全的默认值"可言。
-	// 管理员白名单默认为空：默认没有任何管理员是安全的（要显式配置才能开管理端），
-	// 反过来"默认有管理员"会让每个环境都带一个已知的提权入口。
 	viper.SetDefault("auth.admin_users", "")
+
+	// 接口文档默认跟随运行模式：debug 开、release 关。
+	// 这里用 GetString 取 mode 是安全的 —— 上面刚设过它的默认值，
+	// 而 SetDefault 优先级最低，配置文件与环境变量仍会覆盖它。
+	viper.SetDefault("docs.enabled", viper.GetString("mode") != "release")
 }

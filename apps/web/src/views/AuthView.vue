@@ -1,17 +1,46 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
-import { useRouter } from "vue-router";
-import { AuthRequestError, login, register } from "@/api/auth";
-import type { LoginForm, RegisterForm } from "@/auth/form";
+import { computed, onUnmounted, reactive, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { AuthRequestError, login, register, sendVerifyCode } from "@/api/auth";
+import {
+  type LoginForm,
+  type RegisterForm,
+  validateRegisterForm,
+} from "@/auth/form";
 import { saveAuthSession } from "@/auth/session";
 import { submitAuth, type AuthMode } from "@/auth/submit";
+import { CONFIG } from "@/modules/opener/config";
 
 const router = useRouter();
+const route = useRoute();
+
+/**
+ * 从 3D 开屏跳过来时带的标记。
+ *
+ * 3D 渲染失败会把用户转投到这个后备页（见 modules/opener/views/StudioOpener.vue），
+ * 但转投本身是静默的——用户只看到「3D 闪一下就没了」。所以由 3D 侧带上
+ * ?fallback=webgl，这里读出来解释原因，并给一个回开屏的出口。
+ */
+const showCompatNotice = computed(() => route.query.fallback === "webgl");
+
+/**
+ * 守卫挡下访客时会带上 ?redirect=<原路径>，登录成功后跳回去。
+ * 取值交给 submitAuth 校验（只接受站内绝对路径），这里不做判断。
+ */
+const redirect = computed(() => {
+  const raw = route.query.redirect;
+  return typeof raw === "string" ? raw : undefined;
+});
 
 const mode = ref<AuthMode>("login");
 const loading = ref(false);
+const sendingCode = ref(false);
+const codeCooldown = ref(0);
+const verifyNotice = ref("");
 const errors = ref<Record<string, string>>({});
 const submitError = ref("");
+
+let cooldownTimer: ReturnType<typeof setInterval> | undefined;
 
 const loginForm = reactive<LoginForm>({
   username: "",
@@ -34,21 +63,73 @@ function setMode(nextMode: AuthMode): void {
   mode.value = nextMode;
   errors.value = {};
   submitError.value = "";
+  verifyNotice.value = "";
+}
+
+const codeButtonLabel = computed(() => {
+  if (codeCooldown.value > 0) {
+    return `${codeCooldown.value}s 后重发`;
+  }
+  return sendingCode.value ? "发送中…" : "获取验证码";
+});
+
+async function sendCode(): Promise<void> {
+  if (sendingCode.value || codeCooldown.value > 0 || loading.value) {
+    return;
+  }
+
+  submitError.value = "";
+  verifyNotice.value = "";
+  const emailError = validateRegisterForm(registerForm).email;
+  if (emailError) {
+    errors.value = { ...errors.value, email: emailError };
+    return;
+  }
+  const nextErrors = { ...errors.value };
+  delete nextErrors.email;
+  errors.value = nextErrors;
+
+  sendingCode.value = true;
+  try {
+    await sendVerifyCode(registerForm.email.trim());
+    verifyNotice.value = "验证码已发送，请到邮箱查收";
+    codeCooldown.value = CONFIG.verifyCodeCooldownSeconds;
+    cooldownTimer = setInterval(() => {
+      codeCooldown.value -= 1;
+      if (codeCooldown.value <= 0 && cooldownTimer !== undefined) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = undefined;
+      }
+    }, 1000);
+  } catch (error: unknown) {
+    submitError.value =
+      error instanceof AuthRequestError
+        ? error.message
+        : "服务暂时不可用，请稍后重试";
+  } finally {
+    sendingCode.value = false;
+  }
 }
 
 async function handleSubmit(): Promise<void> {
   errors.value = {};
   submitError.value = "";
+  verifyNotice.value = "";
   loading.value = true;
 
   try {
     const form = mode.value === "login" ? loginForm : registerForm;
-    const result = await submitAuth(mode.value, form, {
-      login,
-      register,
-      saveSession: saveAuthSession,
-      navigate: (path) => router.push(path),
-    });
+    const result = await submitAuth(
+      mode.value,
+      form,
+      {
+        login,
+        register,
+        saveSession: saveAuthSession,
+        navigate: (path) => router.push(path),
+      },
+      redirect.value,
+    );
 
     if (!result.ok) {
       errors.value = result.errors;
@@ -62,6 +143,13 @@ async function handleSubmit(): Promise<void> {
     loading.value = false;
   }
 }
+
+onUnmounted(() => {
+  if (cooldownTimer !== undefined) {
+    clearInterval(cooldownTimer);
+    cooldownTimer = undefined;
+  }
+});
 </script>
 
 <template>
@@ -139,6 +227,22 @@ async function handleSubmit(): Promise<void> {
           <span>招新入口</span>
           <span>01 / 02</span>
         </div>
+
+        <!--
+          3D 渲染失败转投过来的说明。用 role="status" 而不是 alert：
+          这是「告知」不是「出错」，不该抢读屏器的紧急通道。
+
+          刻意不放「返回开屏」链接：WebGL 不可用是环境特征而非偶发故障，
+          点回去会立刻被再次转投，形成死循环。与其给一个必然失败的按钮，
+          不如直说这个浏览器看不了开屏——想再试的话刷新页面即可。
+        -->
+        <p v-if="showCompatNotice" class="compat-notice" role="status">
+          <span class="compat-notice__mark" aria-hidden="true">※</span>
+          <span>
+            当前浏览器未能启用 WebGL，开屏动画无法显示，已切换到兼容登录页。
+            下面的表单功能完全可用。
+          </span>
+        </p>
 
         <header class="form-heading">
           <p>{{ mode === "login" ? "欢迎回来" : "建立成员档案" }}</p>
@@ -339,12 +443,20 @@ async function handleSubmit(): Promise<void> {
                   :aria-invalid="Boolean(errors.code)"
                   :aria-describedby="errors.code ? 'code-error code-status' : 'code-status'"
                 />
-                <button id="code-status" type="button" disabled>
-                  获取验证码 · 暂未开放
+                <button
+                  id="code-status"
+                  type="button"
+                  :disabled="sendingCode || codeCooldown > 0 || loading"
+                  @click="sendCode"
+                >
+                  {{ codeButtonLabel }}
                 </button>
               </div>
               <p v-if="errors.code" id="code-error" class="field-error" aria-live="polite">
                 {{ errors.code }}
+              </p>
+              <p v-if="verifyNotice" class="code-notice" role="status">
+                {{ verifyNotice }}
               </p>
             </div>
           </template>
@@ -372,7 +484,7 @@ async function handleSubmit(): Promise<void> {
           {{
             mode === "login"
               ? "登录即代表你同意遵守工作室协作规范。"
-              : "验证码服务暂未开放，注册资料会在后续招新流程中使用。"
+              : "注册需要邮箱验证码，请先点击「获取验证码」。"
           }}
         </p>
       </div>
@@ -810,6 +922,27 @@ input {
   line-height: 1.4;
 }
 
+/* 3D 渲染失败时的说明条。用蓝色系而非红色：这是「换了个方式」不是「出错了」。
+   尺寸收紧到刚好不把表单挤出滚动条——右栏本就独立滚动，但为一行提示
+   冒出一条滚动条会显得像故障。 */
+.compat-notice {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--blue) 22%, transparent);
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.compat-notice__mark {
+  flex: none;
+  color: var(--blue);
+}
+
 .field-error::before {
   margin-right: 6px;
   content: "↳";
@@ -830,6 +963,30 @@ input {
   background: #eeeae0;
   font-size: 12px;
   cursor: not-allowed;
+}
+
+.code-field button:not(:disabled) {
+  color: var(--blue);
+  border-style: solid;
+  border-color: var(--blue);
+  background: rgb(30 101 159 / 7%);
+  cursor: pointer;
+}
+
+.code-field button:not(:disabled):hover {
+  background: rgb(30 101 159 / 14%);
+}
+
+.code-field button:focus-visible {
+  outline: 3px solid rgb(30 101 159 / 28%);
+  outline-offset: 3px;
+}
+
+.code-notice {
+  margin: 7px 0 0;
+  color: #2e8b57;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .submit-error {

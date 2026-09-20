@@ -42,6 +42,20 @@ logs/
 .env.*
 !.env.example
 
+# 本地真实配置（含数据库 / SMTP 凭据，绝不入库）
+# config.example.yaml 是模板，必须保持被追踪
+apps/api/config.yaml
+apps/api/config.yml
+apps/api/configs/*.yaml
+!apps/api/configs/config.example.yaml
+
+# 测试文件：只在本地跑，不进版本库
+# 注意：文件仍然留在工作区，go test / vitest 照常能跑；
+# 这里只是让它们不被 git add 带走（含 git add . 的批量操作）。
+*_test.go
+*.test.ts
+*.spec.ts
+
 # Build artifacts / caches
 coverage/
 .cache/
@@ -54,3 +68,5 @@ temp/
 
 # Local agent notes
 AGENTS.md
+# 本地视觉工具（截图/取色等）在仓库根留下的产物目录
+.dsh-vision-router/

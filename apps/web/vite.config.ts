@@ -20,12 +20,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: "http://113.44.193.72:8080",
         changeOrigin: true,
       },
-      // 后端健康检查在根级 /health（不在 /api/ 下），需单独反代。
       "/health": {
-        target: "http://localhost:8080",
+        target: "http://113.44.193.72:8080",
         changeOrigin: true,
       },
     },

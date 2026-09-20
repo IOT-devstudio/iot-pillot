@@ -8,7 +8,7 @@
  *   codegen.ts  导出可粘贴的 BUILDINGS 与相机 CONFIG 片段
  *   本组件只负责把三者接起来，以及工具栏/校验提示/代码预览
  *
- * 准入由路由 meta.requiresAdmin + router/guards.ts 负责，
+ * 准入由路由 meta.allowRoles + router/guards.ts 负责，
  * 真正的强制在服务端 RequireRole 中间件。这里不做任何权限判断。
  */
 import { computed, ref } from "vue";

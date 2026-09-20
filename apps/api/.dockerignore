@@ -1,0 +1,17 @@
+# 只在 context = apps/api 时生效（独立 API 镜像：docker build -f apps/api/Dockerfile apps/api）。
+# 根 context 的构建读的是仓库根的 .dockerignore。
+#
+# Dockerfile 里有 `COPY . .`，所以这个文件是"本地凭据不进构建层"的唯一防线：
+# config.yaml / config.yml 被 .gitignore 保护，但仍可能躺在开发者的工作区里。
+config.yaml
+config.yml
+configs/*.yaml
+!configs/config.example.yaml
+
+# 构建与测试副产物
+api
+bin
+*.test
+*.out
+coverage.out
+coverage.html

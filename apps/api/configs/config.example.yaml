@@ -1,0 +1,79 @@
+# iot-pillot API 配置模板
+#
+# 用法：
+#   1. 复制成 apps/api/config.yaml（该文件名已被 .gitignore 忽略，不会进版本库）
+#   2. 填入真实凭据
+#   3. 启动：cd apps/api && go run ./cmd
+#
+# 加载顺序（viper）：环境变量 IOT_PILOT_* > 本文件 > 代码里的默认值。
+# 环境变量的映射规则是把层级键的点号换成下划线并加大写前缀，例如
+#   db.host        → IOT_PILOT_DB_HOST
+#   jwt.secret     → IOT_PILOT_JWT_SECRET
+#
+# 字段定义见 internal/config/config.go。
+
+# HTTP 监听端口
+port: 8080
+
+# debug | release | test（release 会关掉 gin 的调试输出）
+mode: debug
+
+cors:
+  # 允许跨域的前端地址；本地开发是 Vite 的 5173
+  allowed_origins:
+    - http://localhost:5173
+
+db:
+  host: localhost
+  port: 5432
+  # 注意 load() 读的是 db.user（不是 db.username）——setDefaults 也用 db.user，
+  # 两处必须一致，否则用户名会静默变成空串、pgx 回落到 OS 用户。
+  user: iot_pillot
+  password: ""
+  name: iot_pillot
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 100
+  # 单位是**秒的纯数字**：加载时会做 GetDuration(...) * time.Second。
+  # 千万别写成 "5s"，那会被解析成 5e9 纳秒再乘一秒，等于永远不超时。
+  conn_with_timeout: 5
+
+jwt:
+  # 必填，留空会拒绝启动（HS256 用空密钥签名等于谁都能伪造令牌）。
+  # 生成：openssl rand -base64 48
+  secret: ""
+  # 令牌有效期（秒）；access 与 refresh 目前共用此值
+  expire: 3600
+
+smtp:
+  host: ""
+  port: 587
+  username: ""
+  password: ""
+  # 发件人地址必须是合法邮箱（写 "someone" 这类显示名会让部分服务商直接拒收）
+  from: noreply@example.com
+  # 拨号超时（秒）。gomail 默认不设超时，SMTP 半死不活时发信请求会一直挂着。
+  timeout_seconds: 10
+  from: noreply@example.com
+
+auth:
+  # 管理员**引导**名单：逗号分隔的用户名。
+  #
+  # 角色真源在 Redis（SET auth:admins，存 userID）：
+  #   启动时把这里列出的用户名查库解析成 userID 后补种进 Redis，
+  #   之后增删管理员一律走管理端接口，重启不会覆盖运行时的改动。
+  #
+  # 留空 = 本次启动不补种任何管理员（已有 Redis 里的管理员不受影响）。
+  # 若 Redis 为空且这里是空，系统里就没有任何管理员，管理端对所有账号返回 403。
+  admin_users: ""
+
+# 接口文档与在线调试页（/openapi.json + /docs）。
+# 默认**跟随 mode**：debug 开、release 关 —— 文档会暴露整个接口面。
+# 需要单独控制时才写这里，或用 IOT_PILOT_DOCS_ENABLED 覆盖。
+docs:
+  enabled: true
+

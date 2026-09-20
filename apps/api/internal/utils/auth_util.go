@@ -49,9 +49,28 @@ func NewTokenManager(redis rueidis.Client, cfg *config.Config) *TokenManager {
 // 相比"每个 token 一个 key"（jwt:access:{token}）的方案，避免同一用户
 // 多次登录积累大量 key，且天然支持一键踢掉该用户全部会话。
 //
-// 注意：唯一码的 TTL 决定了 token 的有效上限，这里取 refresh 有效期
-// （默认 7 天），避免像 Java 示例那样把唯一码 TTL 设成 1 小时导致
-// 所有 token 实际寿命被压缩到 1 小时。
+// 注意：唯一码的 TTL 决定了 token 的有效上限，必须取 refresh 有效期（见
+// refreshTTLSeconds / storeUnique），否则 30 天有效的 refresh 令牌会因为
+// 唯一码先过期而提前失效。
+//
+// 提醒：唯一码是"每用户一个"，所以同一账号在新设备登录会把旧设备顶下线，
+// 这是单端登录的预期行为。
+
+// refreshTokenTTLMultiplier refresh 令牌相对 access 的倍数。
+//
+// jwt.expire 是 access 的有效期（默认 3600 秒 = 1 小时），refresh 取它的 720 倍
+// （= 30 天）。想改这两个量就改这里和 jwt.expire，不要在别处再写乘数。
+const refreshTokenTTLMultiplier = 720
+
+// accessTTLSeconds access 令牌有效期（秒）。
+func (tm *TokenManager) accessTTLSeconds() int {
+	return tm.Expire
+}
+
+// refreshTTLSeconds refresh 令牌有效期（秒），同时也是会话唯一码的 TTL。
+func (tm *TokenManager) refreshTTLSeconds() int {
+	return tm.Expire * refreshTokenTTLMultiplier
+}
 
 // uniqueKey 会话唯一码在 Redis 中的 key
 func (tm *TokenManager) uniqueKey(userID int) string {
@@ -64,9 +83,18 @@ func generateUniqueCode() string {
 	return hex.EncodeToString(b)
 }
 
-// storeUnique 写入（或替换）用户会话唯一码
+// storeUnique 写入（或替换）用户会话唯一码。
+//
+// TTL 必须取 **refresh 有效期**而不是 access 有效期：
+// 校验令牌时要比对 Redis 里的唯一码，如果这个键只活 1 小时，那么 30 天有效的
+// refresh 令牌在 1 小时后就会因为"查不到唯一码"而失效——refresh 形同废纸，
+// 用户每小时被强制登出。（原来的实现正是如此：键 1h、注释却写着 7 天。）
 func (tm *TokenManager) storeUnique(ctx context.Context, userID int, uniqueCode string) error {
-	cmd := tm.redis.B().Set().Key(tm.uniqueKey(userID)).Value(uniqueCode).ExSeconds(int64(tm.Expire)).Build()
+	cmd := tm.redis.B().Set().
+		Key(tm.uniqueKey(userID)).
+		Value(uniqueCode).
+		ExSeconds(int64(tm.refreshTTLSeconds())).
+		Build()
 	return tm.redis.Do(ctx, cmd).Error()
 }
 
@@ -80,11 +108,11 @@ func (tm *TokenManager) GenerateTokens(ctx context.Context, userID int, username
 		return "", "", fmt.Errorf("写入会话唯一码失败: %w", err)
 	}
 
-	accessToken, err = generateToken(userID, username, role, "access", tm.Expire, tm.Secret, uniqueCode)
+	accessToken, err = generateToken(userID, username, role, "access", tm.accessTTLSeconds(), tm.Secret, uniqueCode)
 	if err != nil {
 		return "", "", err
 	}
-	refreshToken, err = generateToken(userID, username, role, "refresh", tm.Expire, tm.Secret, uniqueCode)
+	refreshToken, err = generateToken(userID, username, role, "refresh", tm.refreshTTLSeconds(), tm.Secret, uniqueCode)
 	if err != nil {
 		return "", "", err
 	}
@@ -169,16 +197,11 @@ func (tm *TokenManager) ValidateRefreshToken(ctx context.Context, tokenString st
 }
 
 // ==================== 刷新与登出 ====================
-
-// RefreshAccessToken 轮换 refresh token：校验通过后生成新令牌，
-// 并替换会话唯一码，使旧 token 全部立即失效。
-func (tm *TokenManager) RefreshAccessToken(ctx context.Context, refreshToken string) (newAccessToken string, newRefreshToken string, err error) {
-	userID, username, role, err := tm.ValidateRefreshToken(ctx, refreshToken)
-	if err != nil {
-		return "", "", err
-	}
-	return tm.GenerateTokens(ctx, userID, username, role)
-}
+//
+// 这里刻意**没有** RefreshAccessToken（原来的实现）：
+// 它把旧令牌里的 role 原样带进新令牌，于是被撤销管理员的人只要刷新一次
+// 就能拿到一张声称 admin 的令牌。
+// 刷新逻辑现在放在 service.AuthUseCase.Refresh：先从 Redis 取真角色再签发。
 
 // RevokeToken 撤销单个 token（兼容旧接口，仅删除会话唯一码使该用户全部 token 失效）
 func (tm *TokenManager) RevokeToken(ctx context.Context, token string) error {
@@ -208,6 +231,16 @@ func (tm *TokenManager) RevokeSession(ctx context.Context, accessToken string, r
 func (tm *TokenManager) revokeByUserID(ctx context.Context, userID int) error {
 	delCmd := tm.redis.B().Del().Key(tm.uniqueKey(userID)).Build()
 	return tm.redis.Do(ctx, delCmd).Error()
+}
+
+// RevokeUserSessions 撤销某用户的**全部**会话（删除会话唯一码），其所有令牌立即失效。
+//
+// 用途：角色变更（提升/撤销管理员）后必须让旧令牌失效。
+// JWT 里的 role claim 是签发时写死的，旧令牌会一直声称"我是 member"（或反过来
+// 一直声称 admin），前端守卫据此判断就会与服务端不一致。
+// 强制重新登录后拿到的令牌才与 Redis 里的真实角色一致。
+func (tm *TokenManager) RevokeUserSessions(ctx context.Context, userID int) error {
+	return tm.revokeByUserID(ctx, userID)
 }
 
 // IsTokenInRedis 检查 token 是否有效（JWT 解析 + Redis 会话唯一码比对）。

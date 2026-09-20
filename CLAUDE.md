@@ -36,7 +36,7 @@
 | 后端语言      | **Go**                                | 单二进制部署                                                     |
 | 后端框架      | **Gin**                                | 路由 + 中间件；已装在 `apps/api/go.mod`                          |
 | 配置管理      | **viper**                              | env prefix `IOT_PILOT_`，自动 ENV 覆盖；已装                     |
-| 数据库        | **PostgreSQL**                        | `docker-compose.yml` 启动本地实例                                 |
+| 数据库        | **PostgreSQL**                        | `docker-compose.yml` 启动本地实例；Redis 同文件，两者都是启动期硬依赖 |
 | ORM           | **GORM**                              | `apps/api/go.mod` 与 `internal/repository` 已实际使用               |
 | SMTP 库       | **gomail**                            | `apps/api/go.mod` 与 `internal/utils/mail_util.go` 已实际使用       |
 | Monorepo 工具 | **pnpm workspaces**                   | 前后端统一管理                                                   |
@@ -65,6 +65,10 @@ iot-pillot/
 ├── apps/
 │   ├── web/                # 前端（Vue 3 + Element Plus + TS）
 │   └── api/                # 后端 Go 服务（Gin + GORM），go.mod 在此
+│       ├── cmd/            # 入口 + wire 装配 + swag 生成指令（generate.go）
+│       ├── docs/           # swag 生成的 OpenAPI spec 与 SwaggerInfo（生成物，随源码入库）
+│       ├── Dockerfile      # 独立 API 镜像（只有 Go 二进制；生产不走它）
+│       └── .dockerignore   # 该独立构建用；根 context 构建读仓库根的 .dockerignore
 ├── packages/
 │   └── shared-types/       # 前后端共享 TS 类型（DTO）
 ├── deploy/                 # 部署产物配置
@@ -78,7 +82,7 @@ iot-pillot/
 │   └── superpowers/specs/  # 设计文档
 ├── Dockerfile              # 单镜像：前端 + 后端 + nginx，context 为仓库根
 ├── .dockerignore           # 必须排除 node_modules
-├── docker-compose.yml      # 本地 Postgres
+├── docker-compose.yml      # 本地 Postgres + Redis，以及复用根 Dockerfile 的 app 服务
 ├── pnpm-workspace.yaml
 └── CLAUDE.md
 ```
@@ -100,7 +104,7 @@ iot-pillot/
 
 ### 1. 当前基线与开发边界
 
-前端当前已完成认证入口的第一版交付：`apps/web/src/views/AuthView.vue` 提供 `/login` 单页中的登录 / 注册模式切换，`apps/web/src/api/auth.ts` 对接登录与注册接口，`apps/web/src/auth/` 包含表单校验、提交编排和会话保存，相关行为由 Vitest 覆盖。后台布局和业务页面仍在规划中。后续开发必须以实际代码为准，不能把 `packages/shared-types` 中已经存在的类型误认为后端接口已经实现。
+前端当前已完成认证与角色分流的基础交付：`apps/web/src/views/AuthView.vue` 提供 `/login` 单页中的登录 / 注册模式切换，`apps/web/src/api/auth.ts` 对接认证、验证码、当前用户和管理员用户列表接口，`apps/web/src/auth/` 包含表单校验、提交编排、会话保存与刷新，相关行为由 Vitest 覆盖。后台完整布局和招新业务页面仍在规划中。后续开发必须以实际代码为准，不能把 `packages/shared-types` 中已经存在的类型误认为后端接口已经实现。
 
 认证页的视觉与布局约束：桌面端使用固定 `100dvh` 双栏，左侧是全栈工作室招新品牌面板，右侧认证表单独立滚动；切换登录 / 注册时左侧面板不重新挂载、不随注册表单高度变化。宽度小于 `820px` 时隐藏左侧面板，表单恢复自然文档流。页面文案应继续突出以前端与后端开发为核心的 IoT 全栈项目实践。
 
@@ -110,20 +114,22 @@ iot-pillot/
 
 | 能力 | 实际路由 | 前端可用性 | 备注 |
 | --- | --- | --- | --- |
-| 健康检查 | `GET /health` | 可用 | `Home.vue` 调 `/health`，Vite 已加对应代理，与生产 nginx `location = /health` 一致 |
+| 健康检查 | `GET /health` | 前端已对接 | `Home.vue` 使用根级 `/health`，不走 `/api/` 代理 |
 | 登录 | `POST /api/v1/login` | 前端已对接 | `/login` 页面提交 `username`、`password`；返回 access/refresh 双令牌 |
-| 注册 | `POST /api/v1/register` | 页面已适配但暂时无法闭环 | `/login` 页面已渲染姓名、邮箱、密码、确认密码和验证码字段；注册必须提交邮箱验证码，但发送验证码的 handler 尚未挂到路由 |
-| 刷新令牌 | `POST /api/v1/refresh` | 可开始对接 | 刷新成功会轮换两枚令牌，旧令牌立即失效 |
-| 退出登录 | `POST /api/v1/logout` | 可开始对接 | Header 携带 access token，请求体携带 refresh token |
+| 注册 | `POST /api/v1/register` | 前端已对接 | 注册页发送邮箱验证码后提交姓名、邮箱、密码和验证码 |
+| 发送验证码 | `POST /api/v1/send-verify-code` | 前端已对接 | 3D 开屏与 WebGL 兼容登录页均可发送邮箱验证码；手机号由后端暂未实现 |
+| 刷新令牌 | `POST /api/v1/refresh` | 前端已对接 | 路由守卫在 access token 收到 401 时最多轮换一次并重试 `/me` |
+| 退出登录 | `POST /api/v1/logout` | 前端已对接 | Header 携带 access token，请求体携带 refresh token；网络失败也清理本地会话 |
+| 当前用户 | `GET /api/v1/me` | 前端已对接 | 路由守卫和用户首页读取真实的用户名与 `admin/member` 角色 |
+| 管理员用户列表 | `GET /api/v1/admin/users` | 前端已对接 | 管理员控制台分页读取用户 ID、用户名和注册时间 |
 | 表单、模板、招新、用户权限、SMTP 设置 | 尚无路由 | 阻塞 | 共享 TS 类型仅代表领域草案，不能直接当作已交付 API |
 
 开始业务页面前必须先解决以下契约差异：
 
 - 后端统一响应为 `{ code, message, data }`，而当前 `ApiResponse<T>` 只有 `data` 和可选 `meta`；应先统一成功、失败和分页协议。
 - 后端登录返回 `user_id: number`，共享类型的通用 `ID` 当前定义为 UUID 字符串；在后端迁移到 UUID 前，认证 DTO 必须如实使用 number，禁止靠类型断言掩盖差异。
-- `/api/v1/refresh` 当前复用 `LoginResp`，但实际返回 `user_id: -1`；前端不能把该值写入用户状态。M0 必须改成不含用户 ID 的 refresh DTO，或先修正后端再验收会话恢复。
-- JWT 中的角色目前写死为 `user`，但前端规划角色是 `admin | member`；RBAC 页面和路由守卫必须等后端角色模型、鉴权中间件和“当前用户”接口落地后再启用。
-- 注册要求验证码，但 `/send-verify-code` 未挂载；注册页可以先完成表单和接口适配，不能标记为可验收功能。
+- `/api/v1/refresh` 当前复用 `LoginResp`，实际返回 `user_id: -1`；前端通过合并旧会话保留真实用户 ID。
+- JWT 的 `admin/member` 角色由后端管理员白名单签发，前端通过 `/api/v1/me` 查询并由路由守卫控制可见性；真正权限仍由后端中间件强制。
 - 注册 DTO 接收 `email`，但当前 `domain.User` 没有邮箱字段，注册逻辑也没有持久化邮箱；依赖邮箱的个人资料和招新关联功能必须等后端模型补齐。
 - `packages/shared-types` 仅供 TypeScript 工作区消费，不是 Go 与 TypeScript 自动共享的 schema；每次后端 DTO 变化都必须同步核对。
 
@@ -194,7 +200,7 @@ apps/web/src/
 
 - 建立基于原生 `fetch` 的轻量 API 客户端，统一 base URL、JSON 序列化、Authorization、响应解包、超时与错误对象；当前规模不引入 axios。
 - 会话策略分阶段落地：当前认证页使用 `apps/web/src/auth/session.ts` 将后端返回的 access/refresh token 与 `user_id` 保存到 `localStorage` 的 `iot-pillot.auth` 键，绝不保存密码或验证码；后续引入 Pinia 和受保护后台时，再评估迁移为仅保存 token 的 `sessionStorage` 或 HttpOnly Cookie 方案，并同步更新验收标准。
-- 实现 401 刷新队列：同一时间只允许一次 refresh，请求成功后重放等待请求；刷新失败则清空会话并跳转登录，防止并发请求反复刷新。
+- 当前路由守卫提供单次 401 refresh + `/me` 重试；全局并发刷新队列和请求重放仍待后续 API 客户端统一后实现。
 - 扩展 Vue Router：公开路由、需登录路由、管理员路由、404/403 页面，并通过 route meta 统一守卫。
 - 建立 Element Plus 的全局交互约定：提交中禁用、危险操作二次确认、成功提示、字段错误、页面级错误和空状态。
 - 建立最小设计基线：色彩、间距、字体层级、表格密度、表单宽度和响应式断点。后台优先适配桌面与平板，匿名报名页必须优先保证手机可用。
@@ -209,12 +215,12 @@ apps/web/src/
 页面与能力：
 
 - 登录页（当前实现位于 `/login`）：用户名、密码、提交状态、服务端错误提示；成功后回到原目标页或后台首页。登录 / 注册切换不改变左侧品牌面板布局。
-- 注册页（当前与登录共用 `/login`）：姓名、邮箱、验证码、密码、确认密码、验证码倒计时；发送验证码接口挂载前保持明确的“后端未就绪”状态，当前按钮为 disabled。
-- 会话恢复：刷新页面后恢复 token，必要时调用 refresh；刷新失败回到登录页。
+- 注册页（当前与登录共用 `/login`）：姓名、邮箱、验证码、密码、确认密码、验证码倒计时；两个登录入口都可以发送邮箱验证码。
+- 会话恢复：刷新页面后恢复 token，受保护路由在 access token 过期时调用 refresh 并重试 `/me`；刷新失败回到登录页。
 - 主动退出：调用 logout，成功或 token 已失效时都清理本地会话。
 - 多端冲突处理：后端重新登录会使旧会话失效，前端收到对应 401 后提示“账号已在其他位置重新登录”。
 
-验收标准：登录、刷新、退出形成完整闭环；重复点击不会产生并发提交；密码和 token 不出现在日志、URL、错误详情或持久化调试数据中。注册功能只有在验证码路由真实可用后才算完成。
+验收标准：登录、注册验证码、刷新、退出形成完整闭环；重复点击不会产生并发提交；密码和 token 不出现在日志、URL、错误详情或持久化调试数据中。
 
 ### 7. M3：后台应用外壳与仪表盘
 
@@ -330,7 +336,7 @@ MailModule 当前是后端能力，不单独创建前端 `modules/mail/`；招�
 ## 后续未决项（开发前需明确）
 
 - [ ] 部署目标平台（VPS / Railway / Fly.io）
-- [x] 基础鉴权方案（用户名密码 + access/refresh JWT）已落地；RBAC 角色模型仍待明确
+- [x] 基础鉴权方案（用户名密码 + access/refresh JWT）已落地；`admin/member` RBAC 与前端路由守卫已联调
 - [ ] 邮件模板渲染选型（`html/template` + Handlebars 子集 或纯文本+占位符）
 - [ ] 数据库迁移工具（golang-migrate / goose）
 - [ ] 国际化范围（仅中文 / 中英双语）
@@ -361,3 +367,4 @@ MailModule 当前是后端能力，不单独创建前端 `modules/mail/`；招�
 | 2026-09-09 | 启用 GitHub Actions auto-merge 机器人      | 成员身份 + 无冲突 → 自动 squash merge，代替手工 review；下一 PR 加 CI 后回填 status check |
 | 2026-09-09 | 加 `ci.yml` + `deploy.yml`，bot 终于有 status check 可等 | `ci.yml`（PR 触发 Go vet/build/test + 前端 typecheck/build）；`deploy.yml`（push main → Docker build → SCP → SSH 部署到 VPS）；同期把 README 残留测试注释删掉、补 `.env.example`、整理 CLAUDE.md 与 go.mod 一致性 |
 | 2026-09-09 | 文档收尾：README 填实快速开始 + 项目状态、docs/architecture.md 落地、.gitignore 覆盖 Vite/unplugin/vue-tsc 副产物 | README 补 install/dev/build/test 命令与项目状态表；docs/architecture.md 记录当前架构 + 5 个业务模块引入顺序 + 数据模型与状态机；.gitignore 加 *.tsbuildinfo 与 apps/web/{auto-imports.d.ts, components.d.ts, vite.config.{d.ts,js}} 避免 pnpm build 污染 PR |
+| 2026-09-20 | 接口文档选 swag v1（Swagger 2.0）+ gin-swagger：UI 挂 `/docs`，spec 挂 `/openapi.json` | handler 里早已写好 swaggo 注解，只差生成器与 UI；FastAPI 的 `/docs` 本身就是 Swagger UI，界面观感一致。swag v2（OpenAPI 3.1）仍是 rc，暂不引入。默认 debug 开、release 关（`docs.enabled` 可覆盖）——文档会暴露整个接口面。生成物随源码入库，镜像/CI 只跑 go build，不装 swag CLI |

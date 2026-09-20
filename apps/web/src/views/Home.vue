@@ -1,23 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import type { ApiResponse } from "@iot-pillot/shared-types";
-
-interface HealthData {
-  status: string;
-  time: string;
-}
+import { fetchHealth } from "@/api/health";
 
 const health = ref<string>("检测中…");
 
 onMounted(async () => {
   try {
-    const r = await fetch("/health");
-    if (!r.ok) {
-      health.value = `连接失败：HTTP ${r.status}`;
-      return;
-    }
-    const body = (await r.json()) as ApiResponse<HealthData>;
-    health.value = `${body.data.status} @ ${body.data.time}`;
+    const data = await fetchHealth();
+    health.value = `${data.status} @ ${data.time}`;
   } catch (e) {
     health.value = `连接失败：${(e as Error).message}`;
   }
