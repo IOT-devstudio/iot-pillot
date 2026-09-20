@@ -1,0 +1,171 @@
+/* =============================================================
+   iot-pillot 全局设计令牌与基础样式
+   -------------------------------------------------------------
+   品牌体系来自登录页 AuthView.vue（蓝图 / 项目手册的编辑感）：
+   暖纸底 + 深藏青墨色 + 藏青品牌蓝 + 陶土红点缀 + 宋体标题。
+
+   这里把同一套令牌下沉为全局变量，并覆盖 Element Plus 的 CSS
+   变量，让 el-table / el-tag / el-button / el-dialog 等组件自动
+   跟随品牌，业务页不用各自再写一套颜色。
+
+   为什么 --el-* 用 !important：项目按需引入 Element Plus，其
+   :root 默认值由组件样式随 chunk 注入，加载顺序晚于本文件，
+   用 !important 才能稳定压过默认值。
+   ============================================================= */
+
+:root {
+  /* —— 品牌色 —— */
+  --ink: #102b4e; /* 主墨色 */
+  --ink-soft: #52657b; /* 次级文字 */
+  --ink-faint: #74808d; /* 弱化文字 */
+  --blue: #164d80; /* 品牌蓝 */
+  --blue-bright: #1e659f;
+  --blue-deep: #0c3c69;
+  --paper: #f3efe4; /* 暖纸底 */
+  --paper-deep: #e8e0ce;
+  --surface: #fffdf7; /* 面板暖白 */
+  --red: #b84235; /* 陶土红（点缀 / 危险）*/
+  --green: #2e8b57; /* 成功 */
+  --amber: #a8751a; /* 警示 */
+
+  /* —— 线条 —— */
+  --line: rgb(16 43 78 / 14%);
+  --line-strong: rgb(16 43 78 / 26%);
+  --line-soft: rgb(16 43 78 / 8%);
+
+  /* —— 字体 —— */
+  --font-sans: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-serif: "Iowan Old Style", "Songti SC", STSong, serif;
+  --font-kai: "Kaiti SC", KaiTi, serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Consolas", monospace;
+
+  /* —— Element Plus：品牌色覆盖 —— */
+  --el-color-primary: #164d80 !important;
+  --el-color-primary-light-3: #5c82a6 !important;
+  --el-color-primary-light-5: #8aa6bf !important;
+  --el-color-primary-light-7: #b9cad9 !important;
+  --el-color-primary-light-8: #d0dce5 !important;
+  --el-color-primary-light-9: #e8edf2 !important;
+  --el-color-primary-dark-2: #0c3c69 !important;
+
+  --el-color-danger: #b84235 !important;
+  --el-color-danger-light-3: #cb6f64 !important;
+  --el-color-danger-light-5: #d8948b !important;
+  --el-color-danger-light-7: #e5bdb7 !important;
+  --el-color-danger-light-8: #ecd3cf !important;
+  --el-color-danger-light-9: #f3e7e5 !important;
+  --el-color-danger-dark-2: #8e2f27 !important;
+
+  --el-color-success: #2e8b57 !important;
+  --el-color-success-light-3: #6aa982 !important;
+  --el-color-success-light-5: #97c0a6 !important;
+  --el-color-success-light-7: #c0d7c9 !important;
+  --el-color-success-light-8: #d4e3da !important;
+  --el-color-success-light-9: #e7f0eb !important;
+  --el-color-success-dark-2: #256f46 !important;
+
+  --el-color-warning: #a8751a !important;
+  --el-color-warning-light-3: #c49a5e !important;
+  --el-color-warning-light-5: #d5b88c !important;
+  --el-color-warning-light-7: #e5d2b9 !important;
+  --el-color-warning-light-8: #eddfcc !important;
+  --el-color-warning-light-9: #f5eddf !important;
+  --el-color-warning-dark-2: #8c5f18 !important;
+
+  --el-color-info: #52657b !important;
+  --el-color-info-light-3: #7d8c9e !important;
+  --el-color-info-light-5: #a3adbb !important;
+  --el-color-info-light-7: #c6cdd6 !important;
+  --el-color-info-light-8: #d7dce2 !important;
+  --el-color-info-light-9: #e8ebee !important;
+  --el-color-info-dark-2: #3f4f61 !important;
+
+  /* 圆角收紧到 2px：呼应登录页的锐利技术感，避免"圆角 SaaS 卡片" */
+  --el-border-radius-base: 2px !important;
+  --el-border-radius-small: 2px !important;
+
+  /* 边框换成暖纸色系 */
+  --el-border-color: #d8d2c4 !important;
+  --el-border-color-light: #e4dfd2 !important;
+  --el-border-color-lighter: #ebe7dc !important;
+  --el-border-color-extra-light: #f2efe7 !important;
+  --el-border-color-dark: #c5bfb0 !important;
+  --el-border-color-darker: #b2ab99 !important;
+  --el-border-color-hover: #b2ab99 !important;
+
+  /* 文字色 */
+  --el-text-color-primary: #102b4e !important;
+  --el-text-color-regular: #3a4a5f !important;
+  --el-text-color-secondary: #52657b !important;
+  --el-text-color-placeholder: #9aa2aa !important;
+
+  /* 背景与填充 */
+  --el-bg-color: #fffdf7 !important;
+  --el-bg-color-page: #f3efe4 !important;
+  --el-bg-color-overlay: #fffdf7 !important;
+  --el-fill-color: #efece3 !important;
+  --el-fill-color-light: #f5f2ea !important;
+  --el-fill-color-lighter: #faf7f0 !important;
+  --el-fill-color-extra-light: #fbf9f3 !important;
+  --el-fill-color-dark: #e6e2d6 !important;
+  --el-fill-color-darker: #ddd8ca !important;
+  --el-fill-color-blank: #fffdf7 !important;
+  --el-mask-color: rgb(16 43 78 / 42%) !important;
+
+  --el-font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif !important;
+
+  /* 阴影：暖墨色、更收敛，替换默认的中性灰 */
+  --el-box-shadow-light: 0 1px 2px rgb(16 43 78 / 5%), 0 4px 16px rgb(16 43 78 / 6%) !important;
+  --el-box-shadow: 0 2px 4px rgb(16 43 78 / 6%), 0 8px 28px rgb(16 43 78 / 9%) !important;
+  --el-box-shadow-dark: 0 4px 8px rgb(16 43 78 / 10%), 0 16px 40px rgb(16 43 78 / 14%) !important;
+
+  /* 表格 */
+  --el-table-border-color: #e4dfd2 !important;
+  --el-table-header-bg-color: #f5f2ea !important;
+  --el-table-header-text-color: #102b4e !important;
+  --el-table-row-hover-bg-color: rgb(22 77 128 / 4%) !important;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  color: var(--ink);
+  background-color: var(--paper);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+#app {
+  min-height: 100vh;
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(circle at 84% -8%, rgb(22 77 128 / 6%), transparent 40%),
+    linear-gradient(rgb(16 43 78 / 3%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(16 43 78 / 3%) 1px, transparent 1px);
+  background-attachment: fixed;
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+}
+
+/* —— 共享面板：发丝边框 + 暖白底，作为列表/详情的统一容器 —— */
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.panel--pad {
+  padding: 24px 26px;
+}
