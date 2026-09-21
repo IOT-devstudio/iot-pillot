@@ -2,39 +2,49 @@
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 
+import AppHeader from "@/components/common/AppHeader.vue";
+import PageHeader from "@/components/common/PageHeader.vue";
+
 const route = useRoute();
 const pageTitle = computed(() => String(route.meta.title ?? "页面"));
 </script>
 
 <template>
-  <el-container class="placeholder-page">
-    <el-main>
-      <el-card class="placeholder-card">
-        <h1>{{ pageTitle }}</h1>
-        <p>待开发</p>
-      </el-card>
-    </el-main>
-  </el-container>
+  <div class="page">
+    <AppHeader />
+
+    <main class="page__body">
+      <PageHeader eyebrow="iot-pillot · 招新管理" :title="pageTitle" />
+
+      <section class="panel panel--pad placeholder-card">
+        <p class="placeholder-card__index" aria-hidden="true">待开发</p>
+      </section>
+    </main>
+  </div>
 </template>
 
 <style scoped>
-.placeholder-page {
+.page {
   min-height: 100vh;
-  background: #f5f7fa;
+}
+
+.page__body {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: clamp(32px, 5vw, 56px) clamp(20px, 4vw, 48px) 72px;
 }
 
 .placeholder-card {
-  max-width: 720px;
-  margin: 15vh auto 0;
-  text-align: center;
+  min-height: 220px;
 }
 
-h1 {
-  margin: 0 0 16px;
-}
-
-p {
-  margin: 0;
-  color: #909399;
+.placeholder-card__index {
+  margin: 0 0 10px;
+  color: var(--red);
+  font-family: var(--font-kai);
+  font-size: 18px;
 }
 </style>
