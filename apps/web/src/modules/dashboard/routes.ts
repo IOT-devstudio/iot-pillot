@@ -9,6 +9,7 @@
 import type { RouteRecordRaw } from "vue-router";
 
 import { MEMBER_ONLY } from "@/router/route-specs";
+import AdminMembersView from "./views/AdminMembersView.vue";
 import DashboardView from "./views/DashboardView.vue";
 
 export const dashboardRoutes: RouteRecordRaw[] = [
@@ -17,5 +18,13 @@ export const dashboardRoutes: RouteRecordRaw[] = [
     name: "dashboard",
     component: DashboardView,
     meta: { title: "控制台", allowRoles: MEMBER_ONLY },
+  },
+  // 「用户与权限」独立成页而不是塞进控制台：控制台只留健康状态与入口，
+  // 管理动作集中到自己的页面，职责更清。同样是成员专属。
+  {
+    path: "/dashboard/admins",
+    name: "dashboard-admins",
+    component: AdminMembersView,
+    meta: { title: "用户与权限", allowRoles: MEMBER_ONLY },
   },
 ];

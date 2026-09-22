@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { useRoute } from "vue-router";
 
 import AppHeader from "@/components/common/AppHeader.vue";
+import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 
 const route = useRoute();
@@ -14,6 +15,8 @@ const pageTitle = computed(() => String(route.meta.title ?? "页面"));
     <AppHeader />
 
     <main class="page__body">
+      <BackToDashboard />
+
       <PageHeader eyebrow="iot-pillot · 招新管理" :title="pageTitle" />
 
       <section class="panel panel--pad placeholder-card">

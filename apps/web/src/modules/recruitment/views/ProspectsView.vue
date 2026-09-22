@@ -9,6 +9,7 @@ import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import AppHeader from "@/components/common/AppHeader.vue";
+import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 import { formatDateTime } from "../fixture";
 import type { ProspectStatus } from "../status";
@@ -78,6 +79,8 @@ const {
     <AppHeader />
 
     <main class="page__body">
+      <BackToDashboard />
+
       <PageHeader
         eyebrow="招新管理 · 意向档案"
         title="意向成员"

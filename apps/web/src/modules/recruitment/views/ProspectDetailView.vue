@@ -6,9 +6,10 @@
  * 当前状态、按状态可推进的动作，以及带备注的邮件记录。
  */
 import { computed } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 
 import AppHeader from "@/components/common/AppHeader.vue";
+import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 import { formatDateTime } from "../fixture";
 import { emailTypeMeta } from "../status";
@@ -18,8 +19,6 @@ import StatusTag from "../components/StatusTag.vue";
 import { useProspectActions } from "../composables/useProspectActions";
 
 const route = useRoute();
-const router = useRouter();
-
 const prospect = computed(() => findProspect(String(route.params.id)));
 
 const {
@@ -40,13 +39,8 @@ const {
     <AppHeader />
 
     <main class="page__body">
-      <button
-        class="back-link"
-        type="button"
-        @click="router.push('/recruitment/prospects')"
-      >
-        ← 返回意向成员列表
-      </button>
+      <!-- 详情页的上一层是列表，所以覆盖默认的「返回控制台」目标与文案 -->
+      <BackToDashboard to="/recruitment/prospects" label="← 返回意向成员列表" />
 
       <el-empty v-if="!prospect" description="未找到该意向成员" />
 
@@ -145,24 +139,6 @@ const {
   max-width: 1200px;
   margin: 0 auto;
   padding: clamp(32px, 5vw, 56px) clamp(20px, 4vw, 48px) 72px;
-}
-
-.back-link {
-  align-self: flex-start;
-  padding: 0;
-  color: var(--ink-soft);
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  text-decoration: none;
-}
-
-.back-link:hover {
-  color: var(--blue);
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 .panel__title {

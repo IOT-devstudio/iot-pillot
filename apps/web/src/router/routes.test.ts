@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/modules/dashboard/views/DashboardView.vue", () => ({
   default: { name: "DashboardView" },
 }));
+vi.mock("@/modules/dashboard/views/AdminMembersView.vue", () => ({
+  default: { name: "AdminMembersView" },
+}));
 vi.mock("@/views/PlaceholderView.vue", () => ({
   default: { name: "PlaceholderView" },
 }));
@@ -60,6 +63,20 @@ describe("application routes", () => {
     expect(dashboardRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
   });
 
+  it("mounts the admin members page as a member-only dashboard child", () => {
+    const adminRoutes = routes.filter(
+      (route) => route.path === "/dashboard/admins",
+    );
+
+    expect(adminRoutes).toHaveLength(1);
+    expect(adminRoutes[0]?.name).toBe("dashboard-admins");
+    expect(adminRoutes[0]?.component).toMatchObject({
+      name: "AdminMembersView",
+    });
+    // 用户与权限页能改角色，漏标 allowRoles 就等于对普通用户敞开
+    expect(adminRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
+  });
+
   it("keeps the fallback login page public and retires the old home path", () => {
     const loginRoutes = routes.filter((route) => route.path === "/login");
     expect(loginRoutes).toHaveLength(1);
@@ -93,6 +110,7 @@ describe("application routes", () => {
       "/login",
       "/admin/buildings",
       "/dashboard",
+      "/dashboard/admins",
       "/user/home",
       "/user/about",
       "/recruitment",
