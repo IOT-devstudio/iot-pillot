@@ -72,3 +72,44 @@ export function describeHealthError(error: unknown): string {
   }
   return "暂时无法获取后端状态，请稍后重试";
 }
+
+export interface ReadyData {
+  status: "ready" | "unavailable" | string;
+  time?: string;
+  /** status=unavailable 时后端给的依赖故障原因（database / redis），给运维看 */
+  failures?: Record<string, string>;
+}
+
+/**
+ * 就绪检查（/health/ready）：比 /health 多探一层 DB 与 Redis。
+ *
+ * 与 fetchHealth 的关键区别：**503 是合法答案，不是异常**——后端依赖不可用时
+ * 会以 503 回 { data: { status: "unavailable", failures } }，这正是探针要展示的
+ * 状态。所以这里只看 data 在不在，不看 HTTP 状态码；只有网络失败 / 非 JSON /
+ * 缺 data 才抛错（文案沿用上面的分类）。
+ */
+export async function fetchReady(): Promise<ReadyData> {
+  let response: Response;
+  try {
+    response = await fetch("/health/ready", {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch {
+    throw new Error(HEALTH_UNREACHABLE);
+  }
+
+  let body: Partial<HealthResponse & { data?: ReadyData }> | null;
+  try {
+    body = (await response.json()) as Partial<
+      HealthResponse & { data?: ReadyData }
+    > | null;
+  } catch {
+    throw new Error(HEALTH_UNREACHABLE);
+  }
+
+  if (body?.data === undefined) {
+    throw new Error(HEALTH_BAD_RESPONSE);
+  }
+
+  return body.data;
+}

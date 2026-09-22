@@ -4,6 +4,7 @@ import {
   grantAdmin,
   listAdminUsers,
   listAdmins,
+  listMails,
   revokeAdmin,
 } from "./admin";
 import { AUTH_STORAGE_KEY } from "@/auth/session";
@@ -165,6 +166,50 @@ describe("admin api", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/admin/admins/7",
       expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(authHeaderOf(fetchMock)).toBe("Bearer access-token");
+  });
+
+  it("分页读取发信记录并带上令牌", async () => {
+    mockSession();
+    const fetchMock = mockJson({
+      code: 0,
+      message: "success",
+      data: {
+        items: [
+          {
+            id: 3,
+            title: "面试邀请",
+            from_user_id: 1,
+            to_user_id: 2,
+            to_email: "jun@example.com",
+            created_at: "2026-09-22T10:00:00Z",
+          },
+        ],
+        total: 41,
+        page: 1,
+        page_size: 8,
+      },
+    });
+
+    await expect(listMails(1, 8)).resolves.toEqual({
+      items: [
+        {
+          id: 3,
+          title: "面试邀请",
+          from_user_id: 1,
+          to_user_id: 2,
+          to_email: "jun@example.com",
+          created_at: "2026-09-22T10:00:00Z",
+        },
+      ],
+      total: 41,
+      page: 1,
+      page_size: 8,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/admin/mails?page=1&page_size=8",
+      expect.anything(),
     );
     expect(authHeaderOf(fetchMock)).toBe("Bearer access-token");
   });

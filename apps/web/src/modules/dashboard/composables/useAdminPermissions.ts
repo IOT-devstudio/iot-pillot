@@ -91,7 +91,7 @@ export const UNKNOWN_IDENTITY_NOTE = "无法确认当前登录账号，已停用
  *
  * 全部是**无令牌参数**的：受保护请求统一走 api/session-request.ts，Bearer 头、
  * 401 刷新、刷新去重都在那一层处理，这里再手动读会话传 token 反而是重复且易错
- * 的第二套机制（照 AdminUserTable 改版后的做法）。
+ * 的第二套机制。
  */
 export interface AdminPermissionsDeps {
   fetchCurrentUser: () => Promise<CurrentUser>;
@@ -135,9 +135,8 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
   const total = ref(0);
   const page = ref(1);
   const pageSize = ref(20);
-  // 初值 true：进页面立刻是「加载中」而不是「暂无数据」。项目里 AdminUserTable
-  // 也是这么起的。留 false 会在首帧闪一下空态（虽然实测多数情况被同一帧吃掉，
-  // 但慢设备/慢网络下就会露出来）。
+  // 初值 true：进页面立刻是「加载中」而不是「暂无数据」。留 false 会在首帧
+  // 闪一下空态（实测多数情况被同一帧吃掉，但慢设备/慢网络下会露出来）。
   const usersLoading = ref(true);
   const usersError = ref("");
   /** 加载失败后是否还把「重试」按钮露出来：401 得先重新登录，重试没意义 */
