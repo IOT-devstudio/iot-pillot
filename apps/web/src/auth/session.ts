@@ -1,4 +1,8 @@
-import { logout as requestLogout, type AuthSession } from "@/api/auth";
+import {
+  logout as requestLogout,
+  type AuthSession,
+  type RefreshAuthSession,
+} from "@/api/auth";
 
 export const AUTH_STORAGE_KEY = "iot-pillot.auth";
 
@@ -47,16 +51,16 @@ export function clearAuthSession(storage?: Storage): void {
 /**
  * 合并 refresh 接口返回的令牌。
  *
- * 后端 refresh 当前返回 user_id: -1，用户 ID 需要沿用本地会话中的值。
+ * 后端 refresh 只返回新令牌，用户 ID 需要沿用本地会话中的值。
  */
 export function mergeAuthSession(
   current: AuthSession,
-  refreshed: AuthSession,
+  refreshed: RefreshAuthSession,
 ): AuthSession {
   return {
     ...current,
     ...refreshed,
-    user_id: refreshed.user_id >= 0 ? refreshed.user_id : current.user_id,
+    user_id: current.user_id,
   };
 }
 

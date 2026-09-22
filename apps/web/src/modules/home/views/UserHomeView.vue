@@ -18,9 +18,8 @@
  */
 import { onMounted, ref } from "vue";
 
-import { AuthRequestError, type CurrentUser } from "@/api/auth";
-import { fetchCurrentUserWithRefresh } from "@/auth/current-user";
-import { readAuthSession } from "@/auth/session";
+import { AuthRequestError } from "@/api/auth";
+import { fetchCurrentUser, type CurrentUser } from "@/api/admin";
 import SignOutButton from "@/components/SignOutButton.vue";
 
 import type { RecruitmentDirection } from "../fixtures";
@@ -47,14 +46,8 @@ function messageOf(error: unknown): string {
 }
 
 onMounted(async () => {
-  const session = readAuthSession();
-  if (session === null) {
-    userError.value = "登录状态已失效，请重新登录";
-    return;
-  }
-
   try {
-    user.value = await fetchCurrentUserWithRefresh(session.access_token);
+    user.value = await fetchCurrentUser();
   } catch (error: unknown) {
     userError.value = messageOf(error);
   }

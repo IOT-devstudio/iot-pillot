@@ -2,7 +2,7 @@
 /**
  * 当前用户信息区（纯展示组件）。
  *
- * 字段口径严格跟随 `api/auth.ts` 的 `CurrentUser`，也就是后端
+ * 字段口径严格跟随 `api/admin.ts` 的 `CurrentUser`，也就是后端
  * `GET /api/v1/me` 真实会返回的形状。**这里不显示邮箱**：
  * 当前后端 `domain.User` 没有 email 字段，与其在界面上摆一个编造的邮箱，
  * 不如先不显示——后端补齐后再加一行即可。
@@ -11,7 +11,7 @@
  */
 import { computed } from "vue";
 
-import type { CurrentUser } from "@/api/auth";
+import type { CurrentUser } from "@/api/admin";
 
 const props = defineProps<{
   user: CurrentUser;

@@ -75,7 +75,7 @@ describe("auth session storage", () => {
     expect(readAuthSession(storage)).toBeNull();
   });
 
-  it("keeps the original user id when the refresh endpoint returns -1", () => {
+  it("keeps the original user id when the refresh endpoint returns only tokens", () => {
     const original = {
       access_token: "old-a",
       refresh_token: "old-r",
@@ -86,7 +86,6 @@ describe("auth session storage", () => {
       mergeAuthSession(original, {
         access_token: "new-a",
         refresh_token: "new-r",
-        user_id: -1,
       }),
     ).toEqual({
       access_token: "new-a",
