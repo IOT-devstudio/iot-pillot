@@ -123,6 +123,26 @@ docker compose up -d --build        # 前端产物 + nginx + Go API，全部在�
 
 ---
 
+## 生产部署配置
+
+生产部署由 `.github/workflows/deploy.yml` 完成。除了服务器、数据库、Redis、JWT 与
+SMTP 的 GitHub Actions Secrets，还必须在仓库的
+`Settings → Secrets and variables → Actions → Variables` 中配置：
+
+```text
+REDIS_DB=1
+ADMIN_USERS=1
+```
+
+`REDIS_DB` 必须与生产 Redis 实际使用的逻辑库一致。管理员角色的真源是该逻辑库中的
+Redis SET `auth:admins`；应用启动时会把 `ADMIN_USERS` 中已存在的用户名或用户 ID
+补种进集合。因此首次部署前应先确保对应用户已经存在，或在注册后重新部署/重启应用。
+
+部署 workflow 自身属于部署判定路径：修改 `.github/workflows/deploy.yml` 合并到
+`main` 后，也会触发重新构建和部署，不需要额外手动选择 `force`。
+
+---
+
 ## 贡献流程（速览）
 
 详细规范见 [CONTRIBUTING.md](./CONTRIBUTING.md)。核心规则：

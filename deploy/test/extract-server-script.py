@@ -13,8 +13,8 @@ WORKFLOW = ".github/workflows/deploy.yml"
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("用法: extract-server-script.py <输出路径>", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print("用法: extract-server-script.py <服务器脚本输出路径> [gate 脚本输出路径]", file=sys.stderr)
         return 2
     out_path = sys.argv[1]
 
@@ -22,15 +22,46 @@ def main() -> int:
         workflow = yaml.safe_load(f)
 
     script = None
+    server_step = None
     for step in workflow["jobs"]["build-and-ship"]["steps"]:
         with_block = step.get("with") or {}
         candidate = with_block.get("script")
         if candidate and "docker load" in candidate:
             script = candidate
+            server_step = step
             break
 
     if script is None:
         print(f"未在 {WORKFLOW} 的 build-and-ship 中找到服务器部署脚本", file=sys.stderr)
+        return 1
+
+    expected_sources = {
+        "REDIS_DB": "${{ vars.REDIS_DB }}",
+        "ADMIN_USERS": "${{ vars.ADMIN_USERS }}",
+    }
+    step_env = server_step.get("env") or {}
+    for name, source in expected_sources.items():
+        if step_env.get(name) != source:
+            print(f"{name} 没有从预期的 GitHub Actions Variable 读取", file=sys.stderr)
+            return 1
+
+    forwarded = {
+        item.strip()
+        for item in (server_step.get("with") or {}).get("envs", "").split(",")
+        if item.strip()
+    }
+    required_forwarded = {
+        "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME",
+        "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DB",
+        "JWT_SECRET", "ADMIN_USERS", "SMTP_HOST", "SMTP_PORT",
+        "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM",
+    }
+    missing_forwarded = sorted(required_forwarded - forwarded)
+    if missing_forwarded:
+        print(
+            "ssh-action envs 缺少变量：" + ", ".join(missing_forwarded),
+            file=sys.stderr,
+        )
         return 1
 
     # Actions 表达式在真实运行前已由 runner 替换掉，这里代入一个假的 short sha。
@@ -38,6 +69,20 @@ def main() -> int:
 
     with open(out_path, "w", encoding="utf-8", newline="\n") as f:
         f.write(script)
+
+    if len(sys.argv) == 3:
+        gate_script = None
+        for step in workflow["jobs"]["gate"]["steps"]:
+            if step.get("id") == "decide":
+                gate_script = step.get("run")
+                break
+
+        if gate_script is None:
+            print(f"未在 {WORKFLOW} 的 gate job 中找到 decide 脚本", file=sys.stderr)
+            return 1
+
+        with open(sys.argv[2], "w", encoding="utf-8", newline="\n") as f:
+            f.write(gate_script)
     return 0
 
 

@@ -82,6 +82,7 @@ jobs:
             apps/api/ apps/web/ packages/
             pnpm-lock.yaml pnpm-workspace.yaml
             Dockerfile .dockerignore deploy/
+            .github/workflows/deploy.yml
           )
 
           MAIN_SHA=$(git rev-parse --verify HEAD)
@@ -266,7 +267,9 @@ jobs:
           REDIS_HOST:     ${{ secrets.REDIS_HOST }}
           REDIS_PORT:     ${{ secrets.REDIS_PORT }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          REDIS_DB:       ${{ vars.REDIS_DB }}
           JWT_SECRET:  ${{ secrets.JWT_SECRET }}
+          ADMIN_USERS: ${{ vars.ADMIN_USERS }}
           SMTP_HOST:     ${{ secrets.SMTP_HOST }}
           SMTP_PORT:     ${{ secrets.SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
@@ -282,7 +285,7 @@ jobs:
           # ssh-action 不会自动把 step env 转发进远程 shell —— 必须用 envs
           # 显式点名。缺了这行,变量只存在于 action 容器里,远程脚本里全部为空,
           # 上线时会以「缺少配置：DB_HOST」快速失败。
-          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,REDIS_HOST,REDIS_PORT,REDIS_PASSWORD,JWT_SECRET,SMTP_HOST,SMTP_PORT,SMTP_USERNAME,SMTP_PASSWORD,SMTP_FROM
+          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,REDIS_HOST,REDIS_PORT,REDIS_PASSWORD,REDIS_DB,JWT_SECRET,ADMIN_USERS,SMTP_HOST,SMTP_PORT,SMTP_USERNAME,SMTP_PASSWORD,SMTP_FROM
           script: |
             set -euo pipefail
 
@@ -297,9 +300,19 @@ jobs:
             # DB 与 Redis 是启动期硬依赖，jwt.secret 为空会被 Config.validate 拒绝。
             # 这里显式检查，让失败信息出现在部署日志顶部，而不是埋在容器日志里。
             for v in DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME \
-                     REDIS_HOST REDIS_PORT JWT_SECRET; do
-              [ -n "${!v:-}" ] || { echo "缺少配置：$v（GitHub secrets 未设置）"; exit 1; }
+                     REDIS_HOST REDIS_PORT REDIS_DB JWT_SECRET ADMIN_USERS; do
+              [ -n "${!v:-}" ] || { echo "缺少配置：$v（GitHub secret/variable 未设置）"; exit 1; }
             done
+
+            # 生产环境约定管理员名单与会话都落在 Redis DB 1。GetInt 对非法字符串
+            # 会静默得到 0，因此不能只检查非空，否则拼错变量仍会健康检查通过。
+            [ "$REDIS_DB" = "1" ] \
+              || { echo "配置错误：REDIS_DB 必须为 1"; exit 1; }
+            NORMALIZED_ADMIN_USERS="${ADMIN_USERS//[[:space:]]/}"
+            case ",$NORMALIZED_ADMIN_USERS," in
+              *,1,*) ;;
+              *) echo "配置错误：ADMIN_USERS 必须包含 user_id 1"; exit 1 ;;
+            esac
 
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
@@ -349,7 +362,9 @@ jobs:
                 -e IOT_PILOT_REDIS_HOST="$REDIS_HOST" \
                 -e IOT_PILOT_REDIS_PORT="$REDIS_PORT" \
                 -e IOT_PILOT_REDIS_PASSWORD="$REDIS_PASSWORD" \
+                -e IOT_PILOT_REDIS_DB="$REDIS_DB" \
                 -e IOT_PILOT_JWT_SECRET="$JWT_SECRET" \
+                -e IOT_PILOT_AUTH_ADMIN_USERS="$ADMIN_USERS" \
                 -e IOT_PILOT_SMTP_HOST="${SMTP_HOST:-}" \
                 -e IOT_PILOT_SMTP_PORT="${SMTP_PORT:-}" \
                 -e IOT_PILOT_SMTP_USERNAME="${SMTP_USERNAME:-}" \
