@@ -12,21 +12,29 @@ interface NavItem {
   to: string;
   /** 可选：前缀匹配路径，用于让详情页也点亮父级导航 */
   match?: string;
+  /**
+   * 精确匹配。用于**有子页面的项**：控制台是 /dashboard，它的子页面
+   * /dashboard/admins 也在导航里，若按前缀匹配会让两项同时点亮。
+   */
+  exact?: boolean;
 }
 
 const nav: NavItem[] = [
   // 控制台 = 管理台 /dashboard（管理员登录落点）；根路径 / 是 3D 登录开屏，
   // /home 是独立的内容首页，都不在这套导航里。
-  { label: "控制台", to: "/dashboard" },
+  { label: "控制台", to: "/dashboard", exact: true },
   { label: "意向成员", to: "/recruitment/prospects", match: "/recruitment" },
   { label: "表单管理", to: "/forms" },
   { label: "邮件模板", to: "/templates" },
+  // 用户与权限归在设置类，排在系统设置之前（其余业务模块之后）。
+  { label: "用户与权限", to: "/dashboard/admins" },
   { label: "系统设置", to: "/settings" },
 ];
 
 const route = useRoute();
 
 function isActive(item: NavItem): boolean {
+  if (item.exact) return route.path === item.to;
   const probe = item.match ?? item.to;
   if (probe === "/") return route.path === "/";
   return route.path.startsWith(probe);

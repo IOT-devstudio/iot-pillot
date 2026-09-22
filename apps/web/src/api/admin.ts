@@ -22,6 +22,19 @@ export interface AdminUserList {
   page_size: number;
 }
 
+/** 管理员名单（不分页）。 */
+export interface AdminList {
+  items: AdminUser[];
+  total: number;
+}
+
+/** 提升/撤销管理员的结果。session_revoked=false 表示对方的旧令牌没能即时失效。 */
+export interface AdminMutation {
+  user_id: number;
+  is_admin: boolean;
+  session_revoked: boolean;
+}
+
 /** 拉取当前登录用户的身份与角色，自动处理会话刷新。 */
 export function fetchCurrentUser(): Promise<CurrentUser> {
   return requestWithSession<CurrentUser>("/api/v1/me");
@@ -39,4 +52,25 @@ export function listAdminUsers(
   return requestWithSession<AdminUserList>(
     `/api/v1/admin/users?${query.toString()}`,
   );
+}
+
+/** 读取当前管理员名单，自动处理会话刷新。 */
+export function listAdmins(): Promise<AdminList> {
+  return requestWithSession<AdminList>("/api/v1/admin/admins");
+}
+
+/** 把已注册用户提升为管理员；后端会顺带撤销其会话，需重新登录。 */
+export function grantAdmin(userId: number): Promise<AdminMutation> {
+  return requestWithSession<AdminMutation>("/api/v1/admin/admins", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+/** 撤销管理员；后端同样会撤销其会话。撤销自己会被服务端拒绝。 */
+export function revokeAdmin(userId: number): Promise<AdminMutation> {
+  return requestWithSession<AdminMutation>(`/api/v1/admin/admins/${userId}`, {
+    method: "DELETE",
+  });
 }

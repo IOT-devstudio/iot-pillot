@@ -31,11 +31,12 @@ onMounted(async () => {
   }
 });
 
-/** 快捷入口：按招新工作的使用频率排序 */
+/** 快捷入口：按招新工作的使用频率排序；用户与权限归到设置类，排在系统设置之前 */
 const entries = [
   { title: "意向成员", to: "/recruitment/prospects" },
   { title: "表单管理", to: "/forms" },
   { title: "邮件模板", to: "/templates" },
+  { title: "用户与权限", to: "/dashboard/admins" },
   { title: "系统设置", to: "/settings" },
 ];
 </script>
