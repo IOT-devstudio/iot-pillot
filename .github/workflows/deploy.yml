@@ -267,6 +267,11 @@ jobs:
           REDIS_PORT:     ${{ secrets.REDIS_PORT }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           JWT_SECRET:  ${{ secrets.JWT_SECRET }}
+          SMTP_HOST:     ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:     ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM:     ${{ secrets.SMTP_FROM }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -277,7 +282,7 @@ jobs:
           # ssh-action 不会自动把 step env 转发进远程 shell —— 必须用 envs
           # 显式点名。缺了这行,变量只存在于 action 容器里,远程脚本里全部为空,
           # 上线时会以「缺少配置：DB_HOST」快速失败。
-          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,REDIS_HOST,REDIS_PORT,REDIS_PASSWORD,JWT_SECRET
+          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,REDIS_HOST,REDIS_PORT,REDIS_PASSWORD,JWT_SECRET,SMTP_HOST,SMTP_PORT,SMTP_USERNAME,SMTP_PASSWORD,SMTP_FROM
           script: |
             set -euo pipefail
 
@@ -345,6 +350,11 @@ jobs:
                 -e IOT_PILOT_REDIS_PORT="$REDIS_PORT" \
                 -e IOT_PILOT_REDIS_PASSWORD="$REDIS_PASSWORD" \
                 -e IOT_PILOT_JWT_SECRET="$JWT_SECRET" \
+                -e IOT_PILOT_SMTP_HOST="${SMTP_HOST:-}" \
+                -e IOT_PILOT_SMTP_PORT="${SMTP_PORT:-}" \
+                -e IOT_PILOT_SMTP_USERNAME="${SMTP_USERNAME:-}" \
+                -e IOT_PILOT_SMTP_PASSWORD="${SMTP_PASSWORD:-}" \
+                -e IOT_PILOT_SMTP_FROM="${SMTP_FROM:-}" \
                 "$1"
             }
 
