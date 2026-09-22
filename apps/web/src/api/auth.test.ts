@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  listAdminUsers,
   login,
   logout,
   refreshAuthSession,
@@ -148,7 +147,7 @@ describe("auth api", () => {
         JSON.stringify({
           code: 0,
           message: "success",
-          data: { access_token: "new-a", refresh_token: "new-r", user_id: -1 },
+          data: { access_token: "new-a", refresh_token: "new-r" },
         }),
         { status: 200 },
       ),
@@ -157,7 +156,6 @@ describe("auth api", () => {
     await expect(refreshAuthSession("old-r")).resolves.toEqual({
       access_token: "new-a",
       refresh_token: "new-r",
-      user_id: -1,
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/refresh",
@@ -191,36 +189,4 @@ describe("auth api", () => {
     );
   });
 
-  it("loads the paginated admin user list with the access token", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          code: 0,
-          message: "success",
-          data: {
-            items: [
-              { user_id: 7, name: "Ada", created_at: "2026-09-17T10:00:00Z" },
-            ],
-            total: 1,
-            page: 2,
-            page_size: 20,
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-
-    await expect(listAdminUsers("access-token", 2, 20)).resolves.toMatchObject({
-      total: 1,
-      page: 2,
-      page_size: 20,
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/admin/users?page=2&page_size=20",
-      expect.objectContaining({
-        method: "GET",
-        headers: { Authorization: "Bearer access-token" },
-      }),
-    );
-  });
 });

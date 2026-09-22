@@ -6,19 +6,18 @@
  * 之后，用户名单作为其中一块卡片保留，`/api/v1/admin/users` 的调用链原样搬过来，
  * 只把渲染换成本项目的暖纸面板 + el-table。
  *
- * 为什么先调 /me 再调列表：/me 可能刚刚轮换过 access token，必须重读会话，
- * 否则列表请求会带着已经失效的旧令牌（照搬原实现的处理）。
+ * /me 与列表请求共享同一个受保护请求模块；access token 过期时由模块统一刷新，
+ * 两个并发请求也会共享同一次 refresh，页面不再手动读取或传递 token。
  */
 import { computed, onMounted, ref } from "vue";
 
+import { AuthRequestError } from "@/api/auth";
 import {
-  AuthRequestError,
   listAdminUsers,
   type AdminUser,
   type CurrentUser,
-} from "@/api/auth";
-import { fetchCurrentUserWithRefresh } from "@/auth/current-user";
-import { readAuthSession } from "@/auth/session";
+  fetchCurrentUser,
+} from "@/api/admin";
 
 const currentUser = ref<CurrentUser | null>(null);
 const users = ref<AdminUser[]>([]);
@@ -45,23 +44,12 @@ function messageOf(error: unknown): string {
 }
 
 onMounted(async () => {
-  const session = readAuthSession();
-  if (session === null) {
-    errorMessage.value = "登录状态已失效，请重新登录";
-    loading.value = false;
-    return;
-  }
-
   try {
-    currentUser.value = await fetchCurrentUserWithRefresh(session.access_token);
-    // /me 可能刚刚轮换过令牌，重新读取会话以避免列表请求继续使用旧 token。
-    const currentSession = readAuthSession();
-    if (currentSession === null) {
-      errorMessage.value = "登录状态已失效，请重新登录";
-      return;
-    }
-
-    const result = await listAdminUsers(currentSession.access_token);
+    const [user, result] = await Promise.all([
+      fetchCurrentUser(),
+      listAdminUsers(),
+    ]);
+    currentUser.value = user;
     users.value = result.items;
     total.value = result.total;
   } catch (error: unknown) {
