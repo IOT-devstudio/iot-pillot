@@ -126,7 +126,7 @@ function metricValue(
   return value();
 }
 
-/** 快捷入口收缩为次级操作区（issue #53），顺序与顶栏一致 */
+/** 快捷入口：保持原卡片设计（设计反馈），位于页面底部的次级区；顺序与顶栏一致 */
 const entries = [
   { title: "意向成员", to: "/recruitment/prospects" },
   { title: "表单管理", to: "/forms" },
@@ -297,12 +297,13 @@ function roleLabel(user: AdminUser): string {
         </div>
       </section>
 
-      <!-- 快捷入口：收缩为次级操作区 -->
-      <nav class="qlinks" aria-label="快捷入口">
-        <router-link v-for="e in entries" :key="e.to" :to="e.to" class="qlink">
-          {{ e.title }}<span aria-hidden="true">→</span>
+      <!-- 快捷入口：恢复原卡片设计（设计反馈），保留在页面底部作为次级区 -->
+      <section class="entries" aria-label="快捷入口">
+        <router-link v-for="e in entries" :key="e.to" :to="e.to" class="entry">
+          <span class="entry__title">{{ e.title }}</span>
+          <span class="entry__arrow" aria-hidden="true">→</span>
         </router-link>
-      </nav>
+      </section>
     </main>
   </div>
 </template>
@@ -501,63 +502,116 @@ function roleLabel(user: AdminUser): string {
   white-space: nowrap;
 }
 
-/* —— 次级操作区（原大卡片入口） —— */
-.qlinks {
+/* —— 快捷入口 —— */
+.entries {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(16px, 1.4vw, 22px);
+}
+
+.entry {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px 22px;
-  padding-top: 4px;
-}
-
-.qlink {
-  display: inline-flex;
-  gap: 8px;
+  gap: clamp(18px, 1.8vw, 24px);
   align-items: center;
-  color: var(--ink-soft);
-  font-size: 14px;
-  font-weight: 600;
+  min-height: clamp(140px, 12vw, 176px);
+  padding: clamp(28px, 3vw, 40px) clamp(28px, 3.2vw, 44px);
+  overflow: hidden;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface);
   text-decoration: none;
-  transition: color 160ms ease;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
-.qlink span {
+.entry::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--blue);
+  content: "";
+  opacity: 0.34;
+  transition: opacity 180ms ease;
+}
+
+.entry:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--el-box-shadow);
+  transform: translateY(-2px);
+}
+
+.entry:hover::before {
+  opacity: 1;
+}
+
+.entry:focus-visible {
+  border-color: var(--blue);
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.entry__title {
+  font-family: var(--font-serif);
+  font-size: clamp(24px, 2.2vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.entry__arrow {
+  margin-left: auto;
   color: var(--ink-faint);
-  transition: color 160ms ease, transform 160ms ease;
+  font-size: clamp(18px, 1.6vw, 22px);
+  transition: color 180ms ease, transform 180ms ease;
 }
 
-.qlink:hover {
-  color: var(--blue);
-}
-
-.qlink:hover span {
+.entry:hover .entry__arrow {
   color: var(--blue);
   transform: translateX(3px);
 }
 
-.qlink:focus-visible {
-  color: var(--blue);
-  outline: 2px solid var(--blue);
-  outline-offset: 3px;
+@media (max-width: 1024px) {
+  .entry {
+    min-height: clamp(132px, 15vw, 156px);
+    padding: 28px 30px;
+  }
 }
 
 @media (max-width: 720px) {
-  .row {
-    flex-wrap: wrap;
-    gap: 6px 12px;
+  .entries {
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 
-  .row__meta {
-    order: 3;
-    width: 100%;
+  .entry {
+    min-height: 0;
+    gap: 16px;
+    padding: 24px 22px;
+  }
+
+  .entry__title {
+    font-size: 23px;
+  }
+}
+
+@media (max-width: 420px) {
+  .entry__title {
+    font-size: 21px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .qlink span {
+  .entry {
     transition: none;
   }
 
-  .qlink:hover span {
+  .entry:hover {
+    transform: none;
+  }
+
+  .entry:hover .entry__arrow {
     transform: none;
   }
 }
