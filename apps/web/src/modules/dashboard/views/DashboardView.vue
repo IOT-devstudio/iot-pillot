@@ -11,7 +11,7 @@
  */
 import { computed, onMounted, ref } from "vue";
 
-import { fetchHealth } from "@/api/health";
+import { describeHealthError, fetchHealth } from "@/api/health";
 import AppHeader from "@/components/common/AppHeader.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 import SignOutButton from "@/components/SignOutButton.vue";
@@ -27,7 +27,9 @@ onMounted(async () => {
     const data = await fetchHealth();
     health.value = `${data.status} @ ${data.time}`;
   } catch (e) {
-    health.value = `连接失败：${(e as Error).message}`;
+    // 走分类翻译器，不直接拼 (e as Error).message——原始异常（如
+    // Unexpected token '<'…）不该出现在界面上，见 issue #56
+    health.value = describeHealthError(e);
   }
 });
 
