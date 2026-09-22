@@ -74,3 +74,31 @@ export function revokeAdmin(userId: number): Promise<AdminMutation> {
     method: "DELETE",
   });
 }
+
+/** 发信记录（后端 MailRecordResp）。完整管理在 #52，这里只供概览展示。 */
+export interface MailRecord {
+  id: number;
+  title: string;
+  from_user_id: number;
+  to_user_id: number;
+  to_email: string;
+  created_at: string;
+}
+
+export interface MailRecordList {
+  items: MailRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** 分页读取发信记录，自动处理会话刷新。 */
+export function listMails(page = 1, pageSize = 20): Promise<MailRecordList> {
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  return requestWithSession<MailRecordList>(
+    `/api/v1/admin/mails?${query.toString()}`,
+  );
+}

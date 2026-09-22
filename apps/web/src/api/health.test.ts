@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   describeHealthError,
   fetchHealth,
+  fetchReady,
   HEALTH_BAD_RESPONSE,
   HEALTH_UNREACHABLE,
 } from "./health";
@@ -98,5 +99,67 @@ describe("describeHealthError", () => {
     expect(describeHealthError(undefined)).toBe(
       "暂时无法获取后端状态，请稍后重试",
     );
+  });
+});
+
+describe("ready api", () => {
+  it("resolves the ready state with a 200", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { status: "ready", time: "2026-09-22T07:00:00Z" },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(fetchReady()).resolves.toEqual({
+      status: "ready",
+      time: "2026-09-22T07:00:00Z",
+    });
+  });
+
+  it("treats a 503 with data as a valid answer, not an error", async () => {
+    // /health/ready 的 503 是探针的**合法状态**：依赖不可用时后端就回 503 +
+    // {data:{status:"unavailable"}}。把它当异常抛会让界面显示成
+    // 「服务响应异常」，掩盖掉「服务明确报告依赖挂了」这个更有用的信息。
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 5001,
+          message: "依赖不可用",
+          data: {
+            status: "unavailable",
+            failures: { database: "connection refused" },
+          },
+        }),
+        { status: 503 },
+      ),
+    );
+
+    await expect(fetchReady()).resolves.toEqual({
+      status: "unavailable",
+      failures: { database: "connection refused" },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/health/ready",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("throws the classified messages for unreachable / non-JSON / missing data", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await expect(fetchReady()).rejects.toThrow(HEALTH_UNREACHABLE);
+
+    fetchMock.mockResolvedValueOnce(
+      new Response("<html>502</html>", { status: 500 }),
+    );
+    await expect(fetchReady()).rejects.toThrow(HEALTH_UNREACHABLE);
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: 5001 }), { status: 500 }),
+    );
+    await expect(fetchReady()).rejects.toThrow(HEALTH_BAD_RESPONSE);
   });
 });
