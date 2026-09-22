@@ -11,7 +11,7 @@
  */
 import { computed, onMounted, ref } from "vue";
 
-import { fetchHealth } from "@/api/health";
+import { describeHealthError, fetchHealth } from "@/api/health";
 import AppHeader from "@/components/common/AppHeader.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 import SignOutButton from "@/components/SignOutButton.vue";
@@ -27,7 +27,9 @@ onMounted(async () => {
     const data = await fetchHealth();
     health.value = `${data.status} @ ${data.time}`;
   } catch (e) {
-    health.value = `连接失败：${(e as Error).message}`;
+    // 把异常归一化成中文短句；不再把 `(e as Error).message` 原样暴露给 UI
+    // （issue #56：网络/JSON 异常会带 "Unexpected token <..." 这种英文解析错误）。
+    health.value = `连接失败：${describeHealthError(e)}`;
   }
 });
 
