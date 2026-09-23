@@ -44,11 +44,3 @@ type SendMailBulkReq struct {
 	TemplateID int                `json:"template_id" binding:"required,min=1"`
 	Recipients []MailRecipientReq `json:"recipients" binding:"required,min=1,dive"`
 }
-
-// MailBatchDeleteReq 批量删除发信记录。
-//
-// 上限 500：单页最多 100 条，跨页累积选中也远到不了这个量；
-// 再大就不是「清理几条测试记录」而是全表操作了，应该走别的途径。
-type MailBatchDeleteReq struct {
-	IDs []int `json:"ids" binding:"required,min=1,max=500,dive,gt=0"`
-}

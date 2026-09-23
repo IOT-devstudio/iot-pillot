@@ -60,9 +60,3 @@ type MailRecordListResp struct {
 	Page     int              `json:"page"`
 	PageSize int              `json:"page_size"`
 }
-
-// MailBatchDeleteResp 批量删除结果。Deleted 是实际删掉的行数：
-// ids 里混入已不存在的 id 时会小于请求数量，让调用方能如实转告。
-type MailBatchDeleteResp struct {
-	Deleted int64 `json:"deleted"`
-}

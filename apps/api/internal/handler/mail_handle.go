@@ -229,32 +229,6 @@ func (h *MailHandler) ListMails(c *gin.Context) {
 	response.OK(c, result)
 }
 
-// DeleteMails 批量删除发信记录
-// @Summary 批量删除发信记录
-// @Description 管理员清理记录用；返回实际删除的行数，ids 中已不存在的 id 会被跳过。
-// @Tags 管理端-邮件
-// @Accept json
-// @Produce json
-// @Param request body request.MailBatchDeleteReq true "待删除的记录 id 列表"
-// @Success 200 {object} response.Result{data=response.MailBatchDeleteResp} "成功"
-// @Failure 400 {object} response.Result "参数错误"
-// @Security BearerAuth
-// @Router /api/v1/admin/mails/batch-delete [post]
-func (h *MailHandler) DeleteMails(c *gin.Context) {
-	var req request.MailBatchDeleteReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.FailInvalidParam(c, err.Error())
-		return
-	}
-
-	result, err := h.mailService.DeleteMailRecords(c.Request.Context(), req.IDs)
-	if err != nil {
-		failInternal(c, err)
-		return
-	}
-	response.OK(c, result)
-}
-
 /* ------------------------------------------------------------------ *
  * 辅助
  * ------------------------------------------------------------------ */
