@@ -42,6 +42,8 @@ const {
   loading: recordsLoading,
   error: recordsError,
   unauthorized: recordsUnauthorized,
+  selected: selectedRecords,
+  deleting: recordsDeleting,
   keyword: recordsKeyword,
   dates: recordsDates,
   hasFilter: recordsHasFilter,
@@ -50,7 +52,46 @@ const {
   resetFilter: resetRecordsFilter,
   changePage: changeRecordsPage,
   changePageSize: changeRecordsPageSize,
+  onSelectionChange: onRecordsSelectionChange,
+  removeSelected: removeSelectedRecords,
 } = useMailRecords();
+
+/** 记录表格引用：全选/取消全选/删除后清内部勾选缓存，否则 reserve-selection 会留着已删行 */
+const recordsTable = ref();
+
+/**
+ * 应用/清空搜索：结果集变了，旧勾选已无语义，先清再加载。
+ * 换一批记录还留着上一批的勾选是最容易误删的交互事故。
+ */
+async function onSearchRecords(): Promise<void> {
+  recordsTable.value?.clearSelection();
+  await searchRecords();
+}
+
+async function onResetRecords(): Promise<void> {
+  recordsTable.value?.clearSelection();
+  await resetRecordsFilter();
+}
+
+/* —— 记录选择模式：平时表格干净，点「选择」才进入多选态 —— */
+const selectMode = ref(false);
+
+function enterSelectMode(): void {
+  selectMode.value = true;
+}
+
+/** 退出选择模式：清光勾选（含跨页缓存），回到普通浏览态 */
+function exitSelectMode(): void {
+  recordsTable.value?.clearSelection();
+  selectMode.value = false;
+}
+
+// 全选不设按钮：表头复选框（主题列左侧）就是全选/取消全选，
+// 操作条只留撤销与破坏性动作，避免同一功能两个入口。
+
+function clearAllRecords(): void {
+  recordsTable.value?.clearSelection();
+}
 
 /* —— 用户名单：发送弹窗的收件人选项 + 记录操作者姓名映射 —— */
 const users = ref<AdminUser[]>([]);
@@ -100,6 +141,12 @@ async function onSave(input: MailTemplateInput): Promise<void> {
 function openSend(template: MailTemplate): void {
   sendTarget.value = template;
   sendVisible.value = true;
+}
+
+/** 批量删除：成功后清勾选缓存并退出选择模式（该做的事做完了） */
+async function onDeleteSelectedRecords(): Promise<void> {
+  const ok = await removeSelectedRecords();
+  if (ok) exitSelectMode();
 }
 
 onMounted(() => {
@@ -189,20 +236,31 @@ onMounted(() => {
       <section class="panel panel--pad" aria-label="发信记录">
         <header class="panel-head">
           <h2 class="panel-head__title">发信记录</h2>
-          <span class="panel-head__meta">
-            {{ recordsLoading ? "加载中…" : recordsError ? "" : `共 ${recordsTotal} 条` }}
+          <span class="panel-head__headside">
+            <!-- 普通态才显示「选择」入口；进入选择态后操作收进下方工具条 -->
+            <el-button
+              v-if="!selectMode && records.length > 0"
+              size="small"
+              plain
+              @click="enterSelectMode"
+            >
+              选择
+            </el-button>
+            <span class="panel-head__meta">
+              {{ recordsLoading ? "加载中…" : recordsError ? "" : `共 ${recordsTotal} 条` }}
+            </span>
           </span>
         </header>
 
-        <!-- 搜索行：关键词回车/点搜索/日期变化即触发，总是回到第一页 -->
+        <!-- 搜索行：关键词回车/点搜索/日期变化即触发；换条件先清勾选再回第一页 -->
         <div class="records-search" role="search" aria-label="搜索发信记录">
           <el-input
             v-model="recordsKeyword"
             class="records-search__input"
             placeholder="搜索主题或收件人"
             clearable
-            @keyup.enter="searchRecords"
-            @clear="searchRecords"
+            @keyup.enter="onSearchRecords"
+            @clear="onSearchRecords"
           />
           <el-date-picker
             v-model="recordsDates"
@@ -213,25 +271,59 @@ onMounted(() => {
             start-placeholder="开始日期"
             end-placeholder="结束日期"
             :editable="false"
-            @change="searchRecords"
+            @change="onSearchRecords"
           />
-          <el-button type="primary" plain @click="searchRecords">搜索</el-button>
+          <el-button type="primary" plain @click="onSearchRecords">搜索</el-button>
           <el-button
             v-if="recordsHasFilter"
-            @click="resetRecordsFilter"
+            @click="onResetRecords"
           >
             重置
           </el-button>
         </div>
 
+        <!-- 选择态操作条：全选走表头复选框（主题列左侧），这里只留撤销与删除 -->
         <div
-          v-if="recordsLoading"
+          v-if="selectMode && records.length > 0"
+          class="records-actions"
+          role="toolbar"
+          aria-label="记录多选操作"
+        >
+          <span class="records-actions__count">
+            已选 {{ selectedRecords.length }} 条
+          </span>
+          <span class="records-actions__group">
+            <el-button size="small" :disabled="selectedRecords.length === 0" @click="clearAllRecords">
+              取消全选
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              :disabled="selectedRecords.length === 0 || recordsDeleting"
+              :loading="recordsDeleting"
+              @click="onDeleteSelectedRecords"
+            >
+              删除{{ selectedRecords.length > 0 ? `（${selectedRecords.length}）` : "" }}
+            </el-button>
+            <el-button size="small" @click="exitSelectMode">取消</el-button>
+          </span>
+        </div>
+
+        <!-- 骨架屏/空态只在**首载**出现；已有数据时表格常驻（v-loading 遮罩），
+             表格一卸载，reserve-selection 的跨页勾选就没了 -->
+        <div
+          v-if="records.length === 0 && recordsLoading"
           role="status"
           aria-label="正在加载发信记录"
         >
           <el-skeleton :rows="4" animated />
         </div>
-        <div v-else-if="recordsError" class="state state--error" role="alert">
+        <div
+          v-else-if="records.length === 0 && recordsError"
+          class="state state--error"
+          role="alert"
+        >
           <span>{{ recordsError }}</span>
           <el-button
             v-if="!recordsUnauthorized"
@@ -254,10 +346,38 @@ onMounted(() => {
           <span>
             没有匹配{{ recordsKeyword.trim() ? `“${recordsKeyword.trim()}”` : "当前条件" }}的记录
           </span>
-          <el-button link type="primary" @click="resetRecordsFilter">重置条件</el-button>
+          <el-button link type="primary" @click="onResetRecords">重置条件</el-button>
         </div>
         <template v-else>
-          <el-table v-loading="recordsLoading" :data="visibleRecords">
+          <!-- 翻页失败：旧数据还在，表格上方补一条错误提示，不卸载表格 -->
+          <div v-if="recordsError" class="state state--error" role="alert">
+            <span>{{ recordsError }}</span>
+            <el-button
+              v-if="!recordsUnauthorized"
+              link
+              type="primary"
+              @click="loadRecords"
+            >
+              重试
+            </el-button>
+          </div>
+
+          <el-table
+            ref="recordsTable"
+            v-loading="recordsLoading"
+            class="records-table"
+            :class="{ 'is-plain': !selectMode }"
+            :data="visibleRecords"
+            row-key="id"
+            @selection-change="onRecordsSelectionChange"
+          >
+            <!-- 复选列常驻占位（44px），普通态只隐藏框不撤列——
+                 动态 v-if 增删列会让右侧内容整块左右跳 -->
+            <el-table-column
+              type="selection"
+              width="44"
+              reserve-selection
+            />
             <!-- 命中高亮走切段渲染（v-for span），keyword 只作文本插值，不碰 v-html -->
             <el-table-column label="主题" min-width="220" show-overflow-tooltip>
               <template #default="{ row }">
@@ -362,6 +482,21 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+/* 记录区头部右侧：选择按钮与条数并排 */
+.panel-head__headside {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+/* 普通态：复选列保留 44px 占位，只把框藏起来（visibility 保留布局且不可点）。
+   进出选择模式时右侧各列因此纹丝不动。
+   必须用单行形式写 :deep——嵌套进普通选择器的 :deep() 会被 scoped
+   编译丢掉内层规则（实测产物只剩空外层） */
+.records-table.is-plain :deep(.el-table-column--selection .cell) {
+  visibility: hidden;
+}
+
 /* 搜索行：关键词 + 日期范围 + 动作，常驻于记录区头部下方 */
 .records-search {
   display: flex;
@@ -383,6 +518,31 @@ onMounted(() => {
 .hl {
   color: var(--blue);
   font-weight: 700;
+}
+
+/* 选择态操作条：计数在左，动作组在右 */
+.records-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.records-actions__count {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.records-actions__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .state {
@@ -445,6 +605,17 @@ onMounted(() => {
   .pager {
     justify-content: center;
   }
+
+  /* 操作条窄屏堆叠：计数一行，按钮组换行排 */
+  .records-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .records-actions__group {
+    width: 100%;
+  }
+
   /* 搜索行窄屏逐项占满：关键词/日期各一行，动作跟排 */
   .records-search__input,
   .records-search__dates {

@@ -127,6 +127,8 @@ func NewRouter(
 		admin.POST("/mails/send-by-email", mailHandler.SendMailToEmail)
 		admin.POST("/mails/send-bulk", mailHandler.SendMailBulk)
 		admin.GET("/mails", mailHandler.ListMails)
+		// 批量删除用 DELETE 方法（语义即删除；body 携带 ids 数组，gin 正常绑定）
+		admin.DELETE("/mails/batch-delete", mailHandler.DeleteMails)
 	}
 	return &Router{eng: r, cfg: cfg}
 }

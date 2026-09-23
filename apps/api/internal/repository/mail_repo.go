@@ -37,6 +37,9 @@ type MailListFilter struct {
 type MailRepo interface {
 	Create(ctx context.Context, mail *domain.Mail) error
 	List(ctx context.Context, page int, pageSize int, filter MailListFilter) ([]*domain.Mail, int64, error)
+	// DeleteByIDs 按 id 批量硬删除，返回实际删除的行数。
+	// id 不存在不算错误（并发场景下别人可能刚删过），行数会如实反映。
+	DeleteByIDs(ctx context.Context, ids []int) (int64, error)
 }
 
 type gormMailModelRepo struct {
@@ -162,4 +165,15 @@ func (r *gormMailRepo) List(ctx context.Context, page int, pageSize int, filter 
 	}
 
 	return mails, total, nil
+}
+
+func (r *gormMailRepo) DeleteByIDs(ctx context.Context, ids []int) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := r.db.WithContext(ctx).Where("id IN ?", ids).Delete(&domain.Mail{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
 }
