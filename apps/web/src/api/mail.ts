@@ -155,3 +155,25 @@ export function sendMailBulk(
     body: JSON.stringify(input),
   });
 }
+
+export interface MailBatchDeleteResult {
+  /** 实际删除的行数；ids 里已不存在的 id 会被跳过，可能小于请求数 */
+  deleted: number;
+}
+
+/**
+ * 批量删除发信记录（管理员清理用）。
+ * 后端单次上限 500 条（request.MailBatchDeleteReq）。
+ */
+export function batchDeleteMailRecords(
+  ids: number[],
+): Promise<MailBatchDeleteResult> {
+  return requestWithSession<MailBatchDeleteResult>(
+    "/api/v1/admin/mails/batch-delete",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    },
+  );
+}

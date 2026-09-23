@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  batchDeleteMailRecords,
   createMailTemplate,
   deleteMailTemplate,
   listMailTemplates,
@@ -176,6 +177,18 @@ describe("mail api", () => {
       template_id: 5,
       recipients: [{ to_user_id: 1 }, { to_user_id: 2 }],
     });
+  });
+
+  it("batch-deletes records with an ids array", async () => {
+    mockJson({ code: 0, message: "ok", data: { deleted: 3 } });
+    await expect(batchDeleteMailRecords([7, 8, 9])).resolves.toEqual({
+      deleted: 3,
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/mails/batch-delete");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ ids: [7, 8, 9] });
+    expect(authHeaderOf()).toBe("Bearer access-token");
   });
 
   it("surfaces the backend error message when the template is missing", async () => {
