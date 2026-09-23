@@ -14,13 +14,20 @@ import type { Direction } from "@iot-pillot/shared-types";
 import { requestWithSession } from "./session-request";
 import type { UserRole } from "./admin";
 
-/** 用户的资料字段。方向允许为空（未选时存 null，不入选项）。 */
+/**
+ * 用户的资料字段。
+ *
+ * 三态合一：未设置 / 已清空 / 已填。`undefined` = 后端没返这个字段；
+ * `null` = 后端认为已清空（PUT body 用 `null` 表示清除）；`string` /
+ * `number` 等才是真实值。前端 hydrate 时只区分「有值 vs 没值」，
+ * 不会因为 null 单独走一条分支。
+ */
 export interface UserDetail {
-  class?: string;
-  student_id?: number;
-  qq?: string;
+  class?: string | null;
+  student_id?: number | null;
+  qq?: string | null;
   direction?: Direction | null;
-  email?: string;
+  email?: string | null;
 }
 
 /** GET /me 扩展后的完整形状：name + detail 都在 data 内。 */
@@ -67,12 +74,12 @@ export interface FormShape {
 }
 
 export function detailToForm(detail: UserDetail): FormShape {
+  // student_id === 0 按「未填」处理（与 #57 后端契约一致）；编辑表单里空串比「0」更诚实
+  const hasStudentId =
+    detail.student_id !== undefined && detail.student_id !== null && detail.student_id !== 0;
   return {
     class: detail.class ?? "",
-    studentId:
-      detail.student_id === undefined || detail.student_id === null
-        ? ""
-        : String(detail.student_id),
+    studentId: hasStudentId ? String(detail.student_id) : "",
     qq: detail.qq ?? "",
     direction: detail.direction ?? "",
   };
@@ -84,14 +91,17 @@ export function detailToForm(detail: UserDetail): FormShape {
  * 学号做一次「必须是正整数」的兜底：input type=number 已经能挡住大部分非法字符，
  * 但粘贴仍可能塞进来 0 / 负数 / 小数 —— 后端契约里 student_id 是非负整数，
  * 0 在 #57 里被定义为「未填」，所以这里把 0 也归一到 null。
+ *
+ * 不静默截断小数（3.7 → 3）：用户键入非整数就该在客户端就拒掉，不然保存成功
+ * 后看自己资料发现值被悄悄改了，反而更难排查。
  */
 export function formToUpdate(form: FormShape): MyProfileUpdate {
   const studentIdRaw = form.studentId.trim();
   let studentId: number | null = null;
   if (studentIdRaw !== "") {
     const parsed = Number(studentIdRaw);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      studentId = Math.trunc(parsed);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      studentId = parsed;
     }
   }
 
