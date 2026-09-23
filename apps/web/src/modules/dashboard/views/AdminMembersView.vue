@@ -15,10 +15,7 @@
  */
 import { onMounted } from "vue";
 
-import AppHeader from "@/components/common/AppHeader.vue";
-import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
-import SignOutButton from "@/components/SignOutButton.vue";
 import { useAdminPermissions } from "../composables/useAdminPermissions";
 
 const {
@@ -57,21 +54,12 @@ onMounted(loadAll);
 
 <template>
   <div class="page">
-    <AppHeader />
-
     <main class="page__body">
-      <!-- 本页可从控制台跳转过来，所以给一个走回控制台的入口 -->
-      <BackToDashboard />
-
       <PageHeader
         eyebrow="iot-pillot · 权限管理"
         title="用户与权限"
         description="维护管理员名单：提升或撤销某个账号的管理权限。角色变更会让对方强制退出，需重新登录。"
-      >
-        <template #actions>
-          <SignOutButton />
-        </template>
-      </PageHeader>
+      />
 
       <!-- 用户列表 -->
       <section class="panel panel--pad users-panel">
@@ -244,16 +232,16 @@ onMounted(loadAll);
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  min-height: calc(100dvh - 60px);
 }
 
 .page__body {
   display: flex;
   flex-direction: column;
   gap: 28px;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: clamp(32px, 5vw, 56px) clamp(20px, 4vw, 48px) 72px;
+  width: 100%;
+  margin: 0;
+  padding: 29px 0 44px;
 }
 
 .panel-head {
@@ -347,6 +335,11 @@ onMounted(loadAll);
 }
 
 @media (max-width: 640px) {
+  .page__body {
+    gap: 21px;
+    padding-top: 22px;
+  }
+
   .panel {
     padding: 18px 16px;
   }

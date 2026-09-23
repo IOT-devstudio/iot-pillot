@@ -8,8 +8,6 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 
-import AppHeader from "@/components/common/AppHeader.vue";
-import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 import { formatDateTime } from "../fixture";
 import type { ProspectStatus } from "../status";
@@ -76,11 +74,7 @@ const {
 
 <template>
   <div class="page">
-    <AppHeader />
-
     <main class="page__body">
-      <BackToDashboard />
-
       <PageHeader
         eyebrow="招新管理 · 意向档案"
         title="意向成员"
@@ -177,16 +171,16 @@ const {
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  min-height: calc(100dvh - 60px);
 }
 
 .page__body {
   display: flex;
   flex-direction: column;
   gap: 28px;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: clamp(32px, 5vw, 56px) clamp(20px, 4vw, 48px) 72px;
+  width: 100%;
+  margin: 0;
+  padding: 29px 0 44px;
 }
 
 /* —— 状态统计条：发丝网格 + 左侧色条，点击即筛选 —— */
@@ -323,6 +317,11 @@ const {
 }
 
 @media (max-width: 560px) {
+  .page__body {
+    gap: 21px;
+    padding-top: 22px;
+  }
+
   .stat-strip {
     grid-template-columns: repeat(2, 1fr);
   }

@@ -17,7 +17,7 @@ export const dashboardRoutes: RouteRecordRaw[] = [
     path: "/dashboard",
     name: "dashboard",
     component: DashboardView,
-    meta: { title: "控制台", allowRoles: MEMBER_ONLY },
+    meta: { title: "控制台", allowRoles: MEMBER_ONLY, adminShell: true },
   },
   // 「用户与权限」独立成页而不是塞进控制台：控制台只留健康状态与入口，
   // 管理动作集中到自己的页面，职责更清。同样是成员专属。
@@ -25,6 +25,6 @@ export const dashboardRoutes: RouteRecordRaw[] = [
     path: "/dashboard/admins",
     name: "dashboard-admins",
     component: AdminMembersView,
-    meta: { title: "用户与权限", allowRoles: MEMBER_ONLY },
+    meta: { title: "用户与权限", allowRoles: MEMBER_ONLY, adminShell: true },
   },
 ];

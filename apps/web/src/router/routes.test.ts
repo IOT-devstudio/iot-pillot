@@ -115,6 +115,8 @@ describe("application routes", () => {
     expect(mailRoutes[0]?.component).toMatchObject({ name: "MailCenterView" });
     // 邮件含招新对象联系方式，漏标 allowRoles 就等于对普通用户敞开
     expect(mailRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
+    // 邮件中心也属于统一管理外壳，避免重新引入独立顶栏。
+    expect(mailRoutes[0]?.meta?.adminShell).toBe(true);
   });
 
   it("registers each planned placeholder page as member-only", () => {

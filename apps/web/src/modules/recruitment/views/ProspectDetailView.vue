@@ -8,7 +8,6 @@
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 
-import AppHeader from "@/components/common/AppHeader.vue";
 import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 import { formatDateTime } from "../fixture";
@@ -36,8 +35,6 @@ const {
 
 <template>
   <div class="page">
-    <AppHeader />
-
     <main class="page__body">
       <!-- 详情页的上一层是列表，所以覆盖默认的「返回控制台」目标与文案 -->
       <BackToDashboard to="/recruitment/prospects" label="← 返回意向成员列表" />
@@ -129,16 +126,16 @@ const {
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  min-height: calc(100dvh - 60px);
 }
 
 .page__body {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: clamp(32px, 5vw, 56px) clamp(20px, 4vw, 48px) 72px;
+  width: 100%;
+  margin: 0;
+  padding: 29px 0 44px;
 }
 
 .panel__title {
@@ -192,6 +189,11 @@ const {
 }
 
 @media (max-width: 768px) {
+  .page__body {
+    gap: 20px;
+    padding-top: 22px;
+  }
+
   .panel--pad + .panel--pad {
     margin-top: 20px;
   }

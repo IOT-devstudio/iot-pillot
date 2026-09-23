@@ -37,6 +37,6 @@ export const routes: RouteRecordRaw[] = [
     path,
     name,
     component: PlaceholderView,
-    meta: { title, allowRoles: MEMBER_ONLY },
+    meta: { title, allowRoles: MEMBER_ONLY, adminShell: true },
     })),
 ];
