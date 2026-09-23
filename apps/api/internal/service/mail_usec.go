@@ -268,18 +268,6 @@ func (a *MailUseCase) ListMails(ctx context.Context, page int, pageSize int) (*r
 	}, nil
 }
 
-// DeleteMailRecords 批量删除发信记录（管理员清理用）。
-//
-// 与「删模板不动记录」不冲突：那是防止模板误删连累审计，
-// 这里是管理员对记录本身的显式清理，二次确认在管理端完成。
-func (a *MailUseCase) DeleteMailRecords(ctx context.Context, ids []int) (*response.MailBatchDeleteResp, error) {
-	deleted, err := a.mails.DeleteByIDs(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	return &response.MailBatchDeleteResp{Deleted: deleted}, nil
-}
-
 /* ------------------------------------------------------------------ *
  * 内部
  * ------------------------------------------------------------------ */

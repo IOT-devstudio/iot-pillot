@@ -40,17 +40,10 @@ const {
   loading: recordsLoading,
   error: recordsError,
   unauthorized: recordsUnauthorized,
-  selected: selectedRecords,
-  deleting: recordsDeleting,
   load: loadRecords,
   changePage: changeRecordsPage,
   changePageSize: changeRecordsPageSize,
-  onSelectionChange: onRecordsSelectionChange,
-  removeSelected: removeSelectedRecords,
 } = useMailRecords();
-
-/** 记录表格引用：删除后清掉内部勾选缓存，否则 reserve-selection 会留着已删行 */
-const recordsTable = ref();
 
 /* —— 用户名单：发送弹窗的收件人选项 + 记录操作者姓名映射 —— */
 const users = ref<AdminUser[]>([]);
@@ -100,12 +93,6 @@ async function onSave(input: MailTemplateInput): Promise<void> {
 function openSend(template: MailTemplate): void {
   sendTarget.value = template;
   sendVisible.value = true;
-}
-
-/** 批量删除：成功后同步清掉表格内部的跨页勾选缓存 */
-async function onDeleteSelectedRecords(): Promise<void> {
-  const ok = await removeSelectedRecords();
-  if (ok) recordsTable.value?.clearSelection();
 }
 
 onMounted(() => {
@@ -195,37 +182,19 @@ onMounted(() => {
       <section class="panel panel--pad" aria-label="发信记录">
         <header class="panel-head">
           <h2 class="panel-head__title">发信记录</h2>
-          <span class="panel-head__headside">
-            <el-button
-              type="danger"
-              plain
-              size="small"
-              :disabled="selectedRecords.length === 0 || recordsDeleting"
-              :loading="recordsDeleting"
-              @click="onDeleteSelectedRecords"
-            >
-              删除所选{{ selectedRecords.length > 0 ? `（${selectedRecords.length}）` : "" }}
-            </el-button>
-            <span class="panel-head__meta">
-              {{ recordsLoading ? "加载中…" : recordsError ? "" : `共 ${recordsTotal} 条` }}
-            </span>
+          <span class="panel-head__meta">
+            {{ recordsLoading ? "加载中…" : recordsError ? "" : `共 ${recordsTotal} 条` }}
           </span>
         </header>
 
-        <!-- 骨架屏/空态只在**首载**出现；已有数据时表格常驻（v-loading 遮罩），
-             表格一卸载，reserve-selection 的跨页勾选就没了 -->
         <div
-          v-if="records.length === 0 && recordsLoading"
+          v-if="recordsLoading"
           role="status"
           aria-label="正在加载发信记录"
         >
           <el-skeleton :rows="4" animated />
         </div>
-        <div
-          v-else-if="records.length === 0 && recordsError"
-          class="state state--error"
-          role="alert"
-        >
+        <div v-else-if="recordsError" class="state state--error" role="alert">
           <span>{{ recordsError }}</span>
           <el-button
             v-if="!recordsUnauthorized"
@@ -240,31 +209,7 @@ onMounted(() => {
           还没有发过邮件，从上面的模板点「发送」开始
         </p>
         <template v-else>
-          <!-- 翻页失败：旧数据还在，表格上方补一条错误提示，不卸载表格 -->
-          <div v-if="recordsError" class="state state--error" role="alert">
-            <span>{{ recordsError }}</span>
-            <el-button
-              v-if="!recordsUnauthorized"
-              link
-              type="primary"
-              @click="loadRecords"
-            >
-              重试
-            </el-button>
-          </div>
-
-          <el-table
-            ref="recordsTable"
-            v-loading="recordsLoading"
-            :data="records"
-            row-key="id"
-            @selection-change="onRecordsSelectionChange"
-          >
-            <el-table-column
-              type="selection"
-              width="44"
-              reserve-selection
-            />
+          <el-table :data="records">
             <el-table-column prop="title" label="主题" min-width="220" show-overflow-tooltip />
             <el-table-column prop="to_email" label="收件人" min-width="180" show-overflow-tooltip />
             <el-table-column label="操作者" width="140">
@@ -350,13 +295,6 @@ onMounted(() => {
   font-size: 12px;
   letter-spacing: 0.04em;
   white-space: nowrap;
-}
-
-/* 记录区头部右侧：删除按钮与条数并排 */
-.panel-head__headside {
-  display: flex;
-  gap: 14px;
-  align-items: center;
 }
 
 .state {

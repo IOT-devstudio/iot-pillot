@@ -127,7 +127,6 @@ func NewRouter(
 		admin.POST("/mails/send-by-email", mailHandler.SendMailToEmail)
 		admin.POST("/mails/send-bulk", mailHandler.SendMailBulk)
 		admin.GET("/mails", mailHandler.ListMails)
-		admin.POST("/mails/batch-delete", mailHandler.DeleteMails)
 	}
 	return &Router{eng: r, cfg: cfg}
 }
