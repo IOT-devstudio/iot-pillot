@@ -13,7 +13,8 @@
 import { computed, reactive, ref, watch } from "vue";
 
 import type { MailTemplate, MailTemplateInput } from "@/api/mail";
-import { mergeVariables, validateBraces } from "../utils/template-vars";
+import { mergeVariables, renderPreview, validateBraces } from "../utils/template-vars";
+import MailHtmlPreview from "./MailHtmlPreview.vue";
 
 const props = defineProps<{
   visible: boolean;
@@ -48,6 +49,13 @@ const braceErrors = computed(() => {
 });
 
 const variables = computed(() => mergeVariables(form.title, form.mail_model));
+
+/**
+ * 实时 HTML 预览：编辑态没有变量值可填，传空表让占位符原样显示——
+ * 写模板时要看的是排版与变量位置，不是替换结果（那在发送弹窗里看）。
+ */
+const previewSubject = computed(() => renderPreview(form.title, {}));
+const previewBody = computed(() => renderPreview(form.mail_model, {}));
 
 const fieldErrors = computed(() => {
   const errors: Partial<Record<keyof MailTemplateInput, string>> = {};
@@ -118,7 +126,7 @@ const BODY_PLACEHOLDER = "Dear {{name}}，…";
   <el-dialog
     :model-value="visible"
     :title="template ? '编辑模板' : '新建模板'"
-    width="720px"
+    :width="'min(720px, calc(100vw - 32px))'"
     :close-on-click-modal="false"
     @update:model-value="close"
   >
@@ -182,6 +190,7 @@ const BODY_PLACEHOLDER = "Dear {{name}}，…";
         <p v-if="errOf('mail_model')" class="field__error">
           {{ errOf("mail_model") }}
         </p>
+        <MailHtmlPreview :subject="previewSubject" :html="previewBody" />
       </div>
 
       <div class="field">
@@ -293,5 +302,12 @@ const BODY_PLACEHOLDER = "Dear {{name}}，…";
 .variables__empty {
   color: var(--ink-faint);
   font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  /* 名称/类型两列在窄屏各占半宽会把输入挤成一条缝，落成单列 */
+  .editor__row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

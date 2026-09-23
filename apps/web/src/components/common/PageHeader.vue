@@ -97,6 +97,9 @@ defineProps<{
   }
 
   .page-head__aside {
+    /* 列布局继承了整体的 flex-start，主操作会跟着掉到左侧；
+       操作按钮保持靠右才是它在桌面端的语义，这里显式拉回 */
+    align-self: flex-end;
     padding-bottom: 0;
   }
 }

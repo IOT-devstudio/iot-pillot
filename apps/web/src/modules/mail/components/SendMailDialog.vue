@@ -123,7 +123,7 @@ watch(() => props.template, ensureVarSlots);
   <el-dialog
     :model-value="visible"
     :title="template ? `发送：${template.name}` : '发送'"
-    width="860px"
+    :width="'min(860px, calc(100vw - 32px))'"
     :close-on-click-modal="false"
     @update:model-value="close"
   >
