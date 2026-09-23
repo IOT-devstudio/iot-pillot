@@ -49,12 +49,11 @@ apps/api/config.yml
 apps/api/configs/*.yaml
 !apps/api/configs/config.example.yaml
 
-# 测试文件：只在本地跑，不进版本库
-# 注意：文件仍然留在工作区，go test / vitest 照常能跑；
-# 这里只是让它们不被 git add 带走（含 git add . 的批量操作）。
-*_test.go
-*.test.ts
-*.spec.ts
+# 测试文件：跟着源码进版本库（项目历史一致——PR #33/#43/#60/#62 都含 .test.ts）。
+# 文件留在工作区，go test / vitest 照常能跑。
+# 之前 `*.test.ts` / `*.spec.ts` / `*_test.go` 三条忽略会让新建的测试文件
+# 默认被忽略，与项目实际做法冲突；移除即可，需要时单独再 `git add -f`。
+#（贡献者 PR 添加测试时若遇到此提示，请用 `git add -f <文件>` 显式加入。）
 
 # Build artifacts / caches
 coverage/
