@@ -27,7 +27,6 @@ import {
 import { describeHealthError, fetchReady, type ReadyData } from "@/api/health";
 import AppHeader from "@/components/common/AppHeader.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
-import SignOutButton from "@/components/SignOutButton.vue";
 import { describeAuthError } from "../composables/useAdminPermissions";
 
 /** 每个数据源一块：加载 / 错误文案（空 = 成功），互不影响。 */
@@ -146,11 +145,7 @@ function roleLabel(user: AdminUser): string {
     <AppHeader />
 
     <main class="page__body">
-      <PageHeader eyebrow="iot-pillot · 招新管理" title="控制台">
-        <template #actions>
-          <SignOutButton />
-        </template>
-      </PageHeader>
+      <PageHeader eyebrow="iot-pillot · 招新管理" title="控制台" />
 
       <!-- 顶部指标：四个源各管各的卡，谁失败谁重试 -->
       <section class="metrics" aria-label="运营概览">

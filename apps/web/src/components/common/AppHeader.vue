@@ -1,11 +1,16 @@
 <script setup lang="ts">
 /**
- * 全局顶栏：品牌词标 + 后台导航。
+ * 全局顶栏：品牌词标 + 后台导航 + 身份菜单。
  *
  * 只做导航与品牌展示，不含任何鉴权判断（那是 router/guards.ts 的职责）。
  * 隐藏菜单 ≠ 权限控制，敏感操作仍由后端鉴权。
+ *
+ * 身份菜单由 UserMenu 提供（issue #58）：把散在各页 PageHeader#actions 里
+ * 的 SignOutButton 收进同一个下拉入口。顶栏导航项数量保持不变。
  */
 import { useRoute } from "vue-router";
+
+import UserMenu from "./UserMenu.vue";
 
 interface NavItem {
   label: string;
@@ -61,6 +66,7 @@ function isActive(item: NavItem): boolean {
     </nav>
 
     <span class="topbar__edition">2026年招新</span>
+    <UserMenu class="topbar__user-menu" />
   </header>
 </template>
 
@@ -162,6 +168,11 @@ function isActive(item: NavItem): boolean {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* 身份菜单在 edition 之后贴右；与 edition 共享「右半区」 */
+.topbar__user-menu {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 860px) {

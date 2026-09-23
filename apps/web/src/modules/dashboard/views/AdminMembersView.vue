@@ -18,7 +18,6 @@ import { onMounted } from "vue";
 import AppHeader from "@/components/common/AppHeader.vue";
 import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
-import SignOutButton from "@/components/SignOutButton.vue";
 import { useAdminPermissions } from "../composables/useAdminPermissions";
 
 const {
@@ -67,11 +66,7 @@ onMounted(loadAll);
         eyebrow="iot-pillot · 权限管理"
         title="用户与权限"
         description="维护管理员名单：提升或撤销某个账号的管理权限。角色变更会让对方强制退出，需重新登录。"
-      >
-        <template #actions>
-          <SignOutButton />
-        </template>
-      </PageHeader>
+      />
 
       <!-- 用户列表 -->
       <section class="panel panel--pad users-panel">

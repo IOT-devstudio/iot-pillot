@@ -20,7 +20,6 @@ import { onMounted, ref } from "vue";
 
 import { AuthRequestError } from "@/api/auth";
 import { fetchCurrentUser, type CurrentUser } from "@/api/admin";
-import SignOutButton from "@/components/SignOutButton.vue";
 
 import type { RecruitmentDirection } from "../fixtures";
 import {
@@ -79,7 +78,6 @@ function handleApply(direction: RecruitmentDirection): void {
             查看你的信息与当前开放的招新方向。
           </p>
         </div>
-        <SignOutButton />
       </header>
 
       <div class="user-home__body">
