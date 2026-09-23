@@ -19,6 +19,7 @@ import { describeAuthError } from "@/modules/dashboard/composables/useAdminPermi
 import SendMailDialog from "../components/SendMailDialog.vue";
 import TemplateEditorDialog from "../components/TemplateEditorDialog.vue";
 import { useMailRecords } from "../composables/useMailRecords";
+import { splitHighlight } from "../utils/highlight";
 import { useMailTemplates } from "../composables/useMailTemplates";
 
 const {
@@ -34,13 +35,19 @@ const {
 
 const {
   items: records,
+  visibleRecords,
   total: recordsTotal,
   page: recordsPage,
   pageSize: recordsPageSize,
   loading: recordsLoading,
   error: recordsError,
   unauthorized: recordsUnauthorized,
+  keyword: recordsKeyword,
+  dates: recordsDates,
+  hasFilter: recordsHasFilter,
   load: loadRecords,
+  search: searchRecords,
+  resetFilter: resetRecordsFilter,
   changePage: changeRecordsPage,
   changePageSize: changeRecordsPageSize,
 } = useMailRecords();
@@ -187,6 +194,36 @@ onMounted(() => {
           </span>
         </header>
 
+        <!-- 搜索行：关键词回车/点搜索/日期变化即触发，总是回到第一页 -->
+        <div class="records-search" role="search" aria-label="搜索发信记录">
+          <el-input
+            v-model="recordsKeyword"
+            class="records-search__input"
+            placeholder="搜索主题或收件人"
+            clearable
+            @keyup.enter="searchRecords"
+            @clear="searchRecords"
+          />
+          <el-date-picker
+            v-model="recordsDates"
+            class="records-search__dates"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            :editable="false"
+            @change="searchRecords"
+          />
+          <el-button type="primary" plain @click="searchRecords">搜索</el-button>
+          <el-button
+            v-if="recordsHasFilter"
+            @click="resetRecordsFilter"
+          >
+            重置
+          </el-button>
+        </div>
+
         <div
           v-if="recordsLoading"
           role="status"
@@ -208,10 +245,38 @@ onMounted(() => {
         <p v-else-if="records.length === 0" class="state" role="status">
           还没有发过邮件，从上面的模板点「发送」开始
         </p>
+        <!-- 有记录但全被条件滤掉：给「无匹配」而不是让人以为数据丢了 -->
+        <div
+          v-else-if="visibleRecords.length === 0 && recordsHasFilter"
+          class="state"
+          role="status"
+        >
+          <span>
+            没有匹配{{ recordsKeyword.trim() ? `“${recordsKeyword.trim()}”` : "当前条件" }}的记录
+          </span>
+          <el-button link type="primary" @click="resetRecordsFilter">重置条件</el-button>
+        </div>
         <template v-else>
-          <el-table :data="records">
-            <el-table-column prop="title" label="主题" min-width="220" show-overflow-tooltip />
-            <el-table-column prop="to_email" label="收件人" min-width="180" show-overflow-tooltip />
+          <el-table v-loading="recordsLoading" :data="visibleRecords">
+            <!-- 命中高亮走切段渲染（v-for span），keyword 只作文本插值，不碰 v-html -->
+            <el-table-column label="主题" min-width="220" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span
+                  v-for="(seg, i) in splitHighlight(row.title, recordsKeyword)"
+                  :key="i"
+                  :class="{ 'hl': seg.hit }"
+                >{{ seg.text }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="收件人" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span
+                  v-for="(seg, i) in splitHighlight(row.to_email, recordsKeyword)"
+                  :key="i"
+                  :class="{ 'hl': seg.hit }"
+                >{{ seg.text }}</span>
+              </template>
+            </el-table-column>
             <el-table-column label="操作者" width="140">
               <template #default="{ row }">
                 {{ operatorLabel(row.from_user_id) }}
@@ -297,6 +362,29 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+/* 搜索行：关键词 + 日期范围 + 动作，常驻于记录区头部下方 */
+.records-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.records-search__input {
+  width: 240px;
+}
+
+.records-search__dates {
+  width: 260px;
+}
+
+/* 搜索命中：品牌蓝标出，与正文形成明确对比 */
+.hl {
+  color: var(--blue);
+  font-weight: 700;
+}
+
 .state {
   display: flex;
   gap: 10px;
@@ -356,6 +444,11 @@ onMounted(() => {
 
   .pager {
     justify-content: center;
+  }
+  /* 搜索行窄屏逐项占满：关键词/日期各一行，动作跟排 */
+  .records-search__input,
+  .records-search__dates {
+    width: 100%;
   }
 }
 </style>

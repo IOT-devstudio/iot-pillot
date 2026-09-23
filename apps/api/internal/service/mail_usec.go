@@ -239,8 +239,8 @@ func (a *MailUseCase) SendBulk(ctx context.Context, operatorID int, req *request
  * 发信记录
  * ------------------------------------------------------------------ */
 
-func (a *MailUseCase) ListMails(ctx context.Context, page int, pageSize int) (*response.MailRecordListResp, error) {
-	mails, total, err := a.mails.List(ctx, page, pageSize)
+func (a *MailUseCase) ListMails(ctx context.Context, page int, pageSize int, filter repository.MailListFilter) (*response.MailRecordListResp, error) {
+	mails, total, err := a.mails.List(ctx, page, pageSize, filter)
 	if err != nil {
 		return nil, err
 	}
