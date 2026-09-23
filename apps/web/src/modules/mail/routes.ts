@@ -15,6 +15,6 @@ export const mailRoutes: RouteRecordRaw[] = [
     path: "/templates",
     name: "templates",
     component: MailCenterView,
-    meta: { title: "邮件中心", allowRoles: MEMBER_ONLY },
+    meta: { title: "邮件中心", allowRoles: MEMBER_ONLY, adminShell: true },
   },
 ];

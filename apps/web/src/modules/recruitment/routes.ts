@@ -19,12 +19,12 @@ export const recruitmentRoutes: RouteRecordRaw[] = [
     path: "/recruitment/prospects",
     name: "recruitment-prospects",
     component: ProspectsView,
-    meta: { title: "意向成员", allowRoles: MEMBER_ONLY },
+    meta: { title: "意向成员", allowRoles: MEMBER_ONLY, adminShell: true },
   },
   {
     path: "/recruitment/prospects/:id",
     name: "recruitment-prospect-detail",
     component: ProspectDetailView,
-    meta: { title: "意向成员详情", allowRoles: MEMBER_ONLY },
+    meta: { title: "意向成员详情", allowRoles: MEMBER_ONLY, adminShell: true },
   },
 ];

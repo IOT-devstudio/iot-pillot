@@ -30,11 +30,14 @@ IoT 全栈开发工作室 [IOT-devstudio](https://github.com/IOT-devstudio) 的�
 | Monorepo 脚手架（apps/web + apps/api + packages/shared-types） | ✅ 落地 |
 | 共享 TS 类型（招新 / 表单 / 模板 / 通用） | ✅ 落地 |
 | 本地依赖编排：Postgres + Redis + 全栈 app（docker-compose） | ✅ 落地 |
-| `auto-merge.yml`：成员 + 无冲突 → 自动 squash merge + 删分支 | ✅ 落地 |
-| `ci.yml`：PR 触发 Go vet/build/test + 前端 typecheck/build | ✅ 落地 |
-| `deploy.yml`：push main → VPS 部署（需 secrets 配置） | ✅ 落地 |
-| Auth 登录注册页（`/login`） | 🟡 页面与接口适配已落地；注册验证码待后端接入 |
-| 业务模块（Form / Template / Mail / Recruitment） | ⏳ 空白，待开工 |
+| `auto-merge.yml`：有写权限成员的非 Draft PR + 无冲突 → squash merge 并删远端分支（不等待 CI） | ✅ 落地 |
+| `ci.yml`：PR 触发 Go vet/build/test、前端 typecheck/test/build，以及 Docker 镜像构建与冒烟测试 | ✅ 落地 |
+| `deploy.yml`：auto-merge 成功后触发部署，也支持手动触发（需配置服务器 secrets） | ✅ 落地 |
+| 认证（3D 开屏 / `/login` 备用页） | ✅ 登录、注册、邮箱验证码、刷新令牌与登出 API 已接入；发码需配置 SMTP |
+| 管理端（控制台 / 用户与权限） | ✅ 仪表盘、用户和管理员管理页面及对应受保护 API 已落地 |
+| 邮件能力 | 🟡 邮件中心页面与后端模板 CRUD、发送和记录 API 已落地；招新流程的邮件动作仍用本地 fixture，待接入真实 API |
+| 招新（意向成员 / 详情） | 🟡 前端流程页面已落地，目前使用本地 fixture；后端业务 API 待实现 |
+| 表单管理 / 系统设置 | ⏳ 当前为占位页面，待实现 |
 
 ---
 

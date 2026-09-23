@@ -1,9 +1,18 @@
 <script setup lang="ts">
-// 根组件：仅承载 router-view 与 Element Plus 全局配置。
+import { computed } from "vue";
+import { useRoute } from "vue-router";
+
+import AdminLayout from "@/components/common/AdminLayout.vue";
+
+const route = useRoute();
+const usesAdminLayout = computed(() => route.meta.adminShell === true);
 </script>
 
 <template>
   <el-config-provider>
-    <router-view />
+    <AdminLayout v-if="usesAdminLayout">
+      <router-view />
+    </AdminLayout>
+    <router-view v-else />
   </el-config-provider>
 </template>

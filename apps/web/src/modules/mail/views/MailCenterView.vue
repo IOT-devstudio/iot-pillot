@@ -14,8 +14,6 @@ import { computed, onMounted, ref } from "vue";
 
 import { listAdminUsers, type AdminUser } from "@/api/admin";
 import type { MailTemplate, MailTemplateInput } from "@/api/mail";
-import AppHeader from "@/components/common/AppHeader.vue";
-import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 import { describeAuthError } from "@/modules/dashboard/composables/useAdminPermissions";
 import SendMailDialog from "../components/SendMailDialog.vue";
@@ -106,11 +104,7 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <AppHeader />
-
     <main class="page__body">
-      <BackToDashboard />
-
       <PageHeader
         eyebrow="iot-pillot · 招新管理"
         title="邮件中心"
@@ -265,16 +259,16 @@ onMounted(() => {
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  min-height: calc(100dvh - 60px);
 }
 
 .page__body {
   display: flex;
   flex-direction: column;
   gap: 28px;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: clamp(32px, 5vw, 56px) clamp(20px, 4vw, 48px) 72px;
+  width: 100%;
+  margin: 0;
+  padding: 29px 0 44px;
 }
 
 .panel-head {
