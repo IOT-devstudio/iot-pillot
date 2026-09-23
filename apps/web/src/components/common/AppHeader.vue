@@ -25,7 +25,7 @@ const nav: NavItem[] = [
   { label: "控制台", to: "/dashboard", exact: true },
   { label: "意向成员", to: "/recruitment/prospects", match: "/recruitment" },
   { label: "表单管理", to: "/forms" },
-  { label: "邮件模板", to: "/templates" },
+  { label: "邮件中心", to: "/templates" },
   // 用户与权限归在设置类，排在系统设置之前（其余业务模块之后）。
   { label: "用户与权限", to: "/dashboard/admins" },
   { label: "系统设置", to: "/settings" },

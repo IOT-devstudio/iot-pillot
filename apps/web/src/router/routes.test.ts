@@ -29,6 +29,10 @@ vi.mock("@/modules/recruitment/views/ProspectsView.vue", () => ({
 vi.mock("@/modules/recruitment/views/ProspectDetailView.vue", () => ({
   default: { name: "ProspectDetailView" },
 }));
+// mail 视图引入 Element Plus 弹窗与 composable，测试里只验路由元信息
+vi.mock("@/modules/mail/views/MailCenterView.vue", () => ({
+  default: { name: "MailCenterView" },
+}));
 
 import { routes } from "./routes";
 
@@ -103,6 +107,16 @@ describe("application routes", () => {
     }
   });
 
+  it("mounts the mail center as a member-only real page", () => {
+    const mailRoutes = routes.filter((route) => route.path === "/templates");
+
+    expect(mailRoutes).toHaveLength(1);
+    expect(mailRoutes[0]?.name).toBe("templates");
+    expect(mailRoutes[0]?.component).toMatchObject({ name: "MailCenterView" });
+    // 邮件含招新对象联系方式，漏标 allowRoles 就等于对普通用户敞开
+    expect(mailRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
+  });
+
   it("registers each planned placeholder page as member-only", () => {
     const reservedPaths = [
       "/",
@@ -111,6 +125,7 @@ describe("application routes", () => {
       "/admin/buildings",
       "/dashboard",
       "/dashboard/admins",
+      "/templates",
       "/user/home",
       "/user/about",
       "/recruitment",
@@ -127,7 +142,6 @@ describe("application routes", () => {
       title: meta?.title,
     }))).toEqual([
       { path: "/forms", name: "forms", title: "表单管理" },
-      { path: "/templates", name: "templates", title: "邮件模板" },
       { path: "/settings", name: "settings", title: "系统设置" },
     ]);
     expect(new Set(placeholderRoutes.map(({ component }) => component)).size).toBe(1);

@@ -25,6 +25,5 @@ export const ANY_SIGNED_IN = ["admin", "member"] as const;
 export const placeholderRouteSpecs = [
   { path: "/dashboard", name: "dashboard", title: "控制台" },
   { path: "/forms", name: "forms", title: "表单管理" },
-  { path: "/templates", name: "templates", title: "邮件模板" },
   { path: "/settings", name: "settings", title: "系统设置" },
 ] as const;

@@ -130,7 +130,7 @@ function metricValue(
 const entries = [
   { title: "意向成员", to: "/recruitment/prospects" },
   { title: "表单管理", to: "/forms" },
-  { title: "邮件模板", to: "/templates" },
+  { title: "邮件中心", to: "/templates" },
   { title: "用户与权限", to: "/dashboard/admins" },
   { title: "系统设置", to: "/settings" },
 ];
