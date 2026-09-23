@@ -2,6 +2,7 @@ import type { RouteRecordRaw } from "vue-router";
 import { aboutRoutes } from "@/modules/about/routes";
 import { dashboardRoutes } from "@/modules/dashboard/routes";
 import { homeRoutes } from "@/modules/home/routes";
+import { mailRoutes } from "@/modules/mail/routes";
 import { openerRoutes } from "@/modules/opener/routes";
 import { openerEditorRoutes } from "@/modules/opener-editor/routes";
 import { recruitmentRoutes } from "@/modules/recruitment/routes";
@@ -21,6 +22,8 @@ export const routes: RouteRecordRaw[] = [
   ...recruitmentRoutes,
   // 管理台（dashboard 模块自带 meta.allowRoles）
   ...dashboardRoutes,
+  // 邮件中心（模板 + 发信记录，mail 模块自带 meta.allowRoles）
+  ...mailRoutes,
   // 内容首页已并入管理台，保留旧路径重定向，避免收藏夹与旧链接 404
   { path: "/home", redirect: "/dashboard" },
   // 二维后备登录页：正常路径到不了这里，只有 3D 开屏渲染失败时由它转投。
