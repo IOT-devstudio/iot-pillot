@@ -22,6 +22,7 @@ import {
   type AdminUser,
   type CurrentUser,
 } from "@/api/admin";
+import { fillDemoDetailWithFallbacks } from "@/modules/dashboard/fixtures/adminUserFixtures";
 
 /** 角色筛选：全部 / 仅管理员 / 仅普通用户 */
 export type RoleFilter = "all" | "admin" | "member";
@@ -216,7 +217,9 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     usersLoading.value = true;
     try {
       const result = await deps.listUsers(page.value, pageSize.value);
-      users.value = result.items;
+      // #57 落地前用本地 fixture 补 detail，让详情弹窗（issue #58）有内容可看。
+      // #57 合并后删除 fillDemoDetailWithFallbacks 调用，items 自带 detail。
+      users.value = result.items.map(fillDemoDetailWithFallbacks);
       total.value = result.total;
       usersError.value = "";
       usersUnauthorized.value = false;
@@ -235,7 +238,7 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     adminsLoading.value = true;
     try {
       const result = await deps.listAdmins();
-      admins.value = result.items;
+      admins.value = result.items.map(fillDemoDetailWithFallbacks);
       adminsError.value = "";
       adminsUnauthorized.value = false;
     } catch (error: unknown) {

@@ -5,6 +5,7 @@
  * 两块内容：
  *  用户列表   服务端分页（/api/v1/admin/users），可本地筛选当前页
  *  管理员名单 一次性读取（/api/v1/admin/admins），不分页
+ *  详情弹窗   任一行点击「详情」后展示完整资料（#58 验收项）
  *
  * 为什么筛选/搜索只作用于当前页：后端这两个接口不接受 keyword / is_admin 之类的
  * 查询参数，所以真正的过滤只能在前端做，范围就是已加载的这一页——界面上一并注明，
@@ -13,12 +14,14 @@
  * 角色变更的编排（确认弹窗、toast、变更后同时刷新两张表）都在
  * composables/useAdminPermissions.ts，这里只做展示与接线。
  */
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 
 import AppHeader from "@/components/common/AppHeader.vue";
 import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
+import type { AdminUser } from "@/api/admin";
 import { useAdminPermissions } from "../composables/useAdminPermissions";
+import UserDetailDialog from "../components/UserDetailDialog.vue";
 
 const {
   users,
@@ -33,6 +36,7 @@ const {
   adminsLoading,
   adminsError,
   adminsUnauthorized,
+  currentUserId,
   actionFor,
   isBusy,
   keyword,
@@ -50,6 +54,19 @@ const {
 
 /** 当前页被筛选掉后，若本来有数据却筛没了，给一句提示而不是让人以为加载失败 */
 const usersFilteredEmpty = () => users.value.length > 0 && filteredUsers.value.length === 0;
+
+/** 详情弹窗状态：selected 为 null 时弹窗内是「正在打开…」占位 */
+const detailVisible = ref(false);
+const selectedUser = ref<AdminUser | null>(null);
+
+function openDetail(user: AdminUser): void {
+  selectedUser.value = user;
+  detailVisible.value = true;
+}
+
+function closeDetail(): void {
+  detailVisible.value = false;
+}
 
 onMounted(loadAll);
 </script>
@@ -131,8 +148,9 @@ onMounted(loadAll);
                 <el-tag v-else type="info" effect="plain">普通用户</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="280" fixed="right">
               <template #default="{ row }">
+                <el-button link size="small" @click="openDetail(row)">详情</el-button>
                 <template v-if="actionFor(row).kind === 'grant'">
                   <el-button
                     link
@@ -212,8 +230,9 @@ onMounted(loadAll);
           <el-table-column prop="user_id" label="用户 ID" width="110" />
           <el-table-column prop="name" label="姓名" min-width="160" />
           <el-table-column prop="created_at" label="注册时间" min-width="200" />
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="280" fixed="right">
             <template #default="{ row }">
+              <el-button link size="small" @click="openDetail(row)">详情</el-button>
               <el-button
                 v-if="actionFor(row).kind === 'revoke'"
                 link
@@ -233,6 +252,14 @@ onMounted(loadAll);
           </el-table-column>
         </el-table>
       </section>
+
+      <!-- 详情弹窗：所有行的「详情」按钮共用一个弹窗（issue #58 验收项） -->
+      <UserDetailDialog
+        v-model:visible="detailVisible"
+        :user="selectedUser"
+        :current-user-id="currentUserId"
+        @update:visible="closeDetail"
+      />
     </main>
   </div>
 </template>

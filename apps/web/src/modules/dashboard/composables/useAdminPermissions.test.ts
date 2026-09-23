@@ -199,6 +199,9 @@ describe("useAdminPermissions loading", () => {
     // 不做字段白名单（只是搬运 result.items），所以能验的是**类型契约**：
     // 构造一个完整的 AdminUser 不需要、也不接受 password。
     // 运行时「响应里没有 password」由 api/auth.test.ts 的 toEqual 精确断言把关。
+    // 注意：detail 字段由 fixture helper 在 loadUsers 内补全（#57 落地前的过渡），
+    // 所以这里用 user_id=7 落在 fallback 分支（user_id % 7 === 0），detail 也会被
+    // 填充为「未填」档位。字段集合不变性仍可断言。
     const deps = makeDeps({
       listUsers: async () => ({ items: [user({ user_id: 7 })], total: 1 }),
     });
@@ -210,6 +213,7 @@ describe("useAdminPermissions loading", () => {
     // 只应存在约定字段；password 不在 AdminUser 上（见 auth.ts 的接口定义）
     expect(Object.keys(row).sort()).toEqual([
       "created_at",
+      "detail",
       "is_admin",
       "name",
       "user_id",

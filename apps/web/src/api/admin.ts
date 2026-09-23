@@ -8,11 +8,30 @@ export interface CurrentUser {
   role: UserRole | string;
 }
 
+/**
+ * 管理员列表里的 detail 字段（#57 后端契约）。
+ *
+ * 在 #57 合并之前它是 optional：当前后端还没把 detail 写到 items 上，
+ * 前端用本地 fixture 给 demo 数据展示，#57 落地后由后端真实填充，
+ * 字段缺失时 UI 退化为「暂无」。
+ *
+ * 形状以 #57 PR 合并时的版本为准；此处是契约草案。
+ */
+export interface AdminUserDetail {
+  class?: string;
+  student_id?: number;
+  qq?: string;
+  direction?: import("@iot-pillot/shared-types").Direction | null;
+  email?: string;
+}
+
 export interface AdminUser {
   user_id: number;
   name: string;
   created_at: string;
   is_admin: boolean;
+  /** #57 落地后由后端填充；当前前端用 fixture 模拟。 */
+  detail?: AdminUserDetail;
 }
 
 export interface AdminUserList {
