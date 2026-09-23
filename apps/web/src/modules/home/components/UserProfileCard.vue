@@ -48,6 +48,16 @@ const roleLabel = computed(() => ROLE_LABELS[props.user.role] ?? props.user.role
         </dd>
       </div>
     </dl>
+
+    <!--
+      辅助入口：主入口在顶栏 UserMenu（issue #58 验收项），这里放一份
+      「编辑资料」让首页用户不用绕到右上角也能找到。
+    -->
+    <p class="profile__actions">
+      <router-link class="profile__link" to="/user/settings">
+        编辑资料 →
+      </router-link>
+    </p>
   </section>
 </template>
 
@@ -101,5 +111,22 @@ const roleLabel = computed(() => ROLE_LABELS[props.user.role] ?? props.user.role
 .profile__role[data-role="admin"] {
   color: #fff;
   background: var(--home-accent);
+}
+
+.profile__actions {
+  margin: 14px 0 0;
+}
+
+.profile__link {
+  color: var(--home-accent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.profile__link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 </style>
