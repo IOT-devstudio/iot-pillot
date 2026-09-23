@@ -92,12 +92,29 @@ export interface MailRecordList {
   page_size: number;
 }
 
-/** 分页读取发信记录，自动处理会话刷新。 */
-export function listMails(page = 1, pageSize = 20): Promise<MailRecordList> {
+/** 发信记录查询条件：keyword 模糊匹配主题/收件人，from/to 为 YYYY-MM-DD 日期（含端点）。 */
+export interface MailRecordFilter {
+  keyword?: string;
+  from?: string;
+  to?: string;
+}
+
+/**
+ * 分页读取发信记录，自动处理会话刷新。
+ * 过滤在服务端完成（keyword/from/to），total 为过滤后的总数。
+ */
+export function listMails(
+  page = 1,
+  pageSize = 20,
+  filter?: MailRecordFilter,
+): Promise<MailRecordList> {
   const query = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
   });
+  if (filter?.keyword?.trim()) query.set("keyword", filter.keyword.trim());
+  if (filter?.from) query.set("from", filter.from);
+  if (filter?.to) query.set("to", filter.to);
   return requestWithSession<MailRecordList>(
     `/api/v1/admin/mails?${query.toString()}`,
   );

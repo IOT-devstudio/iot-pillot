@@ -214,6 +214,27 @@ describe("admin api", () => {
     expect(authHeaderOf(fetchMock)).toBe("Bearer access-token");
   });
 
+  it("发信记录搜索把 keyword 与日期带上查询串", async () => {
+    mockSession();
+    const fetchMock = mockJson({
+      code: 0,
+      message: "success",
+      data: { items: [], total: 0, page: 1, page_size: 20 },
+    });
+
+    await listMails(1, 20, {
+      keyword: "  面试 ",
+      from: "2026-09-01",
+      to: "2026-09-30",
+    });
+
+    // keyword 两端空白由调用方裁掉；空条件不产生多余参数
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/admin/mails?page=1&page_size=20&keyword=%E9%9D%A2%E8%AF%95&from=2026-09-01&to=2026-09-30",
+      expect.anything(),
+    );
+  });
+
   it("没有会话时不发请求，直接抛未登录", async () => {
     store.clear(); // 无会话
     const fetchMock = vi.spyOn(globalThis, "fetch");

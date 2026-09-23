@@ -3,6 +3,8 @@ package handler
 import (
 	"errors"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/request"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
@@ -209,19 +211,52 @@ func (h *MailHandler) SendMailBulk(c *gin.Context) {
 
 // ListMails 发信记录
 // @Summary 发信记录
-// @Description 按发送时间倒序分页。只返回记录元信息，不返回正文（正文可能很长且含个人信息）。
+// @Description 按发送时间倒序分页。可选 keyword（主题/收件人模糊匹配）与 from/to（日期，含端点）过滤；total 为过滤后的总数。只返回记录元信息，不返回正文。
 // @Tags 管理端-邮件
 // @Produce json
 // @Param page query int false "页码，从 1 开始" default(1)
 // @Param page_size query int false "每页条数，最大 100" default(20)
+// @Param keyword query string false "模糊搜索主题与收件人邮箱，最长 100"
+// @Param from query string false "起始日期 YYYY-MM-DD（含当天）"
+// @Param to query string false "结束日期 YYYY-MM-DD（含当天）"
 // @Success 200 {object} response.Result{data=response.MailRecordListResp} "成功"
+// @Failure 400 {object} response.Result "日期格式错误"
 // @Security BearerAuth
 // @Router /api/v1/admin/mails [get]
 func (h *MailHandler) ListMails(c *gin.Context) {
 	page := parseBoundedInt(c.Query("page"), 1, 1, 100000)
 	pageSize := parseBoundedInt(c.Query("page_size"), 20, 1, 100)
 
-	result, err := h.mailService.ListMails(c.Request.Context(), page, pageSize)
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	if len(keyword) > 100 {
+		// 超长直接截断而不是报错：搜索框敲快了带进来的内容不该换来一个 400
+		keyword = keyword[:100]
+	}
+
+	var filter repository.MailListFilter
+	filter.Keyword = keyword
+	// 日期按「天」粒度收口：from 取当天零点，to 放到次日零点用 < 排除，
+	// 避免 "2026-09-23" 这种日期选择器值把当天中午的记录挡在外面
+	if raw := c.Query("from"); raw != "" {
+		t, err := time.ParseInLocation("2006-01-02", raw, time.Local)
+		if err != nil {
+			response.FailInvalidParam(c, "from 日期格式应为 YYYY-MM-DD")
+			return
+		}
+		filter.From = t
+	}
+	if raw := c.Query("to"); raw != "" {
+		t, err := time.ParseInLocation("2006-01-02", raw, time.Local)
+		if err != nil {
+			response.FailInvalidParam(c, "to 日期格式应为 YYYY-MM-DD")
+			return
+		}
+		filter.To = t.AddDate(0, 0, 1)
+		// repo 用 <=，这里推到次日零点后减一纳秒 = 当天 23:59:59.999...
+		filter.To = filter.To.Add(-time.Nanosecond)
+	}
+
+	result, err := h.mailService.ListMails(c.Request.Context(), page, pageSize, filter)
 	if err != nil {
 		failInternal(c, err)
 		return
