@@ -23,6 +23,9 @@ vi.mock("@/modules/home/views/UserHomeView.vue", () => ({
 vi.mock("@/modules/about/views/AboutView.vue", () => ({
   default: { name: "AboutView" },
 }));
+vi.mock("@/modules/user-settings/views/UserSettingsView.vue", () => ({
+  default: { name: "UserSettingsView" },
+}));
 vi.mock("@/modules/recruitment/views/ProspectsView.vue", () => ({
   default: { name: "ProspectsView" },
 }));
@@ -96,6 +99,7 @@ describe("application routes", () => {
     expect(userPages.map(({ path, name }) => ({ path, name }))).toEqual([
       { path: "/user/home", name: "user-home" },
       { path: "/user/about", name: "about" },
+      { path: "/user/settings", name: "user-settings" },
     ]);
     // 用户侧页面必须挂守卫：未登录不能看，成员则照常放行（单向规则）
     for (const page of userPages) {
@@ -113,6 +117,7 @@ describe("application routes", () => {
       "/dashboard/admins",
       "/user/home",
       "/user/about",
+      "/user/settings",
       "/recruitment",
       "/recruitment/prospects",
       "/recruitment/prospects/:id",

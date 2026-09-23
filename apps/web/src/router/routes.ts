@@ -5,6 +5,7 @@ import { homeRoutes } from "@/modules/home/routes";
 import { openerRoutes } from "@/modules/opener/routes";
 import { openerEditorRoutes } from "@/modules/opener-editor/routes";
 import { recruitmentRoutes } from "@/modules/recruitment/routes";
+import { userSettingsRoutes } from "@/modules/user-settings/routes";
 import AuthView from "@/views/AuthView.vue";
 import PlaceholderView from "@/views/PlaceholderView.vue";
 import { MEMBER_ONLY, placeholderRouteSpecs } from "./route-specs";
@@ -17,6 +18,7 @@ export const routes: RouteRecordRaw[] = [
   // 用户侧（与管理侧同一个 router，靠 /user 与 /admin 前缀区分）
   ...homeRoutes,
   ...aboutRoutes,
+  ...userSettingsRoutes,
   // 招新流程（意向成员 / 详情），模块自带 meta.allowRoles
   ...recruitmentRoutes,
   // 管理台（dashboard 模块自带 meta.allowRoles）
