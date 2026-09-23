@@ -70,6 +70,15 @@ else
   ok "/health 未被 SPA fallback 吃掉"
 fi
 
+# 控制台请求的是 /health/ready；它必须穿过 nginx 到达 Go，不能被 SPA fallback 吃掉。
+ready=$(curl -sS --max-time 10 "${BASE_URL}/health/ready" 2>&1)
+ready_code=$(status_of "${BASE_URL}/health/ready")
+if [ "$ready_code" = "200" ] && printf '%s' "$ready" | grep -q '"status":"ready"'; then
+  ok "GET /health/ready 返回后端就绪状态"
+else
+  bad "GET /health/ready 未返回后端就绪状态" "HTTP ${ready_code}，响应：${ready:0:200}"
+fi
+
 # --- 3. 业务 API 确实反代给了后端 -------------------------------------------
 # 断言「不是 404」而非某个具体状态码：请求体是垃圾数据，400/401/422 都算正常。
 # 404 则意味着路由没挂载，或者 /api/ 被静态规则吃掉了。
