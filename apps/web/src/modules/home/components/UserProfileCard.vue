@@ -2,19 +2,24 @@
 /**
  * 当前用户信息区（纯展示组件）。
  *
- * 字段口径严格跟随 `api/admin.ts` 的 `CurrentUser`，也就是后端
- * `GET /api/v1/me` 真实会返回的形状。**这里不显示邮箱**：
- * 当前后端 `domain.User` 没有 email 字段，与其在界面上摆一个编造的邮箱，
- * 不如先不显示——后端补齐后再加一行即可。
+ * 字段口径跟随 `api/profile.ts` 的 `MyProfile`，也就是后端
+ * `GET /api/v1/me` 真实会返回的形状。后端 #57 落地前由
+ * `home/profileFixture.ts` 派生。**这里不显示邮箱**：
+ * 邮箱属于登录凭据，与方向/班级/学号不在同一展示语境，
+ * 不在卡片里露出来；编辑入口 `/user/settings` 里有专门的字段。
  *
  * 组件不持有状态、不发请求，数据由页面传入。
+ *
+ * 编辑资料按钮跳 `/user/settings`：编辑能力只在个人设置页，
+ * 详情弹窗与个人卡片都按 issue #58 的契约不放编辑控件。
  */
 import { computed } from "vue";
 
-import type { CurrentUser } from "@/api/admin";
+import type { Direction } from "@iot-pillot/shared-types";
+import type { MyProfile } from "@/api/profile";
 
 const props = defineProps<{
-  user: CurrentUser;
+  user: MyProfile;
 }>();
 
 /**
@@ -28,6 +33,28 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const roleLabel = computed(() => ROLE_LABELS[props.user.role] ?? props.user.role);
+
+const DIRECTION_LABELS: Record<Direction, string> = {
+  "front-end": "前端",
+  "back-end": "后端",
+  agent: "智能体",
+  all: "全栈",
+  game: "游戏",
+  other: "其他",
+};
+
+const directionLabel = computed(() => {
+  const d = props.user.detail.direction;
+  if (d === null || d === undefined) {
+    return "未选择";
+  }
+  return DIRECTION_LABELS[d] ?? d;
+});
+
+const directionIsEmpty = computed(() => {
+  const d = props.user.detail.direction;
+  return d === null || d === undefined;
+});
 </script>
 
 <template>
@@ -47,7 +74,24 @@ const roleLabel = computed(() => ROLE_LABELS[props.user.role] ?? props.user.role
           </span>
         </dd>
       </div>
+      <div class="profile__row">
+        <dt class="profile__term">方向</dt>
+        <dd class="profile__value">
+          <span
+            class="profile__direction"
+            :data-empty="directionIsEmpty ? '1' : '0'"
+          >
+            {{ directionLabel }}
+          </span>
+        </dd>
+      </div>
     </dl>
+
+    <footer class="profile__footer">
+      <RouterLink class="profile__link" to="/user/settings">
+        编辑资料
+      </RouterLink>
+    </footer>
   </section>
 </template>
 
@@ -101,5 +145,37 @@ const roleLabel = computed(() => ROLE_LABELS[props.user.role] ?? props.user.role
 .profile__role[data-role="admin"] {
   color: #fff;
   background: var(--home-accent);
+}
+
+.profile__direction {
+  display: inline-block;
+  padding: 2px 10px;
+  color: var(--home-accent);
+  border: 1px solid var(--home-accent);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+/* 还没填方向时降级为中性样式，避免一颗亮蓝标签写着「未选择」 */
+.profile__direction[data-empty="1"] {
+  color: var(--home-muted);
+  border-color: var(--home-border);
+  background: transparent;
+}
+
+.profile__footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--home-border);
+}
+
+.profile__link {
+  color: var(--home-accent);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.profile__link:hover {
+  text-decoration: underline;
 }
 </style>
