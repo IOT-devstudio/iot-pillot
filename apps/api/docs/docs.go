@@ -1387,6 +1387,14 @@ const docTemplate = `{
                 "direction": {
                     "description": "方向；null/空串清除，缺省不动",
                     "type": "string",
+                    "enum": [
+                        "front-end",
+                        "back-end",
+                        "agent",
+                        "all",
+                        "game",
+                        "other"
+                    ],
                     "example": "front-end"
                 },
                 "qq": {
@@ -1396,7 +1404,8 @@ const docTemplate = `{
                 },
                 "student_id": {
                     "description": "学号；null 清除（0 视为未填），缺省不动",
-                    "type": "integer"
+                    "type": "integer",
+                    "example": 2023114514
                 }
             }
         },

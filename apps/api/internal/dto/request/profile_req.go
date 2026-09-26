@@ -20,10 +20,10 @@ const (
 // 实际解析走 ParseUpdateMe —— 这里的指针字段只为在 OpenAPI 里表达
 // 「可选且可为 null」；请求体的三态语义见 ParseUpdateMe。
 type UpdateMePatch struct {
-	Class     *string `json:"class" example:"物联网工程 2301"`                                                        // 班级；null 清除，缺省不动
-	StudentID *int    `json:"student_id" example:2023114514`                                                     // 学号；null 清除（0 视为未填），缺省不动
-	QQ        *string `json:"qq" example:"1044696157"`                                                           // QQ；null 清除，缺省不动
-	Direction *string `json:"direction" example:"front-end" Enums(front-end, back-end, agent, all, game, other)` // 方向；null/空串清除，缺省不动
+	Class     *string `json:"class" example:"物联网工程 2301"`                                                    // 班级；null 清除，缺省不动
+	StudentID *int    `json:"student_id" example:"2023114514"`                                               // 学号；null 清除（0 视为未填），缺省不动
+	QQ        *string `json:"qq" example:"1044696157"`                                                       // QQ；null 清除，缺省不动
+	Direction *string `json:"direction" example:"front-end" enums:"front-end,back-end,agent,all,game,other"` // 方向；null/空串清除，缺省不动
 }
 
 // PatchField 白名单字段的三态值。

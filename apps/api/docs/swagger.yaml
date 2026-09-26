@@ -150,6 +150,13 @@ definitions:
         type: string
       direction:
         description: 方向；null/空串清除，缺省不动
+        enum:
+        - front-end
+        - back-end
+        - agent
+        - all
+        - game
+        - other
         example: front-end
         type: string
       qq:
@@ -158,6 +165,7 @@ definitions:
         type: string
       student_id:
         description: 学号；null 清除（0 视为未填），缺省不动
+        example: 2023114514
         type: integer
     type: object
   request.VerifyCodeReq:
