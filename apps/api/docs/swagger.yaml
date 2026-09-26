@@ -18,6 +18,17 @@ definitions:
     - password
     - username
     type: object
+  request.MailBatchDeleteReq:
+    properties:
+      ids:
+        items:
+          type: integer
+        maxItems: 500
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
   request.MailRecipientReq:
     properties:
       to_user_id:
@@ -131,6 +142,24 @@ definitions:
     - template_id
     - to_user_id
     type: object
+  request.UpdateMePatch:
+    properties:
+      class:
+        description: 班级；null 清除，缺省不动
+        example: 物联网工程 2301
+        type: string
+      direction:
+        description: 方向；null/空串清除，缺省不动
+        example: front-end
+        type: string
+      qq:
+        description: QQ；null 清除，缺省不动
+        example: "1044696157"
+        type: string
+      student_id:
+        description: 学号；null 清除（0 视为未填），缺省不动
+        type: integer
+    type: object
   request.VerifyCodeReq:
     properties:
       verifier:
@@ -181,6 +210,12 @@ definitions:
     properties:
       created_at:
         type: string
+      detail:
+        allOf:
+        - $ref: '#/definitions/response.UserProfileDetail'
+        description: |-
+          Detail 只读资料（issue #57）：管理员能看到完整信息，但改不了——
+          编辑入口只有本人的 PUT /me。
       is_admin:
         description: IsAdmin 由 Redis 名单现算，方便管理端直接标注"当前是不是管理员"
         type: boolean
@@ -196,6 +231,11 @@ definitions:
       refresh_token:
         type: string
       user_id:
+        type: integer
+    type: object
+  response.MailBatchDeleteResp:
+    properties:
+      deleted:
         type: integer
     type: object
   response.MailBulkSendResp:
@@ -289,6 +329,13 @@ definitions:
     type: object
   response.MeResp:
     properties:
+      detail:
+        $ref: '#/definitions/response.UserProfileDetail'
+      name:
+        description: |-
+          Name 是姓名（domain.User.Name），与 username 同源但语义独立：
+          前端个人设置页把它当只读展示项。
+        type: string
       role:
         type: string
       user_id:
@@ -313,6 +360,19 @@ definitions:
       message:
         description: 提示信息
         type: string
+    type: object
+  response.UserProfileDetail:
+    properties:
+      class:
+        type: string
+      direction:
+        type: string
+      email:
+        type: string
+      qq:
+        type: string
+      student_id:
+        type: integer
     type: object
 info:
   contact: {}
@@ -551,7 +611,7 @@ paths:
       - 管理端-邮件
   /api/v1/admin/mails:
     get:
-      description: 按发送时间倒序分页。只返回记录元信息，不返回正文（正文可能很长且含个人信息）。
+      description: 按发送时间倒序分页。可选 keyword（主题/收件人模糊匹配）与 from/to（日期，含端点）过滤；total 为过滤后的总数。只返回记录元信息，不返回正文。
       parameters:
       - default: 1
         description: 页码，从 1 开始
@@ -563,6 +623,18 @@ paths:
         in: query
         name: page_size
         type: integer
+      - description: 模糊搜索主题与收件人邮箱，最长 100
+        in: query
+        name: keyword
+        type: string
+      - description: 起始日期 YYYY-MM-DD（含当天）
+        in: query
+        name: from
+        type: string
+      - description: 结束日期 YYYY-MM-DD（含当天）
+        in: query
+        name: to
+        type: string
       produces:
       - application/json
       responses:
@@ -575,9 +647,46 @@ paths:
                 data:
                   $ref: '#/definitions/response.MailRecordListResp'
               type: object
+        "400":
+          description: 日期格式错误
+          schema:
+            $ref: '#/definitions/response.Result'
       security:
       - BearerAuth: []
       summary: 发信记录
+      tags:
+      - 管理端-邮件
+  /api/v1/admin/mails/batch-delete:
+    delete:
+      consumes:
+      - application/json
+      description: 管理员清理记录用；返回实际删除的行数，ids 中已不存在的 id 会被跳过。
+      parameters:
+      - description: 待删除的记录 id 列表
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.MailBatchDeleteReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MailBatchDeleteResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 批量删除发信记录
       tags:
       - 管理端-邮件
   /api/v1/admin/mails/send:
@@ -795,12 +904,48 @@ paths:
                   $ref: '#/definitions/response.MeResp'
               type: object
         "401":
-          description: 未认证或令牌失效
+          description: 未认证、令牌失效或账号已不存在
           schema:
             $ref: '#/definitions/response.Result'
       security:
       - BearerAuth: []
       summary: 获取当前登录用户
+      tags:
+      - 认证模块
+    put:
+      consumes:
+      - application/json
+      description: 只改令牌本人的资料，body 不接受 user_id 等目标参数（未知键直接忽略）。
+      parameters:
+      - description: 资料字段补丁
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.UpdateMePatch'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新后的完整资料
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MeResp'
+              type: object
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证、令牌失效或账号已不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 更新本人资料
       tags:
       - 认证模块
   /api/v1/refresh:

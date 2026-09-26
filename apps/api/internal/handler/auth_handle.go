@@ -2,8 +2,10 @@ package handler
 
 import (
 	"errors"
+	"io"
 	"strings"
 
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/request"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/middleware"
@@ -193,14 +195,16 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	response.OKWithMsg(c, "退出登录成功", nil)
 }
 
-// Me 返回当前登录用户的身份与角色
+// Me 返回当前登录用户的身份、角色与资料
 // @Summary 获取当前登录用户
 // @Description 角色由服务端**现查 Redis 管理员名单**得到，而不是回显令牌里的快照，
 // 因此前端可见性与服务端强制永远一致（撤销管理员后立刻反映）。
+// data 含 name 与 detail{class, student_id, qq, direction, email}（issue #57），
+// 空串 / 0 表示未填；不返回密码。
 // @Tags 认证模块
 // @Produce json
 // @Success 200 {object} response.Result{data=response.MeResp} "成功"
-// @Failure 401 {object} response.Result "未认证或令牌失效"
+// @Failure 401 {object} response.Result "未认证、令牌失效或账号已不存在"
 // @Security BearerAuth
 // @Router /api/v1/me [get]
 func (h *AuthHandler) Me(c *gin.Context) {
@@ -216,11 +220,87 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	response.OK(c, response.MeResp{
-		UserID:   userID,
+	user, err := h.authService.GetProfile(c.Request.Context(), userID)
+	if err != nil {
+		failMeLookup(c, err)
+		return
+	}
+
+	response.OK(c, meRespOf(user, username, role))
+}
+
+// UpdateMe 更新当前登录用户的资料
+// @Summary 更新本人资料
+// @Description 只改令牌本人的资料，body 不接受 user_id 等目标参数（未知键直接忽略）。
+// 白名单字段 class/student_id/qq/direction 三态语义：**缺省不动、null 清除、有值覆盖**。
+// name 与 email 不可改（登录凭据 / 改名另提 issue）。校验：direction 须为枚举之一、
+// student_id 非负整数、class ≤ 64 字符、qq ≤ 20 字符。
+// @Tags 认证模块
+// @Accept json
+// @Produce json
+// @Param request body request.UpdateMePatch true "资料字段补丁"
+// @Success 200 {object} response.Result{data=response.MeResp} "更新后的完整资料"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 401 {object} response.Result "未认证、令牌失效或账号已不存在"
+// @Security BearerAuth
+// @Router /api/v1/me [put]
+func (h *AuthHandler) UpdateMe(c *gin.Context) {
+	userID, username, _, ok := middleware.CurrentUser(c)
+	if !ok {
+		response.FailUnauthorized(c, "缺少认证信息")
+		return
+	}
+
+	// 不走 ShouldBindJSON：绑定器区分不了「键缺失」与「值为 null」，
+	// 而本接口两者语义不同，必须自己解析（见 request.ParseUpdateMe）。
+	// LimitReader 兜底：body 超限会被截断成非法 JSON，走 400 而不是吃满内存。
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<16))
+	if err != nil {
+		response.FailInvalidParam(c, "读取请求体失败")
+		return
+	}
+	patch, err := request.ParseUpdateMe(body)
+	if err != nil {
+		response.FailInvalidParam(c, err.Error())
+		return
+	}
+
+	user, err := h.authService.UpdateProfile(c.Request.Context(), userID, patch)
+	if err != nil {
+		failMeLookup(c, err)
+		return
+	}
+
+	// MeResp 要求带角色；更新资料不动角色，现查一次即可（与 GET /me 同源）
+	role, err := h.authService.RoleOf(c.Request.Context(), userID)
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+
+	response.OK(c, meRespOf(user, username, role))
+}
+
+// meRespOf 组装 /me 的统一响应（GET 与 PUT 共用）。
+// 显式逐字段映射，保证 domain.User 的 password 永远不会被序列化出去。
+func meRespOf(user *domain.User, username string, role string) response.MeResp {
+	return response.MeResp{
+		UserID:   user.ID,
 		Username: username,
 		Role:     role,
-	})
+		Name:     user.Name,
+		Detail:   response.NewUserProfileDetail(user.Detail),
+	}
+}
+
+// failMeLookup 翻译 /me 场景的查库错误：
+// 账号已删除 = 会话失效（401，前端会引导重新登录）；其余走 failInternal 脱敏。
+func failMeLookup(c *gin.Context, err error) {
+	if errors.Is(err, repository.ErrUserNotFound) {
+		response.FailUnauthorized(c, "账号已不存在")
+		return
+	}
+	failInternal(c, err)
 }
 
 // failAuth 把认证域的错误映射成合适的状态码。

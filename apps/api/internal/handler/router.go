@@ -106,7 +106,10 @@ func NewRouter(
 		apiV1.POST("/logout", authHandler.Logout)
 
 		// ── 需要登录 ──
+		// /me 的读写都只要求登录（不是 admin）：改的是令牌本人的资料，
+		// 目标身份由 authRequired 解出的 userID 决定，body 里塞目标参数无效。
 		apiV1.GET("/me", authRequired, authHandler.Me)
+		apiV1.PUT("/me", authRequired, authHandler.UpdateMe)
 
 		// ── 管理端（需要管理员）──
 		// 两级中间件缺一不可：RequireAdmin 依赖 AuthRequired 写入的身份，
