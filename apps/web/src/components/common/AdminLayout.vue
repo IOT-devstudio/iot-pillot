@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 
-import SignOutButton from "@/components/SignOutButton.vue";
+import UserMenu from "@/components/common/UserMenu.vue";
 
 interface AdminNavItem {
   label: string;
@@ -231,7 +231,7 @@ onBeforeUnmount(() => {
               <span>详情</span>
             </template>
           </div>
-          <SignOutButton />
+          <UserMenu />
         </header>
         <slot />
       </div>

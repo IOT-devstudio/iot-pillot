@@ -19,19 +19,21 @@
 import { onMounted, ref } from "vue";
 
 import { AuthRequestError } from "@/api/auth";
-import { fetchCurrentUser, type CurrentUser } from "@/api/admin";
-import SignOutButton from "@/components/SignOutButton.vue";
+import { fetchCurrentUser } from "@/api/admin";
+import type { MyProfile } from "@/api/profile";
+import UserMenu from "@/components/common/UserMenu.vue";
 
 import type { RecruitmentDirection } from "../fixtures";
 import {
   MY_APPLICATIONS,
   RECRUITMENT_DIRECTIONS,
 } from "../fixtures";
+import { fillDemoProfileWithFallbacks } from "../profileFixture";
 import ApplicationList from "../components/ApplicationList.vue";
 import DirectionList from "../components/DirectionList.vue";
 import UserProfileCard from "../components/UserProfileCard.vue";
 
-const user = ref<CurrentUser | null>(null);
+const user = ref<MyProfile | null>(null);
 const userError = ref("");
 const applications = MY_APPLICATIONS;
 const directions = RECRUITMENT_DIRECTIONS;
@@ -47,7 +49,12 @@ function messageOf(error: unknown): string {
 
 onMounted(async () => {
   try {
-    user.value = await fetchCurrentUser();
+    /**
+     * 后端 #57 还没合并，`/me` 不带 detail。用 fixture 派生一份
+     * MyProfile 给 UserProfileCard 显示方向，#57 落地后改回
+     * 直接 await fetchMyProfile() 即可。
+     */
+    user.value = fillDemoProfileWithFallbacks(await fetchCurrentUser());
   } catch (error: unknown) {
     userError.value = messageOf(error);
   }
@@ -79,7 +86,7 @@ function handleApply(direction: RecruitmentDirection): void {
             查看你的信息与当前开放的招新方向。
           </p>
         </div>
-        <SignOutButton />
+        <UserMenu />
       </header>
 
       <div class="user-home__body">

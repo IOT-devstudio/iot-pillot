@@ -13,10 +13,13 @@
  * 角色变更的编排（确认弹窗、toast、变更后同时刷新两张表）都在
  * composables/useAdminPermissions.ts，这里只做展示与接线。
  */
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 
 import PageHeader from "@/components/common/PageHeader.vue";
+import type { AdminUser } from "@/api/admin";
 import { useAdminPermissions } from "../composables/useAdminPermissions";
+import UserDetailDialog from "../components/UserDetailDialog.vue";
+import { fillDemoDetailWithFallbacks } from "../fixtures/adminUserFixtures";
 
 const {
   users,
@@ -31,6 +34,7 @@ const {
   adminsLoading,
   adminsError,
   adminsUnauthorized,
+  currentUserId,
   actionFor,
   isBusy,
   keyword,
@@ -48,6 +52,23 @@ const {
 
 /** 当前页被筛选掉后，若本来有数据却筛没了，给一句提示而不是让人以为加载失败 */
 const usersFilteredEmpty = () => users.value.length > 0 && filteredUsers.value.length === 0;
+
+/**
+ * 「详情」弹窗状态。detailUser 在打开时套上 fixture 派生（后端 #57 还没合，
+ * /admin/users 不带 detail），关闭后保留以便再次打开时直接显示上一位
+ * —— 比清空更顺滑，少一次空白闪烁。
+ */
+const detailVisible = ref(false);
+const detailUser = ref<AdminUser | null>(null);
+
+function openDetail(row: AdminUser): void {
+  detailUser.value = fillDemoDetailWithFallbacks(row);
+  detailVisible.value = true;
+}
+
+function closeDetail(): void {
+  detailVisible.value = false;
+}
 
 onMounted(loadAll);
 </script>
@@ -124,8 +145,11 @@ onMounted(loadAll);
                 <el-tag v-else type="info" effect="plain">普通用户</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="260" fixed="right">
               <template #default="{ row }">
+                <el-button link type="primary" @click="openDetail(row)">
+                  详情
+                </el-button>
                 <template v-if="actionFor(row).kind === 'grant'">
                   <el-button
                     link
@@ -205,8 +229,11 @@ onMounted(loadAll);
           <el-table-column prop="user_id" label="用户 ID" width="110" />
           <el-table-column prop="name" label="姓名" min-width="160" />
           <el-table-column prop="created_at" label="注册时间" min-width="200" />
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="260" fixed="right">
             <template #default="{ row }">
+              <el-button link type="primary" @click="openDetail(row)">
+                详情
+              </el-button>
               <el-button
                 v-if="actionFor(row).kind === 'revoke'"
                 link
@@ -226,6 +253,12 @@ onMounted(loadAll);
           </el-table-column>
         </el-table>
       </section>
+
+      <UserDetailDialog
+        v-model:visible="detailVisible"
+        :user="detailUser"
+        :current-user-id="currentUserId"
+      />
     </main>
   </div>
 </template>
