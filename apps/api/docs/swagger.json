@@ -400,7 +400,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "按发送时间倒序分页。只返回记录元信息，不返回正文（正文可能很长且含个人信息）。",
+                "description": "按发送时间倒序分页。可选 keyword（主题/收件人模糊匹配）与 from/to（日期，含端点）过滤；total 为过滤后的总数。只返回记录元信息，不返回正文。",
                 "produces": [
                     "application/json"
                 ],
@@ -422,6 +422,24 @@
                         "description": "每页条数，最大 100",
                         "name": "page_size",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "模糊搜索主题与收件人邮箱，最长 100",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "起始日期 YYYY-MM-DD（含当天）",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "结束日期 YYYY-MM-DD（含当天）",
+                        "name": "to",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -441,6 +459,69 @@
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "400": {
+                        "description": "日期格式错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/mails/batch-delete": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员清理记录用；返回实际删除的行数，ids 中已不存在的 id 会被跳过。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-邮件"
+                ],
+                "summary": "批量删除发信记录",
+                "parameters": [
+                    {
+                        "description": "待删除的记录 id 列表",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.MailBatchDeleteReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.MailBatchDeleteResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
                         }
                     }
                 }
@@ -815,7 +896,68 @@
                         }
                     },
                     "401": {
-                        "description": "未认证或令牌失效",
+                        "description": "未认证、令牌失效或账号已不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "只改令牌本人的资料，body 不接受 user_id 等目标参数（未知键直接忽略）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "更新本人资料",
+                "parameters": [
+                    {
+                        "description": "资料字段补丁",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.UpdateMePatch"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的完整资料",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.MeResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证、令牌失效或账号已不存在",
                         "schema": {
                             "$ref": "#/definitions/response.Result"
                         }
@@ -1054,6 +1196,22 @@
                 }
             }
         },
+        "request.MailBatchDeleteReq": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "request.MailRecipientReq": {
             "type": "object",
             "required": [
@@ -1211,6 +1369,39 @@
                 }
             }
         },
+        "request.UpdateMePatch": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "description": "班级；null 清除，缺省不动",
+                    "type": "string",
+                    "example": "物联网工程 2301"
+                },
+                "direction": {
+                    "description": "方向；null/空串清除，缺省不动",
+                    "type": "string",
+                    "enum": [
+                        "front-end",
+                        "back-end",
+                        "agent",
+                        "all",
+                        "game",
+                        "other"
+                    ],
+                    "example": "front-end"
+                },
+                "qq": {
+                    "description": "QQ；null 清除，缺省不动",
+                    "type": "string",
+                    "example": "1044696157"
+                },
+                "student_id": {
+                    "description": "学号；null 清除（0 视为未填），缺省不动",
+                    "type": "integer",
+                    "example": 2023114514
+                }
+            }
+        },
         "request.VerifyCodeReq": {
             "type": "object",
             "required": [
@@ -1286,6 +1477,14 @@
                 "created_at": {
                     "type": "string"
                 },
+                "detail": {
+                    "description": "Detail 只读资料（issue #57）：管理员能看到完整信息，但改不了——\n编辑入口只有本人的 PUT /me。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/response.UserProfileDetail"
+                        }
+                    ]
+                },
                 "is_admin": {
                     "description": "IsAdmin 由 Redis 名单现算，方便管理端直接标注\"当前是不是管理员\"",
                     "type": "boolean"
@@ -1308,6 +1507,14 @@
                     "type": "string"
                 },
                 "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.MailBatchDeleteResp": {
+            "type": "object",
+            "properties": {
+                "deleted": {
                     "type": "integer"
                 }
             }
@@ -1451,6 +1658,13 @@
         "response.MeResp": {
             "type": "object",
             "properties": {
+                "detail": {
+                    "$ref": "#/definitions/response.UserProfileDetail"
+                },
+                "name": {
+                    "description": "Name 是姓名（domain.User.Name），与 username 同源但语义独立：\n前端个人设置页把它当只读展示项。",
+                    "type": "string"
+                },
                 "role": {
                     "type": "string"
                 },
@@ -1486,6 +1700,26 @@
                 "message": {
                     "description": "提示信息",
                     "type": "string"
+                }
+            }
+        },
+        "response.UserProfileDetail": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "qq": {
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "integer"
                 }
             }
         }

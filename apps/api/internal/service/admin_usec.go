@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
@@ -181,7 +182,7 @@ func (a *AdminUseCase) ListUsers(ctx context.Context, page int, pageSize int) (*
 		if user == nil {
 			continue
 		}
-		items = append(items, toAdminUserResp(user.ID, user.Name, user.CreatedAt, adminSet))
+		items = append(items, toAdminUserResp(user, adminSet))
 	}
 
 	return &response.AdminUserListResp{
@@ -214,7 +215,7 @@ func (a *AdminUseCase) ListAdmins(ctx context.Context) (*response.AdminListResp,
 			continue
 		}
 		// 名单来源本身，is_admin 恒为 true
-		items = append(items, toAdminUserResp(user.ID, user.Name, user.CreatedAt, map[int]struct{}{id: {}}))
+		items = append(items, toAdminUserResp(user, map[int]struct{}{id: {}}))
 	}
 
 	return &response.AdminListResp{Items: items, Total: len(items)}, nil
@@ -276,13 +277,18 @@ func toSet(ids []int) map[int]struct{} {
 	return set
 }
 
-func toAdminUserResp(userID int, name string, createdAt time.Time, adminSet map[int]struct{}) response.AdminUserResp {
-	_, isAdmin := adminSet[userID]
+// toAdminUserResp 把领域实体映射成列表项。
+//
+// 收整个 *domain.User 而不是散参数：issue #57 起列表要带只读 detail，
+// 逐字段透传会越拉越长；显式 DTO 映射同时保证 password 不外泄。
+func toAdminUserResp(user *domain.User, adminSet map[int]struct{}) response.AdminUserResp {
+	_, isAdmin := adminSet[user.ID]
 
 	return response.AdminUserResp{
-		UserID:    userID,
-		Name:      name,
-		CreatedAt: createdAt.Format(time.RFC3339),
+		UserID:    user.ID,
+		Name:      user.Name,
+		CreatedAt: user.CreatedAt.Format(time.RFC3339),
 		IsAdmin:   isAdmin,
+		Detail:    response.NewUserProfileDetail(user.Detail),
 	}
 }

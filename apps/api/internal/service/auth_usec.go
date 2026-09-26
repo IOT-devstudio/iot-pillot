@@ -124,6 +124,77 @@ func (auc *AuthUseCase) roleFor(ctx context.Context, userID int) (string, error)
 }
 
 /* ------------------------------------------------------------------ *
+ * 个人资料（issue #57）
+ * ------------------------------------------------------------------ */
+
+// GetProfile 读取指定用户的完整资料（GET /me 用）。
+//
+// middleware.CurrentUser 只给身份三元组（id/username/role），
+// name 与 detail 必须查库。查不到返回 repository.ErrUserNotFound，
+// 由接口层翻译成 401——令牌还有效但账号已删除，等价于会话失效。
+func (auc *AuthUseCase) GetProfile(ctx context.Context, userID int) (*domain.User, error) {
+	user, err := auc.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, repository.ErrUserNotFound
+	}
+	return user, nil
+}
+
+// UpdateProfile 更新**令牌本人**的资料（PUT /me）。
+//
+// 越权在结构上不可能：目标 userID 由令牌解出，patch 里没有任何目标参数
+// （body 里的 user_id 等未知键在 request.ParseUpdateMe 阶段就被丢弃）。
+//
+// userRepo.Update 底层是 GORM Save（全字段覆盖），因此必须先 GetByID
+// 拿到完整实体再改字段——直接 Save 空壳会把 password 等列清零
+// （同 mail_usec.UpdateTemplate 的先 Get 后改套路）。
+func (auc *AuthUseCase) UpdateProfile(ctx context.Context, userID int, patch *request.UpdateMeReq) (*domain.User, error) {
+	user, err := auc.GetProfile(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 逐字段按三态处理：缺省不动、null 清除、有值覆盖。
+	// 清除的落点都是零值（空串 / 0），与「0 视为未填」的既有口径一致。
+	if patch.Class.Present {
+		if patch.Class.Clear {
+			user.Detail.Class = ""
+		} else {
+			user.Detail.Class = patch.Class.Value
+		}
+	}
+	if patch.StudentID.Present {
+		if patch.StudentID.Clear {
+			user.Detail.StudentID = 0
+		} else {
+			user.Detail.StudentID = patch.StudentID.Value
+		}
+	}
+	if patch.QQ.Present {
+		if patch.QQ.Clear {
+			user.Detail.QQ = ""
+		} else {
+			user.Detail.QQ = patch.QQ.Value
+		}
+	}
+	if patch.Direction.Present {
+		if patch.Direction.Clear {
+			user.Detail.Direction = ""
+		} else {
+			user.Detail.Direction = domain.Direction(patch.Direction.Value)
+		}
+	}
+
+	if err := auc.userRepo.Update(ctx, user); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+/* ------------------------------------------------------------------ *
  * 登录
  * ------------------------------------------------------------------ */
 

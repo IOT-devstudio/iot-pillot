@@ -13,8 +13,10 @@ type User struct {
 }
 
 type Detail struct {
-	StudentID int       `json:"student_id"`
-	Class     string    `json:"class"`
+	StudentID int    `json:"student_id"`
+	Class     string `json:"class"`
+	// QQ issue #57 新增（迁移 0006 加 detail_qq 列）：选填，空串 = 未填。
+	QQ        string    `json:"qq"`
 	Direction Direction `json:"direction"`
 	Email     string    `json:"email"`
 }
