@@ -38,8 +38,15 @@ export interface AuthErrorInfo {
  * 401 / 403 / 网络异常必须区分开（验收项）：401 是「登录过期」，403 是「你没有管理权限」，
  * 两者都套同一句会让人以为重新登录就能解决权限问题。网络异常是 status 0
  * （见 api/auth.ts 的 requestAuth：fetch 直接抛错时用 0 兜底）。
+ *
+ * fallbackMessage：非 AuthRequestError（多为页面自身代码抛的异常）时的兜底文案。
+ * 本函数从「用户与权限」页抽出，个人设置等页复用时传各自的措辞，
+ * 免得个人资料加载失败也提示「管理数据」。
  */
-export function describeAuthError(error: unknown): AuthErrorInfo {
+export function describeAuthError(
+  error: unknown,
+  fallbackMessage = "暂时无法加载管理数据，请稍后重试",
+): AuthErrorInfo {
   if (error instanceof AuthRequestError) {
     if (error.status === 0) {
       return { message: "网络异常，请检查连接后重试", unauthorized: false };
@@ -52,7 +59,7 @@ export function describeAuthError(error: unknown): AuthErrorInfo {
     }
     return { message: error.message, unauthorized: false };
   }
-  return { message: "暂时无法加载管理数据，请稍后重试", unauthorized: false };
+  return { message: fallbackMessage, unauthorized: false };
 }
 
 /**
