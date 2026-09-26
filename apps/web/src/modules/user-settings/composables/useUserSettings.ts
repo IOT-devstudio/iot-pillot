@@ -95,7 +95,7 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     try {
       hydrate(await deps.fetchMyProfile());
     } catch (error: unknown) {
-      const info = describeAuthError(error);
+      const info = describeAuthError(error, "暂时无法加载个人资料，请稍后重试");
       loadError.value = info.message;
       loadUnauthorized.value = info.unauthorized;
       profile.value = null;
@@ -116,7 +116,10 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       ElMessage.success("资料已保存");
       return true;
     } catch (error: unknown) {
-      saveError.value = describeAuthError(error).message;
+      saveError.value = describeAuthError(
+        error,
+        "暂时无法保存个人资料，请稍后重试",
+      ).message;
       ElMessage.error(saveError.value);
       return false;
     } finally {

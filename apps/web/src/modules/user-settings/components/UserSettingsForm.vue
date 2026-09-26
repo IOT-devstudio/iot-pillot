@@ -45,7 +45,7 @@ const DIRECTION_OPTIONS: Array<{ value: Direction; label: string }> = [
 
 /** 后端还没把邮箱挂到 detail 里时，给一句「未提供」比留空白更诚实。 */
 const emailDisplay = computed(
-  () => props.profile.detail.email ?? "后端未提供（可在注册流程维护）",
+  () => props.profile.detail?.email ?? "后端未提供（可在注册流程维护）",
 );
 
 const usernameDisplay = computed(() => props.profile.username);

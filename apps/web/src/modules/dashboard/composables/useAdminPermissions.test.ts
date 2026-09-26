@@ -82,6 +82,16 @@ describe("describeAuthError", () => {
   it("非 AuthRequestError 走兜底文案", () => {
     expect(describeAuthError(new Error("boom")).message).toContain("暂时无法");
   });
+
+  it("兜底文案可按页面替换，缺省仍是「管理数据」口径", () => {
+    expect(describeAuthError(new Error("boom")).message).toContain("管理数据");
+    expect(
+      describeAuthError(new Error("boom"), "暂时无法加载个人资料，请稍后重试"),
+    ).toEqual({
+      message: "暂时无法加载个人资料，请稍后重试",
+      unauthorized: false,
+    });
+  });
 });
 
 describe("describeMutation", () => {

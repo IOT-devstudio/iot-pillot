@@ -44,7 +44,7 @@ const DIRECTION_LABELS: Record<Direction, string> = {
 };
 
 const directionLabel = computed(() => {
-  const d = props.user.detail.direction;
+  const d = props.user.detail?.direction;
   if (d === null || d === undefined) {
     return "未选择";
   }
@@ -52,7 +52,7 @@ const directionLabel = computed(() => {
 });
 
 const directionIsEmpty = computed(() => {
-  const d = props.user.detail.direction;
+  const d = props.user.detail?.direction;
   return d === null || d === undefined;
 });
 </script>

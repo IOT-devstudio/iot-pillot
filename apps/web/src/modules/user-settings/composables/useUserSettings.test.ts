@@ -84,6 +84,43 @@ describe("useUserSettings", () => {
     expect(state.needsCompletion.value).toBe(true);
   });
 
+  // #57 后端落地前 GET /me 不返回 detail——真实崩溃路径（此前只测过 detail: {}，
+  // 空对象不会抛错，测不到 TypeError 落入兜底文案的问题）。
+  it("loads a profile without detail (pre-#57 backend) without crashing", async () => {
+    const state = useUserSettings(
+      makeDeps({
+        fetchMyProfile: async () => {
+          const { detail: _dropped, ...rest } = profile();
+          return rest;
+        },
+      }),
+    );
+
+    await state.load();
+
+    expect(state.loading.value).toBe(false);
+    expect(state.loadError.value).toBe("");
+    expect(state.profile.value).not.toBeNull();
+    expect(state.form).toEqual({ class: "", studentId: "", qq: "", direction: "" });
+    expect(state.needsCompletion.value).toBe(true);
+  });
+
+  it("reports profile wording (not admin wording) when hydration throws", async () => {
+    const state = useUserSettings(
+      makeDeps({
+        // 模拟页面自身代码抛出的非 AuthRequestError（如字段形状漂移）
+        fetchMyProfile: async () => {
+          throw new TypeError("detail is undefined");
+        },
+      }),
+    );
+
+    await state.load();
+
+    expect(state.loadError.value).toContain("个人资料");
+    expect(state.loadError.value).not.toContain("管理数据");
+  });
+
   it("translates a load failure into loadError + loadUnauthorized", async () => {
     const state = useUserSettings(
       makeDeps({
@@ -175,9 +212,9 @@ describe("nextFormFromProfile", () => {
   });
 
   it("treats missing detail as empty form (defensive default)", () => {
-    // 类型上 detail 必填；强制测一下「类型万一漂移」也不会爆运行时
+    // #57 落地前后端不返回 detail；类型上已放宽为可选，这里锁住运行时不抛错
     expect(
-      nextFormFromProfile({ ...profile(), detail: {} as MyProfile["detail"] }),
+      nextFormFromProfile({ ...profile(), detail: undefined }),
     ).toEqual({
       class: "",
       studentId: "",

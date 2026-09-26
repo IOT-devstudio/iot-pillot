@@ -30,13 +30,16 @@ export interface UserDetail {
   email?: string | null;
 }
 
-/** GET /me 扩展后的完整形状：name + detail 都在 data 内。 */
+/**
+ * GET /me 扩展后的完整形状：name + detail 都在 data 内。
+ * detail 可选：#57 后端落地前 /me 不返回它，前端按空资料渲染而不是崩（见 detailToForm）。
+ */
 export interface MyProfile {
   user_id: number;
   username: string;
   role: UserRole | string;
   name?: string;
-  detail: UserDetail;
+  detail?: UserDetail;
 }
 
 /** PUT /me 入参：只接受资料字段；空值表示「清空该字段」，未传表示「不动该字段」。 */
@@ -73,7 +76,7 @@ export interface FormShape {
   direction: Direction | "";
 }
 
-export function detailToForm(detail: UserDetail): FormShape {
+export function detailToForm(detail: UserDetail = {}): FormShape {
   // student_id === 0 按「未填」处理（与 #57 后端契约一致）；编辑表单里空串比「0」更诚实
   const hasStudentId =
     detail.student_id !== undefined && detail.student_id !== null && detail.student_id !== 0;
