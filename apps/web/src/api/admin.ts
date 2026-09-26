@@ -8,11 +8,25 @@ export interface CurrentUser {
   role: UserRole | string;
 }
 
+/**
+ * 详情字段的对外最小子集。列表里塞不下完整字段集（list 接口只透 name / role），
+ * 但 issue #58 要求「详情」弹窗，所以后端 #57 把 AdminUser 扩成可带 detail。
+ * detail 本身是 optional —— 字段还没填时是 undefined，弹窗里走「暂无完整资料」分支。
+ */
+export interface AdminUserDetail {
+  class?: string | null;
+  student_id?: number | null;
+  qq?: string | null;
+  direction?: import("@iot-pillot/shared-types").Direction | null;
+  email?: string | null;
+}
+
 export interface AdminUser {
   user_id: number;
   name: string;
   created_at: string;
   is_admin: boolean;
+  detail?: AdminUserDetail;
 }
 
 export interface AdminUserList {
