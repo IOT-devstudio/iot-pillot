@@ -5,14 +5,14 @@
  */
 import type { RouteRecordRaw } from "vue-router";
 
-import StudioOpener from "./views/StudioOpener.vue";
+import AuthView from "@/views/AuthView.vue";
 
 export const openerRoutes: RouteRecordRaw[] = [
-  // 根路径 = 3D 开屏（登录/注册面板浮在 Three.js 场景上）
+  // 根路径与 /login 共用瑞士信号 2D 认证界面（Issue #81）
   {
     path: "/",
     name: "opener",
-    component: StudioOpener,
-    meta: { title: "开屏" },
+    component: AuthView,
+    meta: { title: "登录" },
   },
 ];

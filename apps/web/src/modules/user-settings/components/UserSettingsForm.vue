@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * 个人设置表单（用户名/邮箱只读；班级/学号/QQ/方向可编辑）。
+ * 个人设置表单（姓名/用户名/邮箱只读；班级/学号/QQ/方向可编辑）。
  *
  * 父组件 useUserSettings 提供响应式 form 与 profile，本组件只做接线。
  *
  * 字段顺序与文案与 issue #58 对齐：
- *   - 用户名、邮箱：只读展示，写明原因（登录凭据，本期不改）
+ *   - 姓名、用户名、邮箱：只读展示，写明原因（登录凭据，本期不改）
  *   - 班级、学号、QQ、方向：可编辑，全部选填
  *
  * 方向选项的中文标签与后端枚举一一对应（见 packages/shared-types 的 Direction）。
@@ -49,6 +49,7 @@ const emailDisplay = computed(
 );
 
 const usernameDisplay = computed(() => props.profile.username);
+const nameDisplay = computed(() => props.profile.name || "未提供");
 
 function handleSubmit(event: Event): void {
   event.preventDefault();
@@ -61,6 +62,10 @@ function handleSubmit(event: Event): void {
     <section class="settings__readonly">
       <h2 class="settings__section-title">登录凭据（本期不可更改）</h2>
       <dl class="settings__readout">
+        <div class="settings__row">
+          <dt class="settings__term">姓名</dt>
+          <dd class="settings__value">{{ nameDisplay }}</dd>
+        </div>
         <div class="settings__row">
           <dt class="settings__term">用户名</dt>
           <dd class="settings__value">{{ usernameDisplay }}</dd>
@@ -249,7 +254,9 @@ function handleSubmit(event: Event): void {
   background: #fff;
   font: inherit;
   font-size: 14px;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .settings__input:focus,
@@ -274,7 +281,10 @@ function handleSubmit(event: Event): void {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
 }
 
 .settings__btn--primary {

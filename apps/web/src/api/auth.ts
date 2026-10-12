@@ -42,28 +42,40 @@ export async function requestBackend<T>(
   path: string,
   init: RequestInit,
 ): Promise<{ body: Partial<BackendResponse<T>>; status: number }> {
-  let response: Response;
+  const controller = new AbortController();
+  let timedOut = false;
+  const abort = () => controller.abort();
+  if (init.signal?.aborted) abort();
+  else init.signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 15000);
+  const networkMessage = () =>
+    timedOut ? "请求超时，请检查网络后重试" : UNAVAILABLE_MESSAGE;
   try {
-    response = await fetch(path, init);
-  } catch {
-    throw new AuthRequestError(UNAVAILABLE_MESSAGE, 0);
+    let response: Response;
+    try {
+      response = await fetch(path, { ...init, signal: controller.signal });
+    } catch {
+      throw new AuthRequestError(networkMessage(), 0);
+    }
+
+    let body: Partial<BackendResponse<T>> | null;
+    try {
+      body = (await response.json()) as Partial<BackendResponse<T>>;
+    } catch {
+      throw new AuthRequestError(networkMessage(), response.status);
+    }
+    const businessCode = typeof body?.code === "number" ? body.code : undefined;
+    const message = body?.message || UNAVAILABLE_MESSAGE;
+    if (!response.ok || body?.code !== 0)
+      throw new AuthRequestError(message, response.status, businessCode);
+    return { body, status: response.status };
+  } finally {
+    clearTimeout(timer);
+    init.signal?.removeEventListener("abort", abort);
   }
-
-  let body: Partial<BackendResponse<T>> | null;
-  try {
-    body = (await response.json()) as Partial<BackendResponse<T>>;
-  } catch {
-    throw new AuthRequestError(UNAVAILABLE_MESSAGE, response.status);
-  }
-
-  const businessCode = typeof body?.code === "number" ? body.code : undefined;
-  const message = body?.message || UNAVAILABLE_MESSAGE;
-
-  if (!response.ok || body?.code !== 0) {
-    throw new AuthRequestError(message, response.status, businessCode);
-  }
-
-  return { body, status: response.status };
 }
 
 function jsonPost(payload: unknown): RequestInit {

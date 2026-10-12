@@ -29,7 +29,7 @@ iot-pillot/
 ### 前端（apps/web）
 
 - Vue 3 + `<script setup>` 单文件组件
-- Vue Router 4，`/` 为 3D 登录开屏，用户侧为 `/user/*`，管理侧为 `/admin/*` 与 `/dashboard`
+- Vue Router 4，`/` 与 `/login` 为瑞士信号 2D 认证界面，用户侧为 `/user/*`，管理侧为 `/admin/*` 与 `/dashboard`
 - Element Plus 通过 `unplugin-auto-import` + `unplugin-vue-components` 按需注册
 - Vite dev server 监听 `:5173`，`/api` 代理到 `:8080`
 - Home 视图调根级 `/health` 验证前后端联通；认证页、用户页和管理员控制台已接入当前后端认证接口
@@ -179,3 +179,8 @@ CandidateStatus:  interviewing ─► offered ─► hired
 - Docker 镜像发布到 ghcr.io 的 release workflow（当前 `deploy.yml` 走 SCP 直推，不依赖镜像仓库）
 
 每项开工前会单独 PR + 决策记录。
+
+
+## 瑞士信号 2D 用户界面（Issue #81）
+
+认证与普通用户首页/个人设置共用局部视觉外壳，不覆盖后台样式。首页身份与资料读取 GET `/api/v1/me`；方向、申请与报名体验仍为明确标注的 fixture。资料编辑复用现有 GET/PUT `/me` 白名单契约。动画按 Vue 生命周期清理，支持暂停、减少动态效果和后台暂停；认证网络请求有 15 秒超时兜底。实现基准、业务差异与验收材料见 [Issue #81 审查说明](reviews/issue-81-swiss-signal.md)。

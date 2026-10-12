@@ -18,7 +18,7 @@ import { clearAuthSession, readAuthSession } from "@/auth/session";
 /**
  * 需要重定向时的目标位置。
  *
- * 只用固定路径定位：登录入口是 3D 开屏所在的 "/"，角色落点也是固定路径。
+ * 只用固定路径定位：登录入口是二维认证页所在的 "/"，角色落点也是固定路径。
  */
 export interface RouteRedirect {
   path: string;
@@ -43,8 +43,7 @@ const defaultDeps: RouteGateDeps = {
 /**
  * 登录入口。
  *
- * 指向 3D 开屏（根路径）而不是二维的 /login：后者只在 WebGL 渲染失败时
- * 由开屏自己转过去，正常路径永远到不了，这样「只有一个登录界面」才成立。
+ * 根路径和 /login 复用二维认证组件；守卫继续使用既有根路径与 redirect。
  */
 const LOGIN_ROUTE = "/";
 

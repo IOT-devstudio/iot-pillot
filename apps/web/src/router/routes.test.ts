@@ -41,12 +41,13 @@ vi.mock("@/modules/user-settings/views/UserSettingsView.vue", () => ({
 import { routes } from "./routes";
 
 describe("application routes", () => {
-  it("mounts the 3D opener on the root path", () => {
+  it("mounts the same 2D auth view on both public login paths", () => {
     const rootRoutes = routes.filter((route) => route.path === "/");
 
     expect(rootRoutes).toHaveLength(1);
     expect(rootRoutes[0]?.name).toBe("opener");
-    expect(rootRoutes[0]?.component).toMatchObject({ name: "StudioOpener" });
+    expect(rootRoutes[0]?.component).toMatchObject({ name: "AuthView" });
+    expect(rootRoutes[0]?.component).toBe(routes.find(route => route.path === "/login")?.component);
     // 开屏对所有人开放，不能挂上任何角色限制
     expect(rootRoutes[0]?.meta?.allowRoles).toBeUndefined();
   });

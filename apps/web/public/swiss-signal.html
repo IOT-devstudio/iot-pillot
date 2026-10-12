@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1739f5">
+  <title>瑞士信号 / IoT Studio</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="swiss-signal/style.css">
+  <script src="swiss-signal/motion.js" defer></script>
+  <script src="swiss-signal/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="#login" aria-label="IoT Studio 返回登录"><span class="logo">⌁</span><span>IoT STUDIO<small>物联网工作室</small></span></a>
+    <span class="masthead-note">A PLACE FOR CURIOUS MINDS.</span>
+    <nav class="view-nav" aria-label="预览页面"><button data-view="login" aria-pressed="true">01 登录</button><button data-view="register" aria-pressed="false">02 注册</button><button data-view="home" aria-pressed="false">03 用户首页 <span>↗</span></button></nav>
+  </header>
+
+  <main>
+    <section id="auth-view" class="auth-view" aria-label="账号入口">
+      <div class="auth-poster">
+        <div class="poster-top mono"><span><i class="status-dot"></i> SIGNAL IS ON.</span><span>YA’AN / CN</span></div>
+        <h1>把未知<br>做成<span>现实。</span></h1>
+        <div class="poster-lower"><div class="poster-copy"><span class="mono">THINK → BUILD → CONNECT</span><p>一行代码，一个想法。<br>在这里，让好奇心<br>有一个真实的落点。</p></div><div class="signal-mark" aria-hidden="true"><i style="--r:0deg"></i><i style="--r:45deg"></i><i style="--r:90deg"></i><i style="--r:135deg"></i><b></b></div></div>
+        <div class="poster-foot mono"><span>NOT JUST AN IDEA. A START.</span><span>↓</span></div>
+      </div>
+      <div class="auth-space">
+        <div class="auth-space-top mono"><span id="form-index">ACCESS / 01</span><span class="small-cross" aria-hidden="true">+</span></div>
+        <div class="form-tabs" role="group" aria-label="登录与注册切换"><button data-view="login" aria-pressed="true">登录</button><button data-view="register" aria-pressed="false">注册</button><span class="tab-line"></span></div>
+        <div class="form-window"><div class="form-slider">
+          <section class="auth-pane" id="login-pane">
+            <h2>欢迎回来。</h2><p class="form-intro">你的下一个想法，从这里继续。</p>
+            <form id="login-form">
+              <label for="login-email">邮箱地址 <span class="mono">EMAIL</span></label><input id="login-email" name="email" type="email" autocomplete="email" required placeholder="hello@example.com">
+              <label for="login-password">密码 <span class="mono">PASSWORD</span></label><div class="password-field"><input id="login-password" name="password" type="password" autocomplete="current-password" required minlength="8" placeholder="至少 8 位字符"><button type="button" data-password="login-password" aria-label="显示登录密码" aria-pressed="false">显示</button></div>
+              <div class="form-meta"><span>演示账号，无需真实密码</span><button type="button" class="plain-link" id="forgot">忘记密码 ↗</button></div>
+              <button class="action-button" type="submit"><span>进入我的空间</span><b aria-hidden="true">↗</b></button><p class="form-error" id="login-error" role="alert"></p>
+            </form>
+            <div class="form-divider"><span>或者，先认识一下</span></div><button type="button" class="outline-button" data-view="home">免填写，体验首页 <span>→</span></button>
+            <p class="form-bottom">还没有账号？<button class="plain-link" data-view="register">开启新章节 ↗</button></p>
+          </section>
+          <section class="auth-pane" id="register-pane" inert aria-hidden="true">
+            <h2>你好，新同伴。</h2><p class="form-intro">带上好奇心，剩下的我们一起探索。</p>
+            <form id="register-form">
+              <label for="register-name">你的称呼 <span class="mono">NAME</span></label><input id="register-name" name="name" autocomplete="nickname" required maxlength="20" placeholder="希望我们怎么称呼你">
+              <label for="register-email">邮箱地址 <span class="mono">EMAIL</span></label><input id="register-email" name="email" type="email" autocomplete="email" required placeholder="hello@example.com">
+              <label for="register-password">密码 <span class="mono">PASSWORD</span></label><div class="password-field"><input id="register-password" name="password" type="password" autocomplete="new-password" required minlength="8" placeholder="至少 8 位字符"><button type="button" data-password="register-password" aria-label="显示注册密码" aria-pressed="false">显示</button></div>
+              <label for="register-confirm">确认密码 <span class="mono">CONFIRM</span></label><input id="register-confirm" name="confirm" type="password" autocomplete="new-password" required minlength="8" placeholder="再次输入密码">
+              <label class="consent"><input name="consent" type="checkbox" required><span>我了解这是演示，不会创建真实账号。</span></label>
+              <button class="action-button" type="submit"><span>开启我的新章节</span><b aria-hidden="true">↗</b></button><p class="form-error" id="register-error" role="alert"></p>
+            </form>
+            <p class="form-bottom">已经有账号？<button class="plain-link" data-view="login">返回登录 ↗</button></p>
+          </section>
+        </div></div>
+        <span class="auth-caption mono">SMALL STARTS. REAL POSSIBILITIES.</span>
+      </div>
+    </section>
+
+    <section id="home-view" class="home-view" hidden aria-label="普通用户空间">
+      <nav class="space-nav" aria-label="用户空间导航"><span class="mono">YOUR SPACE / <span id="nav-name">探索者</span></span><div><a href="#directions">探索方向 ↗</a><a href="#journey">我的申请</a><button class="plain-link" id="profile-open">个人资料</button><button class="plain-link" data-view="login">返回登录 ↶</button></div></nav>
+      <section class="home-poster">
+        <div class="mono home-poster-top"><span>HELLO, <span id="welcome-name">探索者</span>.</span><span>一起，连接新的可能。</span></div>
+        <h1 tabindex="-1">好奇心，<br><span>现在有了坐标。</span></h1>
+        <div class="home-poster-bottom"><p>前端、后端与智能体。<br>选择一个起点，把你的想法做成作品。</p><a class="action-button" href="#directions"><span>找到我的方向</span><b aria-hidden="true">↘</b></a></div>
+        <div class="signal-mark home-mark" aria-hidden="true"><i style="--r:0deg"></i><i style="--r:45deg"></i><i style="--r:90deg"></i><i style="--r:135deg"></i><b></b></div>
+      </section>
+      <div class="space-stats"><div><span class="mono">OPEN DIRECTIONS</span><strong>03<small>个探索方向</small></strong></div><div><span class="mono">MY APPLICATIONS</span><strong><span id="application-count">01</span><small>条演示记录</small></strong></div><div class="stat-statement"><span class="mono">NEXT CHAPTER</span><strong>从一个想法，<br>到一个真实的作品。<span>↗</span></strong></div></div>
+      <section id="directions" class="direction-section">
+        <div class="section-top"><div><span class="mono">01 / FIND YOUR FREQUENCY</span><h2>找到你的频率。</h2></div><div class="rail-controls"><span class="mono"><span id="rail-index">01</span> / 03</span><button id="rail-prev" aria-label="上一个方向">←</button><button id="rail-next" aria-label="下一个方向">→</button></div></div>
+        <div class="direction-rail" id="direction-rail" tabindex="0" aria-label="方向展示，可横向滚动">
+          <article class="direction-panel" data-id="frontend"><span class="direction-number" aria-hidden="true">01</span><div class="mono panel-top"><span>INTERFACE / EXPERIENCE</span><span>探索方向</span></div><div class="direction-heading"><h3>前端<br>开发。</h3><span class="direction-symbol" aria-hidden="true">↗</span></div><div class="panel-bottom"><div><p>让复杂流程拥有清晰的界面、自然的交互，<br>以及被人愿意使用的细节。</p><span class="mono">VUE / TYPESCRIPT / EXPERIENCE</span></div><button class="panel-button" data-direction="frontend">了解并体验报名 <span>↗</span></button></div></article>
+          <article class="direction-panel" data-id="backend"><span class="direction-number" aria-hidden="true">02</span><div class="mono panel-top"><span>DATA / SYSTEM</span><span>探索方向</span></div><div class="direction-heading"><h3>后端<br>开发。</h3><span class="direction-symbol backend-symbol" aria-hidden="true">{ }</span></div><div class="panel-bottom"><div><p>把数据、接口与服务连接起来，<br>让一个想法可靠地运行。</p><span class="mono">GO / API / POSTGRESQL</span></div><button class="panel-button" data-direction="backend">了解并体验报名 <span>↗</span></button></div></article>
+          <article class="direction-panel" data-id="agent"><span class="direction-number" aria-hidden="true">03</span><div class="mono panel-top"><span>MODEL / WORKFLOW</span><span>探索方向</span></div><div class="direction-heading"><h3>Agent<br>开发。</h3><span class="direction-symbol" aria-hidden="true">⌁</span></div><div class="panel-bottom"><div><p>让模型、工具与工作流真正参与解决问题，<br>把智能变成可以使用的能力。</p><span class="mono">LLM / TOOLS / WORKFLOW</span></div><button class="panel-button" data-direction="agent">了解并体验报名 <span>↗</span></button></div></article>
+        </div>
+      </section>
+      <section id="journey" class="journey-section"><div class="section-top"><div><span class="mono">02 / YOUR NEXT STEP</span><h2>每一步，都算数。</h2></div><span class="mono journey-label">示例申请进度</span></div><div class="journey-sheet"><div class="journey-summary"><div><span class="mono">APPLICATION / 001</span><h3>前端开发</h3><p>秋季招新 · 演示申请</p></div><span class="status-tag"><i class="status-dot"></i>初步审核中</span><button class="plain-link" id="journey-open">查看详情 ↗</button></div><ol class="journey-steps"><li class="complete"><span class="step-num">01</span><div><h4>提交申请</h4><p>已完成 · 演示记录</p></div><span>✓</span></li><li class="current"><span class="step-num">02</span><div><h4>初步审核</h4><p>等待团队了解你</p></div><span class="status-dot"></span></li><li><span class="step-num">03</span><div><h4>面试交流</h4><p>聊聊你的想法</p></div><span>↗</span></li></ol><div id="new-intents" class="new-intents" hidden></div></div></section>
+      <section class="closing-note"><span class="mono">ONE MORE THING.</span><p>不必什么都会。<br><span>愿意动手，就有可能。</span></p><button id="profile-open-bottom" class="panel-button">完善我的资料 <span>↗</span></button></section>
+    </section>
+  </main>
+
+  <div class="signal-tape" aria-hidden="true"><div class="tape-track"><span>IDEA → SYSTEM → IMPACT <i>✳</i> STAY CURIOUS. KEEP BUILDING. <i>✳</i></span><span>IDEA → SYSTEM → IMPACT <i>✳</i> STAY CURIOUS. KEEP BUILDING. <i>✳</i></span><span>IDEA → SYSTEM → IMPACT <i>✳</i> STAY CURIOUS. KEEP BUILDING. <i>✳</i></span><span>IDEA → SYSTEM → IMPACT <i>✳</i> STAY CURIOUS. KEEP BUILDING. <i>✳</i></span></div></div>
+  <footer class="footer"><span class="mono">IoT STUDIO / SWISS SIGNAL / 2026</span><span>视觉交互演示 · 无真实注册或报名提交</span><button class="plain-link" id="motion-toggle" aria-pressed="false">暂停动效 ⏸</button></footer>
+  <dialog id="detail-dialog"><button class="dialog-close" aria-label="关闭详情">×</button><div id="detail-content"></div></dialog>
+  <dialog id="profile-dialog"><button class="dialog-close" aria-label="关闭个人资料">×</button><span class="mono">PROFILE / YOUR IDENTITY</span><h2>让我们认识你。</h2><form id="profile-form"><label for="profile-name">你的称呼</label><input id="profile-name" name="name" autocomplete="nickname" required maxlength="20"><label for="profile-interest">感兴趣的方向</label><select id="profile-interest" name="interest"><option>还在探索</option>前端开发</option><option>后端开发</option><option>Agent 开发</option></select><label for="profile-bio">一句话介绍自己</label><textarea id="profile-bio" name="bio" maxlength="120" rows="3" placeholder="你在好奇什么？"></textarea><p class="dialog-note">资料只保留在本次页面体验中，刷新后重置。</p><button class="action-button" type="submit"><span>保存本次体验资料</span><b>↗</b></button><p class="form-error" id="profile-error" role="alert"></p></form></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

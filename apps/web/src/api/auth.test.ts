@@ -7,9 +7,32 @@ import {
   sendVerifyCode,
 } from "./auth";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe("auth api", () => {
+  it("aborts a stalled request after 15 seconds and exposes a retryable error", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_path, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    const request = login({ username: "ada", password: "123456" });
+    const assertion =
+      expect(request).rejects.toThrow("请求超时，请检查网络后重试");
+    await vi.advanceTimersByTimeAsync(15000);
+    await assertion;
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it("posts login credentials to the backend and returns data", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -188,5 +211,4 @@ describe("auth api", () => {
       }),
     );
   });
-
 });
