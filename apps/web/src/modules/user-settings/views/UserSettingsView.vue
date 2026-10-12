@@ -42,7 +42,7 @@ function resetForm(): void {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page settings-page">
     <main class="page__body">
       <BackToDashboard />
 
