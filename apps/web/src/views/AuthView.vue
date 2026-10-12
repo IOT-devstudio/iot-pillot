@@ -222,7 +222,7 @@ onUnmounted(() => {
           ><span class="tab-line"></span>
         </div>
         <p v-if="showCompatNotice" class="compat-notice" role="status">
-          当前浏览器未能启用 WebGL，已切换到兼容登录页。表单功能完全可用。
+          这是旧版开屏的兼容登录页，当前已统一使用二维认证界面。登录、注册功能正常。
         </p>
         <div class="form-window">
           <div

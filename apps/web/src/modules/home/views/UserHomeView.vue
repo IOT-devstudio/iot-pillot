@@ -304,9 +304,13 @@ function steps(application: DirectionApplication) {
             </h3>
             <p>{{ formatISODate(application.appliedAt) }} · 演示申请</p>
           </div>
-          <span class="status-tag"
-            ><i class="status-dot"></i>{{ labels[application.status] }} ·
-            演示</span
+          <button
+            class="status-tag"
+            aria-label="切换演示申请记录"
+            title="切换演示申请记录"
+            @click="showApplications = true"
+          >
+            <i class="status-dot"></i>{{ labels[application.status] }} · 演示</button
           ><button
             class="plain-link"
             @click="selectedApplication = application"

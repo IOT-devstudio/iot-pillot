@@ -2300,7 +2300,7 @@
 }
 .swiss-signal .profile-summary {
   position: static !important;
-  font-size: 19px !important;
+  font-size: inherit !important;
   color: var(--ink) !important;
   overflow-wrap: anywhere;
   padding-right: 50px;
@@ -2371,7 +2371,7 @@
   border: 0;
   gap: 4px;
   font-size: 10px;
-  line-height: 14px;
+  line-height: 13px;
 }
 .swiss-signal .space-nav .user-menu__avatar,
 .swiss-signal .space-nav .user-menu__role {
@@ -2382,7 +2382,7 @@
 }
 .swiss-signal .space-nav .user-menu__name {
   font-size: 10px;
-  line-height: 14px;
+  line-height: 13px;
   font-weight: 400;
   max-width: 80px;
   text-overflow: ellipsis;
@@ -2399,4 +2399,19 @@
   .swiss-signal .profile-summary {
     line-height: 1.4;
   }
+}
+
+@media (min-width: 651px) and (max-width: 1050px) {
+  .swiss-signal .space-stats > .profile-readout {
+    min-height: 74px;
+  }
+}
+@media (max-width: 650px) {
+  .swiss-signal .space-stats > .profile-readout {
+    min-height: 99px;
+  }
+}
+
+.swiss-signal .settings-page .settings__value {
+  overflow-wrap: anywhere;
 }
