@@ -9,7 +9,7 @@
  * 群发模式要求先看到收件人数量与 200 上限（验收项），超限直接禁发，
  * 不把注定 400 的请求发出去。
  */
-import { computed, ref, watch } from "vue";
+import { computed, watch } from "vue";
 
 import { MAIL_BULK_LIMIT, type MailTemplate } from "@/api/mail";
 import { useMailSend, type SendMode } from "../composables/useMailSend";
@@ -44,9 +44,6 @@ const {
   reset,
   send,
 } = useMailSend();
-
-/** 按邮箱模式的输入独立存，提交时并进 target */
-const emailInput = ref("");
 
 const modeLabels: { value: SendMode; label: string }[] = [
   { value: "user", label: "发给注册用户" },
@@ -95,9 +92,6 @@ function toggleBulkUser(userId: number): void {
 
 async function submit(): Promise<void> {
   if (!props.template) return;
-  if (mode.value === "email") {
-    target.value = { to_user_id: 0, email: emailInput.value };
-  }
   await send(props.template.id);
 }
 
@@ -110,7 +104,7 @@ watch(
   (open) => {
     if (!open) return;
     reset();
-    emailInput.value = props.defaultEmail ?? "";
+    target.value = { to_user_id: 0, email: props.defaultEmail ?? "" };
     ensureVarSlots();
   },
 );
@@ -165,7 +159,7 @@ watch(() => props.template, ensureVarSlots);
             <label class="field__label" for="send-email">收件邮箱</label>
             <el-input
               id="send-email"
-              v-model="emailInput"
+              v-model="target.email"
               placeholder="someone@example.com"
             />
             <p class="field__hint">
