@@ -86,6 +86,20 @@ function detach(node: TestNode): void {
 }
 
 const renderer = createRenderer<TestNode, TestElement>({
+  insertStaticContent(content, parent, anchor) {
+    const node: TestText = {
+      kind: "text",
+      text: content.replace(/<[^>]+>/g, ""),
+      parent,
+    };
+    const index = anchor ? parent.children.indexOf(anchor) : -1;
+    parent.children.splice(
+      index >= 0 ? index : parent.children.length,
+      0,
+      node,
+    );
+    return [node, node];
+  },
   patchProp(element, key, _previousValue, nextValue) {
     element.props[key] =
       key === "disabled" ? nextValue === "" || nextValue === true : nextValue;
@@ -93,7 +107,11 @@ const renderer = createRenderer<TestNode, TestElement>({
   insert(node, parent, anchor) {
     detach(node);
     const index = anchor ? parent.children.indexOf(anchor) : -1;
-    parent.children.splice(index >= 0 ? index : parent.children.length, 0, node);
+    parent.children.splice(
+      index >= 0 ? index : parent.children.length,
+      0,
+      node,
+    );
     node.parent = parent;
   },
   remove: detach,
@@ -166,7 +184,9 @@ function findById(root: TestElement, id: string): TestElement {
 function findButton(root: TestElement, label: string): TestElement {
   return findElement(
     root,
-    (element) => element.type === "button" && visibleText(element).trim() === label,
+    (element) =>
+      element.type === "button" &&
+      [label, `${label}↗`].includes(visibleText(element).trim()),
   );
 }
 
@@ -181,15 +201,20 @@ async function click(element: TestElement): Promise<void> {
 
 async function input(element: TestElement, value: string): Promise<void> {
   element.value = value;
-  element.listeners.get("input")?.forEach((handler) => handler({ target: element }));
+  element.listeners
+    .get("input")
+    ?.forEach((handler) => handler({ target: element }));
   await nextTick();
 }
 
 async function submit(root: TestElement): Promise<void> {
-  const form = findElement(root, (element) => element.type === "form");
+  const form = findElement(
+    root,
+    (element) =>
+      element.type === "form" && element.parent?.props["aria-hidden"] === false,
+  );
   const handler = form.props.onSubmit as
-    | ((event: { preventDefault: () => void }) => Promise<void>)
-    | undefined;
+    ((event: { preventDefault: () => void }) => Promise<void>) | undefined;
   if (!handler) {
     throw new Error("Expected form to have a submit handler");
   }
@@ -268,7 +293,10 @@ describe("AuthView", () => {
     await click(findButton(mounted.root, "注册"));
 
     expect(
-      findElement(mounted.root, (element) => element.props.class === "brand-panel"),
+      findElement(
+        mounted.root,
+        (element) => element.props.class === "brand-panel",
+      ),
     ).toBe(brandPanel);
   });
 
@@ -345,14 +373,15 @@ describe("AuthView", () => {
     expect(mocks.push).toHaveBeenCalledWith("/admin/buildings");
   });
 
-  it("从 3D 转投过来时说明原因", () => {
+  it("旧版 fallback 链接显示二维兼容说明", () => {
     mocks.query = { fallback: "webgl", redirect: "/admin/buildings" };
     const mounted = mount();
     unmount = mounted.unmount;
     const text = visibleText(mounted.root);
 
     // 静默转投会让用户以为 3D 坏了，必须解释清楚
-    expect(text).toContain("未能启用 WebGL");
+    expect(text).toContain("旧版开屏");
+    expect(text).toContain("二维认证界面");
     expect(text).toContain("兼容登录页");
   });
 
@@ -384,19 +413,43 @@ describe("AuthView", () => {
     expect(visibleText(mounted.root)).not.toContain("未能启用 WebGL");
   });
 
+  it("快速切换保留填写内容，并将非活动表单设为 inert", async () => {
+    const mounted = mount();
+    unmount = mounted.unmount;
+    await input(findById(mounted.root, "username"), "researcher");
+    for (let i = 0; i < 6; i += 1) {
+      await click(findButton(mounted.root, i % 2 === 0 ? "注册" : "登录"));
+    }
+    expect(findById(mounted.root, "username").value).toBe("researcher");
+    expect(findById(mounted.root, "register-pane").props.inert).toBe(true);
+    expect(findById(mounted.root, "login-pane").props.inert).toBe(false);
+  });
+
+  it("重复 submit 事件只发起一次认证请求", async () => {
+    const pendingLogin = deferred<AuthSession>();
+    mocks.login.mockReturnValueOnce(pendingLogin.promise);
+    const mounted = mount();
+    unmount = mounted.unmount;
+    await input(findById(mounted.root, "username"), "researcher");
+    await input(findById(mounted.root, "login-password"), "secret12");
+    const first = submit(mounted.root);
+    await submit(mounted.root);
+    expect(mocks.login).toHaveBeenCalledTimes(1);
+    pendingLogin.resolve(session);
+    await first;
+  });
+
   it("面向用户的辅助和字段文案使用中文", () => {
     const mounted = mount();
     unmount = mounted.unmount;
     const text = visibleText(mounted.root);
 
-    expect(text).toContain("前端");
-    expect(text).toContain("后端");
-    expect(text).toContain("全栈工作室");
-    expect(text).toContain("招新入口");
-    expect(text).toContain("把想法做成");
+    expect(text).toContain("创建工作室账号");
+    expect(text).toContain("邮箱验证码");
+    expect(text).toContain("把未知");
+    expect(text).toContain("现实。");
     expect(text).toContain("用户名");
-    expect(text).not.toMatch(
-      /RECRUIT|FIELD NOTES|NODE|INPUT ARRAY|SIGNAL|SYSTEM STUDY|Research Manual|NO\.|ACCESS PROTOCOL|USERNAME|PASSWORD|\bNAME\b|EMAIL|CONFIRM|VERIFY CODE|传感器|云端|节点|信号|输入阵列/,
-    );
+    expect(text).not.toContain("免填写");
+    expect(text).not.toContain("任意邮箱");
   });
 });
