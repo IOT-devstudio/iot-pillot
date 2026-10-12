@@ -67,4 +67,14 @@ pnpm -r typecheck
 
 ## 提交与待用户审查
 
-仅本地阶段提交；未推送、开 PR、合并、部署或关闭 Issue。用户审查通过后再按授权处理远程交付；本仓库非 Draft PR 会触发自动合并。
+用户已授权提交并创建 PR。远程交付采用 Draft PR，保留审查机会；本仓库非 Draft PR 会立即触发自动合并。合并、部署和 Issue 关闭状态以远程结果为准。
+
+## 随 PR 保存的审查证据
+
+完整、可重复生成的验收输出仍在忽略目录 `outputs/issue-81/`。以下精选证据随仓库保存，便于远程审查；录屏与首页截图使用隔离模拟响应，不包含真实账号资料。
+
+- 同视口登录页：[HTML 基准](issue-81/assets/comparison-login-reference-1440.png)、[Vue 实现](issue-81/assets/comparison-login-current-1440.png)。
+- [手机登录页](issue-81/assets/login-mobile.png)、[桌面首页](issue-81/assets/home-1440.png)、[手机首页](issue-81/assets/home-390.png)。
+- [桌面短录屏](issue-81/assets/review-desktop.webm)、[手机短录屏](issue-81/assets/review-mobile.webm)。
+
+交付前再次执行 278 项单元测试、全工作区 typecheck 与前端 build，全部通过；构建保留现有大于 500 kB 的分包提醒。
