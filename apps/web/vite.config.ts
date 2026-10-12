@@ -32,6 +32,7 @@ export default defineConfig({
   test: {
     environmentMatchGlobs: [
       ["src/views/AuthView.test.ts", "./src/views/AuthView.environment.ts"],
+      ["src/modules/mail/components/SendMailDialog.test.ts", "./src/views/AuthView.environment.ts"],
     ],
   },
 });
