@@ -103,8 +103,8 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
   - `GET /forms/:id` 详情
   - `PATCH /forms/:id` 修改（admin）
   - `DELETE /forms/:id` 删除（admin）
-  - `GET /forms/public/:shareToken` 匿名获取表单定义
-  - `POST /forms/public/:shareToken/submit` 匿名提交（限流）
+  - `GET /forms/public/:shareToken` 分享链接读取表单定义（需登录；shareToken 仅用于定位分享表单，不构成匿名访问）
+  - `POST /forms/public/:shareToken/submit` 登录用户经分享链接提交（需登录 + 限流）
 - **依赖**：DB（GORM）+ 限流中间件
 - **引入 GORM 时机**：本模块开工时
 
@@ -143,7 +143,7 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
     - `POST /me/invitations/accept` 接受邀请 -> 升级为 candidate（仅归属申请人，幂等）
     - `GET /me/candidates` 本人候选人记录
 - **不变式**：邮件投递失败不落状态（邀请不算已邀请、候选人不流转），重试不产生重复流转；过期是查询期判定（pending 且超过 expires_at），无后台任务。
-- **数据模型**：`apps/api/migrations/0008_invitation_flow.up.sql`（applications 锚点表 + invitations + candidates + candidate_timeline）；`recruitment_applications` 完整 CRUD 归属 #88。
+- **数据模型**：`apps/api/migrations/0008_invitation_flow.up.sql`（invitations + candidates + candidate_timeline）；报名申请 `recruitment_applications` 由 #88（迁移 0007）拥有，BE-04 通过 `ApplicationStore`（消费者声明的窄接口，实现方是 `repository.RecruitmentRepo`）读取与推进其状态，不再有本票的锚点表。
 - **共享 DTO**：`packages/shared-types/src/recruitment.ts` 的 BE-04 段（ID 一律 number）。
 
 ---
@@ -170,6 +170,7 @@ CandidateStatus:  interviewing ─► offered ─► hired
 - `Invitation.email_sent_at`：空 = 邮件从未投递成功，业务上不算「已邀请」，允许重试投递
 - 同一申请至多一条 pending 邀请（部分唯一索引）；同一申请至多一名候选人（唯一索引）——并发接受的数据库兜底
 - 候选人时间线（`recruitment_candidate_timeline`）：管理端与用户端读同一张表，两端状态一致
+- 报名申请（`recruitment_applications`）由 #88 拥有：applied → reviewing → accepted | rejected；BE-04 接受邀请后把它推进为 accepted
 
 ---
 

@@ -22,10 +22,10 @@ import (
 
 type applicationRepoStub struct {
 	apps     map[int]*domain.Application
-	statuses map[int]string // 记录 UpdateStatus 调用
+	statuses map[int]domain.ApplicationStatus // 记录 UpdateApplicationStatus 调用
 }
 
-func (s *applicationRepoStub) GetByID(ctx context.Context, id int) (*domain.Application, error) {
+func (s *applicationRepoStub) GetApplicationByID(ctx context.Context, id int) (*domain.Application, error) {
 	app, ok := s.apps[id]
 	if !ok {
 		return nil, repository.ErrApplicationNotFound
@@ -33,9 +33,9 @@ func (s *applicationRepoStub) GetByID(ctx context.Context, id int) (*domain.Appl
 	return app, nil
 }
 
-func (s *applicationRepoStub) UpdateStatus(ctx context.Context, id int, status string) error {
+func (s *applicationRepoStub) UpdateApplicationStatus(ctx context.Context, id int, status domain.ApplicationStatus) (int64, error) {
 	s.statuses[id] = status
-	return nil
+	return 1, nil
 }
 
 type invitationRepoStub struct {
@@ -280,7 +280,7 @@ type harness struct {
 
 func newHarness() *harness {
 	h := &harness{
-		apps:   &applicationRepoStub{apps: map[int]*domain.Application{}, statuses: map[int]string{}},
+		apps:   &applicationRepoStub{apps: map[int]*domain.Application{}, statuses: map[int]domain.ApplicationStatus{}},
 		invs:   &invitationRepoStub{rows: map[int]*domain.Invitation{}},
 		cands:  &candidateRepoStub{rows: map[int]*domain.Candidate{}, timeline: map[int][]*domain.CandidateTimeline{}},
 		users:  &userRepoStub{users: map[int]*domain.User{}},
@@ -547,8 +547,8 @@ func TestAdvanceCandidateInvalidTransition(t *testing.T) {
 	_, err := h.uc.AdvanceCandidate(context.Background(), 99, 10, &request.AdvanceCandidateReq{
 		Action: request.AdvanceActionHire,
 	})
-	if !errors.Is(err, ErrInvalidTransition) {
-		t.Fatalf("interviewing 直接 hire 应报 ErrInvalidTransition，实际: %v", err)
+	if !errors.Is(err, ErrCandidateTransitionInvalid) {
+		t.Fatalf("interviewing 直接 hire 应报 ErrCandidateTransitionInvalid，实际: %v", err)
 	}
 	if h.mailer.calls != 0 {
 		t.Fatalf("非法 hire 不应触发外发")
@@ -563,7 +563,7 @@ func TestAdvanceCandidateInvalidTransition(t *testing.T) {
 		Action:     request.AdvanceActionReject,
 		TemplateID: 3,
 	})
-	if !errors.Is(err, ErrInvalidTransition) {
+	if !errors.Is(err, ErrCandidateTransitionInvalid) {
 		t.Fatalf("hired 为终态，reject 应被拒绝，实际: %v", err)
 	}
 }

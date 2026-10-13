@@ -1,8 +1,6 @@
 -- 0008 邀请接受与候选人状态流转（BE-04，issue #90）
 --
--- 四张表：
---   recruitment_applications          —— 报名申请锚点表（归属 #88/BE-03，本票最小镜像其 DDL；
---                                        BE-03 合入时以其实际契约为准，本锚点随之演化/移除）
+-- 三张表（依赖 0007 的 recruitment_applications —— 报名申请域由 #88/BE-03 拥有）：
 --   recruitment_invitations           —— 邀请（token / 状态 / 过期 / 投递标记）
 --   recruitment_candidates            —— 候选人（申请唯一，防并发重复接受）
 --   recruitment_candidate_timeline    —— 候选人状态时间线
@@ -17,27 +15,6 @@
 -- 幂等写法（IF NOT EXISTS / WHERE NOT EXISTS），重复执行不报错。
 
 BEGIN;
-
--- ── 报名申请锚点表（归属 #88，此处为 BE-04 的最小镜像）──────────────
-CREATE TABLE IF NOT EXISTS recruitment_applications (
-    id             bigserial PRIMARY KEY,
-    user_id        bigint      NOT NULL,
-    round_id       bigint,
-    direction_code text,
-    status         text        NOT NULL DEFAULT 'applied',
-    name           text,
-    email          text,
-    class          text,
-    student_id     bigint,
-    qq             text,
-    note           text,
-    created_at     timestamptz,
-    updated_at     timestamptz
-);
-
-CREATE INDEX IF NOT EXISTS idx_recruitment_apps_user  ON recruitment_applications (user_id);
-CREATE INDEX IF NOT EXISTS idx_recruitment_apps_status ON recruitment_applications (status);
-
 -- ── 邀请 ─────────────────────────────────────────────────────────
 -- 一个申请同一时刻至多一条 pending 邀请（部分唯一索引保证）：
 -- 重发失败重试复用同一行（email_sent_at 为空即可重投），撤销后才允许再邀。

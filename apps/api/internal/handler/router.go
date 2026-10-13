@@ -32,7 +32,8 @@ func NewRouter(
 	authHandler *AuthHandler,
 	adminHandler *AdminHandler,
 	mailHandler *MailHandler,
-	recruitmentHandler *RecruitmentInvitationHandler,
+	recruitmentHandler *RecruitmentHandler,
+	invitationHandler *RecruitmentInvitationHandler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -134,20 +135,36 @@ func NewRouter(
 		// 批量删除用 DELETE 方法（语义即删除；body 携带 ids 数组，gin 正常绑定）
 		admin.DELETE("/mails/batch-delete", mailHandler.DeleteMails)
 
-		// ── 管理端-招新（同样要求管理员）──
-		// 邀请与候选人流转的操作者一律取自登录身份；归属核验在服务层。
-		admin.POST("/invitations/send", recruitmentHandler.SendInvitation)
-		admin.GET("/invitations", recruitmentHandler.ListInvitations)
-		admin.POST("/invitations/:id/revoke", recruitmentHandler.RevokeInvitation)
-		admin.GET("/candidates", recruitmentHandler.ListCandidates)
-		admin.GET("/candidates/:id", recruitmentHandler.CandidateDetail)
-		admin.POST("/candidates/:id/advance", recruitmentHandler.AdvanceCandidate)
+		// ── 招新（用户端，需登录）──
+		recruit := apiV1.Group("/recruitment", authRequired)
+		recruit.GET("/directions", recruitmentHandler.ListActiveDirections)
+		recruit.POST("/applications", recruitmentHandler.SubmitApplication)
+		recruit.GET("/applications", recruitmentHandler.ListMyApplications)
+		recruit.GET("/applications/:id", recruitmentHandler.GetMyApplication)
 
-		// ── 用户端-招新（需要登录）──
+		// ── 招新（管理端，需管理员）──
+		adminRecruit := admin.Group("/recruitment")
+		adminRecruit.GET("/rounds", recruitmentHandler.AdminListRounds)
+		adminRecruit.PATCH("/rounds/:id", recruitmentHandler.AdminSetRound)
+		adminRecruit.PATCH("/directions/:code", recruitmentHandler.AdminSetDirection)
+		adminRecruit.GET("/applications", recruitmentHandler.AdminListApplications)
+		adminRecruit.GET("/applications/:id", recruitmentHandler.AdminGetApplication)
+		adminRecruit.PATCH("/applications/:id/review", recruitmentHandler.AdminReviewApplication)
+
+		// ── 管理端-邀请与候选人（同样要求管理员）──
+		// 邀请与候选人流转的操作者一律取自登录身份；归属核验在服务层。
+		admin.POST("/invitations/send", invitationHandler.SendInvitation)
+		admin.GET("/invitations", invitationHandler.ListInvitations)
+		admin.POST("/invitations/:id/revoke", invitationHandler.RevokeInvitation)
+		admin.GET("/candidates", invitationHandler.ListCandidates)
+		admin.GET("/candidates/:id", invitationHandler.CandidateDetail)
+		admin.POST("/candidates/:id/advance", invitationHandler.AdvanceCandidate)
+
+		// ── 用户端-邀请接受与候选人记录（需要登录）──
 		// 接受邀请必须登录并核对申请归属（服务层 application.user_id == 当前用户）。
-		apiV1.GET("/me/invitations", authRequired, recruitmentHandler.ListMyInvitations)
-		apiV1.POST("/me/invitations/accept", authRequired, recruitmentHandler.AcceptInvitation)
-		apiV1.GET("/me/candidates", authRequired, recruitmentHandler.ListMyCandidates)
+		apiV1.GET("/me/invitations", authRequired, invitationHandler.ListMyInvitations)
+		apiV1.POST("/me/invitations/accept", authRequired, invitationHandler.AcceptInvitation)
+		apiV1.GET("/me/candidates", authRequired, invitationHandler.ListMyCandidates)
 	}
 	return &Router{eng: r, cfg: cfg}
 }

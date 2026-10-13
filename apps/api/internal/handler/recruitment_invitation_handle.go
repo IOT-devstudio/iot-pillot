@@ -52,7 +52,7 @@ func (h *RecruitmentInvitationHandler) SendInvitation(c *gin.Context) {
 
 	result, err := h.service.SendInvitation(c.Request.Context(), currentUserID(c), &req)
 	if err != nil {
-		failRecruitment(c, err)
+		failInvitation(c, err)
 		return
 	}
 	response.OK(c, result)
@@ -100,7 +100,7 @@ func (h *RecruitmentInvitationHandler) RevokeInvitation(c *gin.Context) {
 
 	result, err := h.service.RevokeInvitation(c.Request.Context(), id)
 	if err != nil {
-		failRecruitment(c, err)
+		failInvitation(c, err)
 		return
 	}
 	response.OK(c, result)
@@ -146,7 +146,7 @@ func (h *RecruitmentInvitationHandler) CandidateDetail(c *gin.Context) {
 
 	result, err := h.service.CandidateDetail(c.Request.Context(), id)
 	if err != nil {
-		failRecruitment(c, err)
+		failInvitation(c, err)
 		return
 	}
 	response.OK(c, result)
@@ -180,7 +180,7 @@ func (h *RecruitmentInvitationHandler) AdvanceCandidate(c *gin.Context) {
 
 	result, err := h.service.AdvanceCandidate(c.Request.Context(), currentUserID(c), id, &req)
 	if err != nil {
-		failRecruitment(c, err)
+		failInvitation(c, err)
 		return
 	}
 	response.OK(c, result)
@@ -239,7 +239,7 @@ func (h *RecruitmentInvitationHandler) AcceptInvitation(c *gin.Context) {
 
 	result, err := h.service.AcceptInvitation(c.Request.Context(), userID, &req)
 	if err != nil {
-		failRecruitment(c, err)
+		failInvitation(c, err)
 		return
 	}
 	response.OK(c, result)
@@ -271,9 +271,10 @@ func (h *RecruitmentInvitationHandler) ListMyCandidates(c *gin.Context) {
  * 辅助
  * ------------------------------------------------------------------ */
 
-// failRecruitment 招新服务错误 → HTTP 映射：
+// failInvitation 邀请/候选人服务错误 → HTTP 映射：
 // 归属不匹配是 403（越权），请求/状态问题是 400，投递失败是 500（同 failMailRequest 理由）。
-func failRecruitment(c *gin.Context, err error) {
+// 命名避开 #88 申请域的 failRecruitment：同包两套映射，各自可读。
+func failInvitation(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrNotApplicationOwner):
 		response.Fail(c, 403, response.CodeForbidden, err.Error())
@@ -290,7 +291,7 @@ func failRecruitment(c *gin.Context, err error) {
 		errors.Is(err, service.ErrTemplateNotInvitation),
 		errors.Is(err, service.ErrNoEmail),
 		errors.Is(err, service.ErrCandidateMissing),
-		errors.Is(err, service.ErrInvalidTransition),
+		errors.Is(err, service.ErrCandidateTransitionInvalid),
 		errors.Is(err, service.ErrActionTemplateRequired),
 		errors.Is(err, repository.ErrInvitationConflict),
 		errors.Is(err, repository.ErrCandidateConflict):

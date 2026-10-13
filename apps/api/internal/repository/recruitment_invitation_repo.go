@@ -9,53 +9,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrApplicationNotFound 报名申请不存在。
-var ErrApplicationNotFound = errors.New("报名申请不存在")
-
 // ErrInvitationNotFound 邀请不存在（含 token 无效）。
 var ErrInvitationNotFound = errors.New("邀请不存在")
 
 // ErrCandidateNotFound 候选人不存在。
 var ErrCandidateNotFound = errors.New("候选人不存在")
-
-// ApplicationRepo 报名申请的持久化（BE-04 只需读路径与状态推进；完整 CRUD 归属 #88）。
-//
-// BE-04 把申请当作上游交付物消费：发送邀请校验存在与归属，接受邀请校验归属。
-// 当 #88 交付真实实现时，本接口的实现应替换为 #88 的仓储，接口形状按需演化。
-type ApplicationRepo interface {
-	GetByID(ctx context.Context, id int) (*domain.Application, error)
-	// UpdateStatus 推进申请状态（接受邀请时 applied → accepted）。
-	// 失败由调用方降级为日志：邀请与候选人已落库，回滚只会制造不一致。
-	UpdateStatus(ctx context.Context, id int, status string) error
-}
-
-// gormApplicationRepo BE-04 锚点实现：直接读锚点表 recruitment_applications。
-type gormApplicationRepo struct {
-	db *gorm.DB
-}
-
-// NewApplicationRepo 构造申请锚点仓储。#88 合入后此构造函数替换为其实现。
-func NewApplicationRepo(db *gorm.DB) ApplicationRepo {
-	return &gormApplicationRepo{db: db}
-}
-
-func (r *gormApplicationRepo) GetByID(ctx context.Context, id int) (*domain.Application, error) {
-	var app domain.Application
-	err := r.db.WithContext(ctx).First(&app, id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrApplicationNotFound
-		}
-		return nil, err
-	}
-	return &app, nil
-}
-
-func (r *gormApplicationRepo) UpdateStatus(ctx context.Context, id int, status string) error {
-	return r.db.WithContext(ctx).Model(&domain.Application{}).
-		Where("id = ?", id).
-		Update("status", status).Error
-}
 
 // InvitationRepo 邀请的持久化。
 type InvitationRepo interface {

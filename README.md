@@ -14,7 +14,7 @@ IoT 全栈开发工作室 [IOT-devstudio](https://github.com/IOT-devstudio) 的�
 
 本系统支撑工作室招新全流程：
 
-- 表单系统（匿名填写 + 分享链接）
+- 表单系统（登录后填写 + 分享链接）
 - SMTP 邀请流程（prospect → candidate）
 - 候选人处理（一键 offer / 感谢信）
 - 邮件模板 CRUD

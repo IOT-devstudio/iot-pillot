@@ -43,8 +43,9 @@ var (
 	ErrNotApplicationOwner = errors.New("当前账号与该申请不匹配")
 	// ErrCandidateMissing 候选人不存在。
 	ErrCandidateMissing = errors.New("候选人不存在")
-	// ErrInvalidTransition 非法状态流转（含终态再流转）。
-	ErrInvalidTransition = errors.New("当前状态不允许该操作")
+	// ErrCandidateTransitionInvalid 候选人状态机不允许这次流转（含终态再流转）。
+	// 命名避开 #88 申请域的 ErrInvalidTransition：同包两个状态机，各自的消息要能区分。
+	ErrCandidateTransitionInvalid = errors.New("当前候选人状态不允许该操作")
 	// ErrActionTemplateRequired send_offer / reject 动作缺少邮件模板。
 	ErrActionTemplateRequired = errors.New("该操作需要指定邮件模板")
 	// ErrInvitationToken 查无此邀请（用户端视角：token 无效）。
@@ -66,12 +67,27 @@ const (
  * 用例
  * ------------------------------------------------------------------ */
 
+// ApplicationStore BE-04 对报名申请的的全部依赖：读取 + 接受邀请后的状态推进。
+//
+// 实现方是 #88 的 repository.RecruitmentRepo（申请域的正式所有者）；接口由
+// 消费者声明、wire 按"返回值就是接口"连线 —— 与 BusinessMailer 同一模式。
+type ApplicationStore interface {
+	GetApplicationByID(ctx context.Context, id int) (*domain.Application, error)
+	// UpdateApplicationStatus 推进申请状态并返回更新行数（#88 语义：行数 0 不算错误）。
+	UpdateApplicationStatus(ctx context.Context, id int, status domain.ApplicationStatus) (int64, error)
+}
+
+// NewApplicationStore 把 #88 仓储作为 ApplicationStore 提供给装配层。
+func NewApplicationStore(rec repository.RecruitmentRepo) ApplicationStore {
+	return rec
+}
+
 // RecruitmentInvitationUseCase 邀请与候选人状态流转。
 //
 // 依赖的仓储只暴露本用例需要的方法；邮件出口走 MailModule 的
 // BusinessMailer（渲染/投递/落记录复用同一路径），业务代码不接触 SMTP。
 type RecruitmentInvitationUseCase struct {
-	applications repository.ApplicationRepo
+	applications ApplicationStore
 	invitations  repository.InvitationRepo
 	candidates   repository.CandidateRepo
 	users        repository.UserRepo
@@ -81,7 +97,7 @@ type RecruitmentInvitationUseCase struct {
 
 // NewRecruitmentInvitationUseCase 构造招新邀请用例。
 func NewRecruitmentInvitationUseCase(
-	applications repository.ApplicationRepo,
+	applications ApplicationStore,
 	invitations repository.InvitationRepo,
 	candidates repository.CandidateRepo,
 	users repository.UserRepo,
@@ -115,7 +131,7 @@ func (uc *RecruitmentInvitationUseCase) SendInvitation(
 	operatorID int,
 	req *request.SendInvitationReq,
 ) (*response.InvitationResp, error) {
-	app, err := uc.applications.GetByID(ctx, req.ApplicationID)
+	app, err := uc.applications.GetApplicationByID(ctx, req.ApplicationID)
 	if err != nil {
 		if errors.Is(err, repository.ErrApplicationNotFound) {
 			return nil, ErrApplicationMissing
@@ -123,7 +139,7 @@ func (uc *RecruitmentInvitationUseCase) SendInvitation(
 		return nil, err
 	}
 
-	if app.Status == "rejected" {
+	if app.Status == domain.ApplicationRejected {
 		return nil, ErrApplicationNotInvitable
 	}
 
@@ -267,9 +283,9 @@ func (uc *RecruitmentInvitationUseCase) ListMyInvitations(
 	now := time.Now()
 	items := make([]response.MyInvitation, 0, len(invitations))
 	for _, invitation := range invitations {
-		app, err := uc.applications.GetByID(ctx, invitation.ApplicationID)
+		app, err := uc.applications.GetApplicationByID(ctx, invitation.ApplicationID)
 		if err != nil {
-			// 申请行缺失是数据不一致（锚点表被清理等），跳过而不是 500 整个列表。
+			// 申请行缺失是数据不一致（申请被清理等），跳过而不是 500 整个列表。
 			log.Printf("[recruitment] 邀请 %d 关联的申请 %d 不存在，跳过", invitation.ID, invitation.ApplicationID)
 			continue
 		}
@@ -321,7 +337,7 @@ func (uc *RecruitmentInvitationUseCase) AcceptInvitation(
 		return nil, ErrInvitationExpired
 	}
 
-	app, err := uc.applications.GetByID(ctx, invitation.ApplicationID)
+	app, err := uc.applications.GetApplicationByID(ctx, invitation.ApplicationID)
 	if err != nil {
 		if errors.Is(err, repository.ErrApplicationNotFound) {
 			return nil, ErrApplicationMissing
@@ -372,8 +388,8 @@ func (uc *RecruitmentInvitationUseCase) AcceptInvitation(
 		OperatorID:  userID,
 	})
 
-	// 申请状态推进 + 时间线（锚点表的流转记录，归属 #88 域；失败不阻断接受）。
-	uc.advanceApplication(ctx, app, "accepted")
+	// 申请状态推进 + 时间线（申请域归 #88；失败不阻断接受）。
+	uc.advanceApplication(ctx, app, domain.ApplicationAccepted)
 
 	return toAcceptResp(candidate, app), nil
 }
@@ -473,14 +489,14 @@ func (uc *RecruitmentInvitationUseCase) AdvanceCandidate(
 		return uc.advanceWithMail(ctx, operatorID, candidate, domain.CandidateOffered, req, "发送 offer")
 	case request.AdvanceActionHire:
 		if !candidate.Status.CanTransitionTo(domain.CandidateHired) {
-			return nil, ErrInvalidTransition
+			return nil, ErrCandidateTransitionInvalid
 		}
 		return uc.applyTransition(ctx, operatorID, candidate, domain.CandidateHired, req.Note)
 	case request.AdvanceActionReject:
 		return uc.advanceWithMail(ctx, operatorID, candidate, domain.CandidateRejected, req, "发送感谢信")
 	default:
 		// binding 层已限三值，这里兜底。
-		return nil, ErrInvalidTransition
+		return nil, ErrCandidateTransitionInvalid
 	}
 }
 
@@ -494,7 +510,7 @@ func (uc *RecruitmentInvitationUseCase) advanceWithMail(
 	actionName string,
 ) (*response.CandidateResp, error) {
 	if !candidate.Status.CanTransitionTo(target) {
-		return nil, ErrInvalidTransition
+		return nil, ErrCandidateTransitionInvalid
 	}
 	if req.TemplateID <= 0 {
 		return nil, ErrActionTemplateRequired
@@ -557,7 +573,7 @@ func (uc *RecruitmentInvitationUseCase) ListMyCandidates(
 
 	items := make([]response.MyCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		app, err := uc.applications.GetByID(ctx, candidate.ApplicationID)
+		app, err := uc.applications.GetApplicationByID(ctx, candidate.ApplicationID)
 		if err != nil {
 			log.Printf("[recruitment] 候选人 %d 关联的申请 %d 不存在，跳过", candidate.ID, candidate.ApplicationID)
 			continue
@@ -634,7 +650,7 @@ func (uc *RecruitmentInvitationUseCase) existingCandidateView(
 		}
 		return nil, err
 	}
-	app, err := uc.applications.GetByID(ctx, applicationID)
+	app, err := uc.applications.GetApplicationByID(ctx, applicationID)
 	if err != nil {
 		return nil, ErrApplicationMissing
 	}
@@ -642,17 +658,20 @@ func (uc *RecruitmentInvitationUseCase) existingCandidateView(
 	return toAcceptResp(candidate, app), nil
 }
 
-// advanceApplication 锚点申请表的状态推进（归属 #88 域；失败只记日志）。
-func (uc *RecruitmentInvitationUseCase) advanceApplication(ctx context.Context, app *domain.Application, toStatus string) {
+// advanceApplication 接受邀请后推进申请状态（申请域归 #88；失败只记日志）。
+//
+// 行数 0（并发下已被流转到终态等）不是错误：#88 的语义由上层领域规则判断，
+// 邀请与候选人已落库，回滚只会制造不一致。
+func (uc *RecruitmentInvitationUseCase) advanceApplication(ctx context.Context, app *domain.Application, toStatus domain.ApplicationStatus) {
 	app.Status = toStatus
-	if err := uc.applications.UpdateStatus(ctx, app.ID, toStatus); err != nil {
+	if _, err := uc.applications.UpdateApplicationStatus(ctx, app.ID, toStatus); err != nil {
 		log.Printf("[recruitment] 申请 %d 状态推进失败（仅记录）: %v", app.ID, err)
 	}
 }
 
 // toCandidateResp 组装候选人视图（补申请人姓名/邮箱/方向）。
 func (uc *RecruitmentInvitationUseCase) toCandidateResp(ctx context.Context, candidate *domain.Candidate) (*response.CandidateResp, error) {
-	app, err := uc.applications.GetByID(ctx, candidate.ApplicationID)
+	app, err := uc.applications.GetApplicationByID(ctx, candidate.ApplicationID)
 	if err != nil {
 		return nil, err
 	}
