@@ -134,7 +134,8 @@ function steps(application: DirectionApplication) {
       <span class="mono">YOUR PERSONAL SPACE / 2026</span>
       <div>
         <a href="#directions">探索方向</a><a href="#journey">我的进度</a
-        ><RouterLink to="/user/settings">个人资料</RouterLink><UserMenu />
+        ><RouterLink to="/user/settings">个人资料</RouterLink
+        ><RouterLink to="/user/about">关于我们</RouterLink><UserMenu />
       </div>
     </nav>
     <section class="home-poster">
