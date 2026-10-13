@@ -1930,38 +1930,52 @@
   display: flex;
   pointer-events: none;
   overflow: clip;
+  contain: layout paint;
 }
-.swiss-signal .page-wipe > i {
-  width: 33.3334%;
+.swiss-signal.transition-only {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: transparent;
+  pointer-events: none;
+}
+.swiss-signal.transition-only > :not(.page-wipe) {
+  display: none;
+}
+.swiss-signal.transition-only .page-wipe {
+  pointer-events: auto;
+}
+.swiss-signal .page-wipe > .wipe-panel {
+  position: relative;
+  flex: 1 0 0;
+  min-width: 0;
   height: 100%;
   background: var(--blue);
-  transform: translateY(105%);
+  transform: translateY(100%);
+  will-change: transform;
 }
-.swiss-signal .page-wipe > i:nth-child(2) {
+.swiss-signal .page-wipe > .wipe-panel:nth-child(2) {
   background: var(--yellow);
+  transform: translateY(-100%);
 }
-.swiss-signal .page-wipe > i:nth-child(3) {
+.swiss-signal .page-wipe > .wipe-panel:nth-child(3) {
   background: #122caa;
 }
 .swiss-signal .wipe-word {
   position: absolute;
-  left: 36%;
+  left: 8%;
   top: 43%;
   color: #122caa;
   font-size: clamp(24px, 4.2vw, 62px);
   line-height: 0.95;
   font-weight: 800;
   letter-spacing: -2px;
-  opacity: 0;
-  transition: opacity 0.12s;
+  opacity: 1;
 }
 .swiss-signal .wipe-word > span {
   display: block;
   font-size: 50px;
   margin-top: 17px;
-}
-.swiss-signal .wipe-revealing .wipe-word {
-  opacity: 0;
 }
 .swiss-signal dialog[open] {
   animation: none;
