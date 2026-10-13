@@ -33,6 +33,7 @@ func NewRouter(
 	adminHandler *AdminHandler,
 	mailHandler *MailHandler,
 	recruitmentHandler *RecruitmentHandler,
+	invitationHandler *RecruitmentInvitationHandler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -149,6 +150,21 @@ func NewRouter(
 		adminRecruit.GET("/applications", recruitmentHandler.AdminListApplications)
 		adminRecruit.GET("/applications/:id", recruitmentHandler.AdminGetApplication)
 		adminRecruit.PATCH("/applications/:id/review", recruitmentHandler.AdminReviewApplication)
+
+		// ── 管理端-邀请与候选人（同样要求管理员）──
+		// 邀请与候选人流转的操作者一律取自登录身份；归属核验在服务层。
+		admin.POST("/invitations/send", invitationHandler.SendInvitation)
+		admin.GET("/invitations", invitationHandler.ListInvitations)
+		admin.POST("/invitations/:id/revoke", invitationHandler.RevokeInvitation)
+		admin.GET("/candidates", invitationHandler.ListCandidates)
+		admin.GET("/candidates/:id", invitationHandler.CandidateDetail)
+		admin.POST("/candidates/:id/advance", invitationHandler.AdvanceCandidate)
+
+		// ── 用户端-邀请接受与候选人记录（需要登录）──
+		// 接受邀请必须登录并核对申请归属（服务层 application.user_id == 当前用户）。
+		apiV1.GET("/me/invitations", authRequired, invitationHandler.ListMyInvitations)
+		apiV1.POST("/me/invitations/accept", authRequired, invitationHandler.AcceptInvitation)
+		apiV1.GET("/me/candidates", authRequired, invitationHandler.ListMyCandidates)
 	}
 	return &Router{eng: r, cfg: cfg}
 }

@@ -82,6 +82,57 @@ type stubMailRepo struct {
 	err     error
 }
 
+// stubUserRepo repository.UserRepo 的内存实现：mail 用例只按 id / 邮箱 / 用户名读取。
+// （#88 合入时 mail 测试引用了本类型但定义没有随行，这里补上。）
+type stubUserRepo struct {
+	byID   map[int]*domain.User
+	byName map[string]*domain.User
+	all    []*domain.User
+}
+
+func (s *stubUserRepo) GetByID(_ context.Context, id int) (*domain.User, error) {
+	if user, ok := s.byID[id]; ok {
+		return user, nil
+	}
+	return nil, repository.ErrUserNotFound
+}
+
+func (s *stubUserRepo) GetByName(_ context.Context, name string) (*domain.User, error) {
+	if user, ok := s.byName[name]; ok {
+		return user, nil
+	}
+	return nil, repository.ErrUserNotFound
+}
+
+func (s *stubUserRepo) GetByEmail(_ context.Context, email string) (*domain.User, error) {
+	for _, user := range s.all {
+		if user.Detail.Email == email {
+			return user, nil
+		}
+	}
+	return nil, repository.ErrUserNotFound
+}
+
+func (s *stubUserRepo) Update(_ context.Context, user *domain.User) error {
+	if user == nil {
+		return nil
+	}
+	s.byID[user.ID] = user
+	return nil
+}
+
+func (s *stubUserRepo) SelectUserByNameAndPassword(_ context.Context, name, _ string) (*domain.User, error) {
+	return s.GetByName(context.Background(), name)
+}
+
+func (s *stubUserRepo) Save(_ context.Context, user *domain.User) error {
+	return s.Update(context.Background(), user)
+}
+
+func (s *stubUserRepo) GetAll(_ context.Context, _, _ int) ([]*domain.User, int64, error) {
+	return s.all, int64(len(s.all)), nil
+}
+
 func (s *stubMailRepo) Create(_ context.Context, mail *domain.Mail) error {
 	if s.err != nil {
 		return s.err

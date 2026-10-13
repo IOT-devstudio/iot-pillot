@@ -31,6 +31,24 @@ func NewMailSender(manager *utils.MailManager) MailSender {
 	return manager
 }
 
+// NewBusinessMailer 把 *MailUseCase 作为 BusinessMailer 提供给装配层。
+//
+// 招新流程（邀请/offer/感谢信）不直接依赖 *MailUseCase 具体类型，
+// 只依赖下面声明的 BusinessMailer 接口 —— 与 NewMailSender 同一模式：
+// 接口由消费者声明，wire 按"返回值就是接口"连线。
+func NewBusinessMailer(mail *MailUseCase) BusinessMailer {
+	return mail
+}
+
+// BusinessMailer 业务流程（招新等）对"怎么发一封业务邮件"的全部依赖。
+//
+// 渲染、投递、落发信记录全部复用 MailModule 的同一条路径；
+// 投递失败返回包装过 ErrMailDelivery 的错误，业务侧据此保持自身状态不变。
+type BusinessMailer interface {
+	// SendByTemplate 按模板 ID 给单个用户发信。
+	SendByTemplate(ctx context.Context, operatorID int, templateID int, user *domain.User, vars request.MailVars) (response.MailSendResp, error)
+}
+
 // MaxBulkRecipients 单次群发的收件人上限。
 //
 // 目的是防手滑：一次点错就对着几百个真实邮箱连发，是收不回来的操作。
@@ -297,6 +315,20 @@ func (a *MailUseCase) sendToUser(
 		return response.MailSendResp{}, err
 	}
 	return a.sendWithTemplate(ctx, operatorID, model, user, vars)
+}
+
+// SendByTemplate 按模板 ID 给单个用户发信：业务流程（招新邀请/offer/感谢信）的统一出口。
+//
+// 与手工发信共用 sendWithTemplate 一条路径（渲染 → 投递 → 落记录），
+// 业务侧拿到的成功即代表邮件已投递；失败时业务状态不得推进。
+func (a *MailUseCase) SendByTemplate(
+	ctx context.Context,
+	operatorID int,
+	templateID int,
+	user *domain.User,
+	vars request.MailVars,
+) (response.MailSendResp, error) {
+	return a.sendToUser(ctx, operatorID, user, templateID, vars)
 }
 
 // sendWithTemplate 渲染 + 发送 + 落记录。单发与群发共用同一条路径，

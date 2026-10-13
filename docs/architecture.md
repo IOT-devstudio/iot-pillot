@@ -46,7 +46,7 @@ iot-pillot/
 ### 共享类型（packages/shared-types）
 
 - `common.ts`：`ApiResponse<T>`、`PaginationMeta`、`ApiErrorBody`、`Role`
-- `recruitment.ts`：`Prospect`、`Candidate` + 状态机（详见下）
+- `recruitment.ts`：BE-04 邀请/候选人 DTO（number ID）+ `Prospect`、`Candidate` 草案与状态机（详见下）
 - `form.ts`：`FormDefinition`、`FormField`、`FormSubmission`、`CreateFormInput`
 - `template.ts`：`EmailTemplate`、`CreateTemplateInput`
 
@@ -128,17 +128,23 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
 - **可替换 SMTP**：通过替换 `MailModule` 内的 SMTP 配置实现，不动业务代码
 - **引入**：`go-mail` 在本模块开工时
 
-### RecruitmentModule（最后开工）
+### RecruitmentModule（BE-04 邀请/候选人流程已落地）
 
-- **依赖**：Form + Template + Mail + Auth 全部就位
-- **路由**（`/api/v1/recruitment`）：
-  - `GET /prospects` 列表 + 筛选
-  - `POST /prospects/:id/invite` 发送邀请函（用 TemplateModule 渲染 + MailModule 发送）
-  - `POST /prospects/:id/accept` 接受邀请 -> 升级为 candidate
-  - `GET /candidates` 列表
-  - `POST /candidates/:id/offer` 一键发送 offer
-  - `POST /candidates/:id/reject` 一键发送感谢信
-- **数据模型**：完全沿用 `packages/shared-types/src/recruitment.ts`
+- **依赖**：Template + Mail + Auth（发邀请、offer、感谢信复用 MailModule 的模板发送路径）
+- **路由**（BE-04 交付，见 `internal/handler/router.go`）：
+  - 管理端（`/api/v1/admin`，RequireAdmin）：
+    - `POST /invitations/send` 对报名申请发邀请函（pending 邀请复用 + 幂等重投递）
+    - `GET /invitations` 邀请列表（可按申请过滤）
+    - `POST /invitations/:id/revoke` 撤销 pending 邀请
+    - `GET /candidates` 候选人列表；`GET /candidates/:id` 详情（含时间线）
+    - `POST /candidates/:id/advance` 状态推进（send_offer / hire / reject）
+  - 用户端（`/api/v1`，需登录）：
+    - `GET /me/invitations` 本人邀请（含接受凭据 token）
+    - `POST /me/invitations/accept` 接受邀请 -> 升级为 candidate（仅归属申请人，幂等）
+    - `GET /me/candidates` 本人候选人记录
+- **不变式**：邮件投递失败不落状态（邀请不算已邀请、候选人不流转），重试不产生重复流转；过期是查询期判定（pending 且超过 expires_at），无后台任务。
+- **数据模型**：`apps/api/migrations/0008_invitation_flow.up.sql`（invitations + candidates + candidate_timeline）；报名申请 `recruitment_applications` 由 #88（迁移 0007）拥有，BE-04 通过 `ApplicationStore`（消费者声明的窄接口，实现方是 `repository.RecruitmentRepo`）读取与推进其状态，不再有本票的锚点表。
+- **共享 DTO**：`packages/shared-types/src/recruitment.ts` 的 BE-04 段（ID 一律 number）。
 
 ---
 
@@ -147,22 +153,24 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
 ### 状态机
 
 ```
-ProspectStatus:   pending ─► invited ─► accepted
-                       └────────────► rejected
-                                  │
-                                  ▼
+InvitationStatus: pending ─► accepted
+            │             （expired = pending 且 now > expires_at，查询期判定）
+            └─► revoked
+
 CandidateStatus:  interviewing ─► offered ─► hired
             │                       │
             └──────────────────────► rejected
 ```
 
+- offered / rejected 仅在对应邮件（offer / 感谢信）投递成功后落地；hired 与 rejected 是终态。
+
 ### 关键字段
 
-- `Prospect.email`：用于 SMTP 发送邀请函的主键
-- `Prospect.sourceFormId`：来自哪个表单（form 提交自动创建 prospect）
-- `Prospect.shareToken`：表单分享定位符（`FormDefinition.shareToken`，仅用于定位分享表单，不构成鉴权绕过）
-- `Candidate.notes`：面试记录（自由文本，admin 编辑）
-- `EmailTemplate.variables`：从 body 扫描出的占位符名（`{{name}}` 等），前端用来渲染表单、后端用来校验必填字段
+- `Invitation.token`：接受邀请的用户端凭据（唯一索引），不出现在管理端列表
+- `Invitation.email_sent_at`：空 = 邮件从未投递成功，业务上不算「已邀请」，允许重试投递
+- 同一申请至多一条 pending 邀请（部分唯一索引）；同一申请至多一名候选人（唯一索引）——并发接受的数据库兜底
+- 候选人时间线（`recruitment_candidate_timeline`）：管理端与用户端读同一张表，两端状态一致
+- 报名申请（`recruitment_applications`）由 #88 拥有：applied → reviewing → accepted | rejected；BE-04 接受邀请后把它推进为 accepted
 
 ---
 
