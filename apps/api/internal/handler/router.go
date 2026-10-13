@@ -32,6 +32,7 @@ func NewRouter(
 	authHandler *AuthHandler,
 	adminHandler *AdminHandler,
 	mailHandler *MailHandler,
+	recruitmentHandler *RecruitmentHandler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -132,6 +133,22 @@ func NewRouter(
 		admin.GET("/mails", mailHandler.ListMails)
 		// 批量删除用 DELETE 方法（语义即删除；body 携带 ids 数组，gin 正常绑定）
 		admin.DELETE("/mails/batch-delete", mailHandler.DeleteMails)
+
+		// ── 招新（用户端，需登录）──
+		recruit := apiV1.Group("/recruitment", authRequired)
+		recruit.GET("/directions", recruitmentHandler.ListActiveDirections)
+		recruit.POST("/applications", recruitmentHandler.SubmitApplication)
+		recruit.GET("/applications", recruitmentHandler.ListMyApplications)
+		recruit.GET("/applications/:id", recruitmentHandler.GetMyApplication)
+
+		// ── 招新（管理端，需管理员）──
+		adminRecruit := admin.Group("/recruitment")
+		adminRecruit.GET("/rounds", recruitmentHandler.AdminListRounds)
+		adminRecruit.PATCH("/rounds/:id", recruitmentHandler.AdminSetRound)
+		adminRecruit.PATCH("/directions/:code", recruitmentHandler.AdminSetDirection)
+		adminRecruit.GET("/applications", recruitmentHandler.AdminListApplications)
+		adminRecruit.GET("/applications/:id", recruitmentHandler.AdminGetApplication)
+		adminRecruit.PATCH("/applications/:id/review", recruitmentHandler.AdminReviewApplication)
 	}
 	return &Router{eng: r, cfg: cfg}
 }
