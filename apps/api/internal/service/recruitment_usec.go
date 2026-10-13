@@ -16,6 +16,13 @@ import (
 // ErrNoActiveRound 当前没有处于报名开放状态的轮次。
 var ErrNoActiveRound = errors.New("当前没有开放报名的招新轮次")
 
+// ErrRoundClosed 指定的轮次不在报名开放窗口内。
+//
+// 与 ErrNoActiveRound 区分：那个是"一轮都没开"，这个是"你指的这一轮没开"。
+// 表单入口（#92）报的是后者 —— 表单绑定了具体某一轮，说"系统里没有开放轮次"
+// 会让填写人以为是全局关闭。
+var ErrRoundClosed = errors.New("该轮招新当前未开放报名")
+
 // ErrDirectionClosed 目标方向未开放报名或被本期开放方向集排除。
 var ErrDirectionClosed = errors.New("该方向当前不接受报名")
 
@@ -105,21 +112,11 @@ func (u *RecruitmentUseCase) SetDirectionOpen(ctx context.Context, code string, 
  * 用户侧：登录报名
  * ------------------------------------------------------------------ */
 
-// Submit 登录用户报名某个方向。
+// Submit 登录用户报名某个方向：取当前开放轮次后交给 SubmitToRound。
 //
-// 前置校验（任一不满足返回相应域错误，不落库）：
-//   1. 当前必须有开放报名的轮次
-//   2. 目标方向必须在开放白名单内，且运营开关为开
-// 然后从令牌（参数里的 userID 由 handler 从鉴权中间件取得）对应的
-// 用户资料做快照写入申请，并追加一条初始时间线。
-//
-// 归属与方向一律由后端决定：body 里不能指定 user_id，防止越权代报。
+// 保留这个入口给 /recruitment/applications：报名页报的就是"当前开放的那一轮"，
+// 调用方不需要（也不该）指定轮次。
 func (u *RecruitmentUseCase) Submit(ctx context.Context, userID int, directionCode string) (*domain.Application, error) {
-	directionCode = strings.TrimSpace(directionCode)
-	if !directionAllowed(directionCode) {
-		return nil, ErrDirectionClosed
-	}
-
 	round, err := u.repo.GetActiveRound(ctx)
 	if err != nil {
 		// ErrRoundNotFound 已覆盖"没有开放轮次"，转成可读的业务错误
@@ -127,6 +124,28 @@ func (u *RecruitmentUseCase) Submit(ctx context.Context, userID int, directionCo
 			return nil, ErrNoActiveRound
 		}
 		return nil, err
+	}
+	return u.SubmitToRound(ctx, userID, round.ID, directionCode)
+}
+
+// SubmitToRound 按**指定轮次**创建申请（表单模块 #92 的入口）。
+//
+// 表单在创建时就绑定了轮次与方向，提交时不能改成"当前开放的那一轮"。
+// 校验与 Submit 完全一致：方向白名单 → 轮次开放 → 方向运营开关 →
+// 用户资料快照 → 申请 + 初始时间线。两个入口共享同一条唯一约束
+// (user_id, round_id, direction_code)，因此不会因为多了表单入口而多出第二条申请。
+func (u *RecruitmentUseCase) SubmitToRound(ctx context.Context, userID int, roundID int, directionCode string) (*domain.Application, error) {
+	directionCode = strings.TrimSpace(directionCode)
+	if !directionAllowed(directionCode) {
+		return nil, ErrDirectionClosed
+	}
+
+	round, err := u.repo.GetRoundByID(ctx, roundID)
+	if err != nil {
+		return nil, err
+	}
+	if !round.Accepting {
+		return nil, ErrRoundClosed
 	}
 
 	dir, err := u.repo.GetDirectionByCode(ctx, directionCode)

@@ -35,6 +35,8 @@ func failRecruitment(c *gin.Context, err error) {
 		response.FailInvalidParam(c, err.Error())
 	case service.ErrNoActiveRound:
 		response.FailInvalidParam(c, err.Error())
+	case service.ErrRoundClosed:
+		response.FailInvalidParam(c, err.Error())
 	case service.ErrInvalidTransition:
 		response.FailInvalidParam(c, err.Error())
 	case service.ErrNotOwned:
