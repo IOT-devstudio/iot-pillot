@@ -122,7 +122,8 @@ iot-pillot/
 | 退出登录 | `POST /api/v1/logout` | 前端已对接 | Header 携带 access token，请求体携带 refresh token；网络失败也清理本地会话 |
 | 当前用户 | `GET /api/v1/me` | 前端已对接 | 路由守卫和用户首页读取真实的用户名与 `admin/member` 角色 |
 | 管理员用户列表 | `GET /api/v1/admin/users` | 前端已对接 | 管理员控制台分页读取用户 ID、用户名和注册时间 |
-| 表单、模板、招新、用户权限、SMTP 设置 | 尚无路由 | 阻塞 | 共享 TS 类型仅代表领域草案，不能直接当作已交付 API |
+| 招新邀请与候选人流程（BE-04） | `POST /api/v1/admin/invitations/send`、`GET /api/v1/admin/invitations`、`POST /api/v1/admin/invitations/:id/revoke`、`GET /api/v1/admin/candidates`、`GET /api/v1/admin/candidates/:id`、`POST /api/v1/admin/candidates/:id/advance`、`GET /api/v1/me/invitations`、`POST /api/v1/me/invitations/accept`、`GET /api/v1/me/candidates` | 后端已交付，前端未接入 | `packages/shared-types` 的 BE-04 段是真实契约（number ID）；邀请邮件复用 MailModule 模板发送 |
+| 表单、模板、用户权限、SMTP 设置 | 部分尚无路由 | 阻塞 | 共享 TS 类型中未标 BE-04 的招新类型与表单类型仍是领域草案，不能直接当作已交付 API |
 
 开始业务页面前必须先解决以下契约差异：
 
