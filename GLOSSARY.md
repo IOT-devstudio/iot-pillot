@@ -4,9 +4,9 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 
 ## 招新域
 
-- **表单 (Form)**：管理员创建的报名信息收集器，由若干字段组成，可匿名填写、可分享链接。
+- **表单 (Form)**：管理员创建的报名信息收集器，由若干字段组成，需登录后填写、可分享链接。
 - **字段 (Field)**：表单的构成单元。首期支持 `text`、`email`、`textarea`、`select`、`checkbox`。
-- **提交 (Submission)**：匿名申请人经分享链接填写表单后生成的记录。
+- **提交 (Submission)**：已登录用户经分享链接填写表单后生成的记录。
 - **意向成员 (Prospect)**：提交报名后、尚未接受邀请的潜在成员。
 - **候选人 (Candidate)**：接受邀请函后角色推进的人员，状态含 `interviewing` / `offered` / `hired` / `rejected`。
 - **招新流程 (Recruitment)**：`Prospect → Candidate → offered/hired` 或 `rejected` 的状态机。
@@ -25,4 +25,4 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 
 ## 系统域
 
-- **分享令牌 (Share Token)**：表单匿名填写页的访问凭证，对应公开路由 `/f/:shareToken`。
+- **分享令牌 (Share Token)**：表单分享填写页的定位符（不构成鉴权绕过），对应公开路由 `/f/:shareToken`，提交前须登录。
