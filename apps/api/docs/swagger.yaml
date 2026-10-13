@@ -70,6 +70,34 @@ definitions:
     additionalProperties:
       type: string
     type: object
+  request.RecruitmentReviewReq:
+    properties:
+      target:
+        enum:
+        - reviewing
+        - accepted
+        - rejected
+        type: string
+    required:
+    - target
+    type: object
+  request.RecruitmentSetDirectionReq:
+    properties:
+      open:
+        type: boolean
+    type: object
+  request.RecruitmentSetRoundReq:
+    properties:
+      accepting:
+        type: boolean
+    type: object
+  request.RecruitmentSubmitReq:
+    properties:
+      direction_code:
+        type: string
+    required:
+    - direction_code
+    type: object
   request.RefreshReq:
     properties:
       refresh_token:
@@ -158,6 +186,10 @@ definitions:
         - game
         - other
         example: front-end
+        type: string
+      name:
+        description: '姓名；null 清除，缺省不动（issue #86 新增可改字段）'
+        example: 张三
         type: string
       qq:
         description: QQ；null 清除，缺省不动
@@ -349,6 +381,104 @@ definitions:
       user_id:
         type: integer
       username:
+        type: string
+    type: object
+  response.RecruitmentApplicationDetailResp:
+    properties:
+      application:
+        $ref: '#/definitions/response.RecruitmentApplicationResp'
+      timeline:
+        items:
+          $ref: '#/definitions/response.RecruitmentTimelineResp'
+        type: array
+    type: object
+  response.RecruitmentApplicationListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.RecruitmentApplicationResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.RecruitmentApplicationResp:
+    properties:
+      class:
+        type: string
+      created_at:
+        type: string
+      direction_code:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      note:
+        type: string
+      qq:
+        type: string
+      round_id:
+        type: integer
+      status:
+        type: string
+      student_id:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  response.RecruitmentDirectionListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.RecruitmentDirectionResp'
+        type: array
+    type: object
+  response.RecruitmentDirectionResp:
+    properties:
+      code:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      open:
+        type: boolean
+      sort_order:
+        type: integer
+    type: object
+  response.RecruitmentRoundListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.RecruitmentRoundResp'
+        type: array
+    type: object
+  response.RecruitmentRoundResp:
+    properties:
+      accepting:
+        type: boolean
+      id:
+        type: integer
+      name:
+        type: string
+      round_num:
+        type: integer
+    type: object
+  response.RecruitmentTimelineResp:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      to_status:
         type: string
     type: object
   response.RefreshResp:
@@ -796,6 +926,246 @@ paths:
       summary: 按邮箱地址发送邮件
       tags:
       - 管理端-邮件
+  /api/v1/admin/recruitment/applications:
+    get:
+      description: 分页列出全部报名申请，可按轮次/方向/状态筛选。
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数
+        in: query
+        name: page_size
+        type: integer
+      - description: 按轮次筛选
+        in: query
+        name: round_id
+        type: integer
+      - description: 按方向筛选
+        in: query
+        name: direction_code
+        type: string
+      - description: 按状态筛选（applied/reviewing/accepted/rejected）
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.RecruitmentApplicationListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 报名申请列表
+      tags:
+      - 管理端-招新
+  /api/v1/admin/recruitment/applications/{id}:
+    get:
+      description: 取一条申请详情（含时间线）。
+      parameters:
+      - description: 申请 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.RecruitmentApplicationDetailResp'
+              type: object
+        "400":
+          description: 申请不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 报名申请详情
+      tags:
+      - 管理端-招新
+  /api/v1/admin/recruitment/applications/{id}/review:
+    patch:
+      consumes:
+      - application/json
+      description: 推进申请到下一状态（applied→reviewing，reviewing→accepted/rejected）。
+      parameters:
+      - description: 申请 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 审核目标
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.RecruitmentReviewReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 非法状态流转
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 审核报名申请
+      tags:
+      - 管理端-招新
+  /api/v1/admin/recruitment/directions/{code}:
+    patch:
+      consumes:
+      - application/json
+      description: 开启或关闭某个招新方向的报名开关。不在白名单内的方向拒绝配置。
+      parameters:
+      - description: 方向 code（如 front-end）
+        in: path
+        name: code
+        required: true
+        type: string
+      - description: 开关状态
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.RecruitmentSetDirectionReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 方向不存在或不在白名单
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 设置方向开关
+      tags:
+      - 管理端-招新
+  /api/v1/admin/recruitment/rounds:
+    get:
+      description: 列出全部招新轮次，含开放状态。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.RecruitmentRoundListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 招新轮次列表
+      tags:
+      - 管理端-招新
+  /api/v1/admin/recruitment/rounds/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: 开启或关闭某轮的报名窗口。
+      parameters:
+      - description: 轮次 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 开放状态
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.RecruitmentSetRoundReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 轮次不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 设置轮次开放状态
+      tags:
+      - 管理端-招新
   /api/v1/admin/users:
     get:
       description: 分页读取已注册用户，并标注其当前是否为管理员。响应不含密码哈希。
@@ -956,6 +1326,135 @@ paths:
       summary: 更新本人资料
       tags:
       - 认证模块
+  /api/v1/recruitment/applications:
+    get:
+      description: 分页列出当前用户本人的报名申请。
+      parameters:
+      - default: 1
+        description: 页码，从 1 开始
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.RecruitmentApplicationListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 我的报名列表
+      tags:
+      - 招新模块
+    post:
+      consumes:
+      - application/json
+      description: 登录用户报名某个开放方向。归属由令牌决定，body 不接收 user_id。
+      parameters:
+      - description: 报名请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.RecruitmentSubmitReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.RecruitmentApplicationResp'
+              type: object
+        "400":
+          description: 方向关闭或重复报名
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 提交报名
+      tags:
+      - 招新模块
+  /api/v1/recruitment/applications/{id}:
+    get:
+      description: 取当前用户本人的一条报名申请（含时间线）。非本人申请返回 403。
+      parameters:
+      - description: 申请 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.RecruitmentApplicationDetailResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非本人申请
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 我的报名详情
+      tags:
+      - 招新模块
+  /api/v1/recruitment/directions:
+    get:
+      description: 返回当前开放报名的招新方向，供用户报名页渲染可选方向。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.RecruitmentDirectionListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 可报名方向列表
+      tags:
+      - 招新模块
   /api/v1/refresh:
     post:
       consumes:

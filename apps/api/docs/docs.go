@@ -705,6 +705,394 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/admin/recruitment/applications": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页列出全部报名申请，可按轮次/方向/状态筛选。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "报名申请列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "按轮次筛选",
+                        "name": "round_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "按方向筛选",
+                        "name": "direction_code",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "按状态筛选（applied/reviewing/accepted/rejected）",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentApplicationListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/recruitment/applications/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "取一条申请详情（含时间线）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "报名申请详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "申请 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentApplicationDetailResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "申请不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/recruitment/applications/{id}/review": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "推进申请到下一状态（applied→reviewing，reviewing→accepted/rejected）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "审核报名申请",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "申请 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "审核目标",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.RecruitmentReviewReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "非法状态流转",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/recruitment/directions/{code}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "开启或关闭某个招新方向的报名开关。不在白名单内的方向拒绝配置。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "设置方向开关",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "方向 code（如 front-end）",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "开关状态",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.RecruitmentSetDirectionReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "方向不存在或不在白名单",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/recruitment/rounds": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "列出全部招新轮次，含开放状态。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "招新轮次列表",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentRoundListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/recruitment/rounds/{id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "开启或关闭某轮的报名窗口。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "设置轮次开放状态",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "轮次 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "开放状态",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.RecruitmentSetRoundReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "轮次不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/users": {
             "get": {
                 "security": [
@@ -965,6 +1353,227 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "未认证、令牌失效或账号已不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/recruitment/applications": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页列出当前用户本人的报名申请。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "招新模块"
+                ],
+                "summary": "我的报名列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码，从 1 开始",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentApplicationListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "登录用户报名某个开放方向。归属由令牌决定，body 不接收 user_id。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "招新模块"
+                ],
+                "summary": "提交报名",
+                "parameters": [
+                    {
+                        "description": "报名请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.RecruitmentSubmitReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentApplicationResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "方向关闭或重复报名",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/recruitment/applications/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "取当前用户本人的一条报名申请（含时间线）。非本人申请返回 403。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "招新模块"
+                ],
+                "summary": "我的报名详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "申请 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentApplicationDetailResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非本人申请",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/recruitment/directions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前开放报名的招新方向，供用户报名页渲染可选方向。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "招新模块"
+                ],
+                "summary": "可报名方向列表",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentDirectionListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
                         "schema": {
                             "$ref": "#/definitions/response.Result"
                         }
@@ -1275,6 +1884,49 @@ const docTemplate = `{
                 "type": "string"
             }
         },
+        "request.RecruitmentReviewReq": {
+            "type": "object",
+            "required": [
+                "target"
+            ],
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "enum": [
+                        "reviewing",
+                        "accepted",
+                        "rejected"
+                    ]
+                }
+            }
+        },
+        "request.RecruitmentSetDirectionReq": {
+            "type": "object",
+            "properties": {
+                "open": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "request.RecruitmentSetRoundReq": {
+            "type": "object",
+            "properties": {
+                "accepting": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "request.RecruitmentSubmitReq": {
+            "type": "object",
+            "required": [
+                "direction_code"
+            ],
+            "properties": {
+                "direction_code": {
+                    "type": "string"
+                }
+            }
+        },
         "request.RefreshReq": {
             "type": "object",
             "required": [
@@ -1396,6 +2048,11 @@ const docTemplate = `{
                         "other"
                     ],
                     "example": "front-end"
+                },
+                "name": {
+                    "description": "姓名；null 清除，缺省不动（issue #86 新增可改字段）",
+                    "type": "string",
+                    "example": "张三"
                 },
                 "qq": {
                     "description": "QQ；null 清除，缺省不动",
@@ -1679,6 +2336,157 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.RecruitmentApplicationDetailResp": {
+            "type": "object",
+            "properties": {
+                "application": {
+                    "$ref": "#/definitions/response.RecruitmentApplicationResp"
+                },
+                "timeline": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.RecruitmentTimelineResp"
+                    }
+                }
+            }
+        },
+        "response.RecruitmentApplicationListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.RecruitmentApplicationResp"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.RecruitmentApplicationResp": {
+            "type": "object",
+            "properties": {
+                "class": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "direction_code": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "qq": {
+                    "type": "string"
+                },
+                "round_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.RecruitmentDirectionListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.RecruitmentDirectionResp"
+                    }
+                }
+            }
+        },
+        "response.RecruitmentDirectionResp": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "open": {
+                    "type": "boolean"
+                },
+                "sort_order": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.RecruitmentRoundListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.RecruitmentRoundResp"
+                    }
+                }
+            }
+        },
+        "response.RecruitmentRoundResp": {
+            "type": "object",
+            "properties": {
+                "accepting": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "round_num": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.RecruitmentTimelineResp": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "to_status": {
                     "type": "string"
                 }
             }
