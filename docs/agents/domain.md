@@ -6,6 +6,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Before exploring, read these
 
+- **`CONTEXT.md`** at the repo root: the agent's current working memory — what is being worked on now, recent decisions, next steps. Read it first when resuming or starting work; it complements `GLOSSARY.md` (terms) and `docs/adr/` (decisions).
 - **`GLOSSARY.md`** at the repo root, or
 - **`GLOSSARY-MAP.md`** at the repo root if it exists: it points at one `GLOSSARY.md` per context. Read each one relevant to the topic.
 - **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
