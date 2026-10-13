@@ -2,8 +2,8 @@
 /**
  * 成员（纯展示组件）。
  *
- * 头像用**姓名首字**做文字标记，不引图片：仓库里没有 `src/assets/`，
- * 而要为假成员配头像图也不合适。将来有真实头像时再换。
+ * 未经本人与工作室确认的姓名不展示（issue #94）：fixtures 为空数组时
+ * 渲染「成员待补充」空态。头像用**姓名首字**做文字标记，不引图片。
  *
  * 注意 `member.title` 是工作室内部职能（「前端负责人」），**不是**系统的
  * RBAC 角色 `Role`（admin / member）—— 详见 ../fixtures.ts 的字段注释。
@@ -19,7 +19,11 @@ defineProps<{
   <section class="members" aria-labelledby="about-members-title">
     <h2 id="about-members-title" class="members__title">成员</h2>
 
-    <ul class="members__list">
+    <p v-if="!members.length" class="members__empty">
+      成员待补充：正式成员名单确认后展示。
+    </p>
+
+    <ul v-else class="members__list">
       <li v-for="member in members" :key="member.id" class="members__item">
         <span class="members__avatar" aria-hidden="true">
           {{ member.name.slice(0, 1) }}
@@ -47,6 +51,16 @@ defineProps<{
   margin: 0 0 14px;
   color: var(--about-ink);
   font-size: 15px;
+}
+
+.members__empty {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--about-muted);
+  border: 1px dashed var(--about-border);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .members__list {

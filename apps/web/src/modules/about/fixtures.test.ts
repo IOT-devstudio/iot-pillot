@@ -22,6 +22,16 @@ function expectUniqueIds(items: { id: string }[]): void {
 }
 
 describe("about fixtures", () => {
+  it("presents no unconfirmed facts as real data (issue #94)", () => {
+    // 年份、人数未经工作室确认：数字位只允许出现「待补充」
+    for (const stat of STUDIO_INTRO.stats) {
+      expect(stat.value).toBe("待补充");
+    }
+    // 编造的项目名、成员姓名不允许回归；正式清单确认后由工作室资料补回
+    expect(STUDIO_WORKS).toEqual([]);
+    expect(STUDIO_MEMBERS).toEqual([]);
+  });
+
   it("keeps the intro copy non-empty", () => {
     expect(STUDIO_INTRO.name.trim()).not.toBe("");
     expect(STUDIO_INTRO.tagline.trim()).not.toBe("");
