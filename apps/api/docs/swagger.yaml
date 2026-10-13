@@ -1,5 +1,14 @@
 basePath: /
 definitions:
+  request.AcceptInvitationReq:
+    properties:
+      token:
+        maxLength: 200
+        minLength: 10
+        type: string
+    required:
+    - token
+    type: object
   request.AdminUserIDReq:
     properties:
       user_id:
@@ -7,6 +16,29 @@ definitions:
         type: integer
     required:
     - user_id
+    type: object
+  request.AdvanceCandidateReq:
+    properties:
+      action:
+        enum:
+        - send_offer
+        - hire
+        - reject
+        type: string
+      note:
+        description: Note 随本次流转写入时间线的备注（如面试记录）。
+        maxLength: 500
+        type: string
+      template_id:
+        description: TemplateID offer / 感谢信模板 id；send_offer 与 reject 时必填。
+        minimum: 1
+        type: integer
+      vars:
+        allOf:
+        - $ref: '#/definitions/request.MailVars'
+        description: Vars 模板变量覆盖（offer / reject 发信时生效）。
+    required:
+    - action
     type: object
   request.ChangePasswordReq:
     properties:
@@ -19,6 +51,66 @@ definitions:
     required:
     - new_password
     - old_password
+    type: object
+  request.FormCreateReq:
+    properties:
+      description:
+        type: string
+      direction_code:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/request.FormFieldReq'
+        minItems: 1
+        type: array
+      round_id:
+        type: integer
+      title:
+        type: string
+    required:
+    - direction_code
+    - fields
+    - round_id
+    - title
+    type: object
+  request.FormFieldReq:
+    properties:
+      id:
+        type: integer
+      label:
+        type: string
+      options:
+        items:
+          type: string
+        type: array
+      placeholder:
+        type: string
+      required:
+        type: boolean
+      type:
+        type: string
+    required:
+    - label
+    - type
+    type: object
+  request.FormSubmitReq:
+    properties:
+      values:
+        additionalProperties: {}
+        type: object
+    type: object
+  request.FormUpdateReq:
+    properties:
+      description:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/request.FormFieldReq'
+        type: array
+      is_open:
+        type: boolean
+      title:
+        type: string
     type: object
   request.LoginReq:
     properties:
@@ -166,6 +258,30 @@ definitions:
     - email
     - new_password
     type: object
+  request.SendInvitationReq:
+    properties:
+      application_id:
+        minimum: 1
+        type: integer
+      expires_in_days:
+        description: ExpiresInDays 邀请有效天数；缺省 7，上限 90（再长就失去"限期响应"的语义）。
+        maximum: 90
+        minimum: 1
+        type: integer
+      template_id:
+        description: TemplateID invitation 类型模板的 id；不存在或类型不符由服务层校验并报业务错误。
+        minimum: 1
+        type: integer
+      vars:
+        allOf:
+        - $ref: '#/definitions/request.MailVars'
+        description: |-
+          Vars 模板变量覆盖。服务端会预填 invitation_token 等邀请上下文，
+          调用方传同键会覆盖预填值。
+    required:
+    - application_id
+    - template_id
+    type: object
   request.SendMailBulkReq:
     properties:
       recipients:
@@ -225,10 +341,6 @@ definitions:
         - other
         example: front-end
         type: string
-      name:
-        description: '姓名；null 清除，缺省不动（issue #86 新增可改字段）'
-        example: 张三
-        type: string
       qq:
         description: QQ；null 清除，缺省不动
         example: "1044696157"
@@ -261,6 +373,11 @@ definitions:
     required:
     - verifier
     - verifier_type
+    type: object
+  response.AcceptInvitationResp:
+    properties:
+      candidate:
+        $ref: '#/definitions/response.MyCandidate'
     type: object
   response.AdminListResp:
     properties:
@@ -310,6 +427,188 @@ definitions:
         type: string
       user_id:
         type: integer
+    type: object
+  response.CandidateDetailResp:
+    properties:
+      candidate:
+        $ref: '#/definitions/response.CandidateResp'
+      timeline:
+        items:
+          $ref: '#/definitions/response.CandidateTimelineResp'
+        type: array
+    type: object
+  response.CandidateListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.CandidateResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.CandidateResp:
+    properties:
+      application_id:
+        type: integer
+      created_at:
+        type: string
+      direction:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  response.CandidateTimelineResp:
+    properties:
+      created_at:
+        type: string
+      from_status:
+        type: string
+      note:
+        type: string
+      operator_id:
+        type: integer
+      to_status:
+        type: string
+    type: object
+  response.FormDetailResp:
+    properties:
+      fields:
+        items:
+          $ref: '#/definitions/response.FormFieldResp'
+        type: array
+      form:
+        $ref: '#/definitions/response.FormResp'
+    type: object
+  response.FormFieldResp:
+    properties:
+      id:
+        type: integer
+      label:
+        type: string
+      options:
+        items:
+          type: string
+        type: array
+      placeholder:
+        type: string
+      required:
+        type: boolean
+      sort_order:
+        type: integer
+      type:
+        type: string
+    type: object
+  response.FormListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.FormResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.FormResp:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      direction_code:
+        type: string
+      id:
+        type: integer
+      is_open:
+        type: boolean
+      round_id:
+        type: integer
+      share_token:
+        type: string
+      submission_count:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  response.FormSubmissionListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.FormSubmissionResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.FormSubmissionResp:
+    properties:
+      application_id:
+        type: integer
+      form_id:
+        type: integer
+      id:
+        type: integer
+      submitted_at:
+        type: string
+      submitter_id:
+        type: integer
+      values:
+        additionalProperties: {}
+        type: object
+    type: object
+  response.InvitationListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.InvitationResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.InvitationResp:
+    properties:
+      accepted_at:
+        type: string
+      application_id:
+        type: integer
+      created_at:
+        type: string
+      email_sent_at:
+        description: EmailSentAt 空串表示邮件从未投递成功——此时不算「已邀请」，允许重试投递。
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: integer
+      sent_by:
+        type: integer
+      status:
+        type: string
     type: object
   response.LoginResp:
     properties:
@@ -430,6 +729,57 @@ definitions:
       username:
         type: string
     type: object
+  response.MyCandidate:
+    properties:
+      application_id:
+        type: integer
+      created_at:
+        type: string
+      direction:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  response.MyCandidateListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.MyCandidate'
+        type: array
+      total:
+        type: integer
+    type: object
+  response.MyInvitation:
+    properties:
+      accepted_at:
+        type: string
+      application_id:
+        type: integer
+      created_at:
+        type: string
+      direction:
+        type: string
+      expired:
+        description: Expired 由服务端按查询时刻判定，前端不必自行比对过期时间。
+        type: boolean
+      expires_at:
+        type: string
+      status:
+        type: string
+      token:
+        type: string
+    type: object
+  response.MyInvitationListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.MyInvitation'
+        type: array
+      total:
+        type: integer
+    type: object
   response.RecruitmentApplicationDetailResp:
     properties:
       application:
@@ -545,6 +895,28 @@ definitions:
       message:
         description: 提示信息
         type: string
+    type: object
+  response.ShareFormResp:
+    properties:
+      fields:
+        items:
+          $ref: '#/definitions/response.FormFieldResp'
+        type: array
+      form:
+        $ref: '#/definitions/response.FormResp'
+      my_submission_id:
+        type: integer
+      submitted:
+        type: boolean
+    type: object
+  response.SubmitFormResp:
+    properties:
+      application_id:
+        type: integer
+      application_status:
+        type: string
+      submission:
+        $ref: '#/definitions/response.FormSubmissionResp'
     type: object
   response.UserProfileDetail:
     properties:
@@ -673,6 +1045,208 @@ paths:
       summary: 撤销管理员
       tags:
       - 管理端
+  /api/v1/admin/candidates:
+    get:
+      parameters:
+      - description: 页码，默认 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数，默认 20
+        in: query
+        name: page_size
+        type: integer
+      - description: interviewing|offered|hired|rejected
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.CandidateListResp'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 候选人列表（可按状态过滤）
+      tags:
+      - 管理端-招新
+  /api/v1/admin/candidates/{id}:
+    get:
+      parameters:
+      - description: 候选人 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.CandidateDetailResp'
+              type: object
+        "400":
+          description: 候选人不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 候选人详情（含时间线）
+      tags:
+      - 管理端-招新
+  /api/v1/admin/candidates/{id}/advance:
+    post:
+      consumes:
+      - application/json
+      description: send_offer 与 reject 在邮件投递成功后才流转状态；失败保持原状态可安全重试。
+      parameters:
+      - description: 候选人 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 动作与模板
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.AdvanceCandidateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.CandidateResp'
+              type: object
+        "400":
+          description: 非法流转/缺模板/候选人不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "500":
+          description: 邮件投递失败
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 推进候选人状态（send_offer / hire / reject）
+      tags:
+      - 管理端-招新
+  /api/v1/admin/invitations:
+    get:
+      parameters:
+      - description: 页码，默认 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页条数，默认 20
+        in: query
+        name: page_size
+        type: integer
+      - description: 按申请过滤
+        in: query
+        name: application_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.InvitationListResp'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 邀请列表（可按申请过滤）
+      tags:
+      - 管理端-招新
+  /api/v1/admin/invitations/{id}/revoke:
+    post:
+      description: pending（含已过期未处理的）邀请落为 revoked；已接受/已撤销的返回业务错误。
+      parameters:
+      - description: 邀请 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.InvitationResp'
+              type: object
+        "400":
+          description: 邀请不存在或状态不允许撤销
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 撤销邀请
+      tags:
+      - 管理端-招新
+  /api/v1/admin/invitations/send:
+    post:
+      consumes:
+      - application/json
+      description: 针对一个报名申请发送邀请邮件。已有 pending 邀请时复用该行重试投递；邮件投递失败不产生"已邀请"状态。
+      parameters:
+      - description: 邀请内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.SendInvitationReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.InvitationResp'
+              type: object
+        "400":
+          description: 申请不存在/状态不允许/无邮箱/模板类型不符/已有 pending 邀请
+          schema:
+            $ref: '#/definitions/response.Result'
+        "500":
+          description: 邮件投递失败
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 发送邀请（含投递失败重试）
+      tags:
+      - 管理端-招新
   /api/v1/admin/mail-templates:
     get:
       description: 列出全部邮件模板；每个模板附带它用到的变量名，便于管理端提示。
@@ -1284,6 +1858,333 @@ paths:
       summary: 修改密码
       tags:
       - 认证模块
+  /api/v1/forms:
+    get:
+      description: 分页列出全部表单，含开放状态与提交数。管理员与成员都可读。
+      parameters:
+      - default: 1
+        description: 页码，从 1 开始
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.FormListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 表单列表
+      tags:
+      - 表单模块
+    post:
+      consumes:
+      - application/json
+      description: 管理员建表：绑定一轮招新与一个方向，生成分享令牌；新建默认关闭。
+      parameters:
+      - description: 建表请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.FormCreateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.FormDetailResp'
+              type: object
+        "400":
+          description: 配置不合法或轮次/方向不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 创建表单
+      tags:
+      - 管理端-表单
+  /api/v1/forms/{id}:
+    get:
+      description: 取表单定义、字段列表与提交数。管理员与成员都可读。
+      parameters:
+      - description: 表单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.FormDetailResp'
+              type: object
+        "400":
+          description: 表单不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 表单详情
+      tags:
+      - 表单模块
+    patch:
+      consumes:
+      - application/json
+      description: |-
+        管理员改表：标题 / 说明 / 开放状态；带 fields 时整份替换字段列表。
+        轮次与方向绑定不可修改（要换请新建表单）。
+      parameters:
+      - description: 表单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 修改请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.FormUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.FormDetailResp'
+              type: object
+        "400":
+          description: 配置不合法或表单不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 修改表单
+      tags:
+      - 管理端-表单
+  /api/v1/forms/{id}/submissions:
+    get:
+      description: 分页列出某表单的提交记录（新提交在前）。
+      parameters:
+      - description: 表单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.FormSubmissionListResp'
+              type: object
+        "400":
+          description: 表单不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 表单提交列表
+      tags:
+      - 管理端-表单
+  /api/v1/forms/{id}/submissions/{submission_id}:
+    get:
+      description: 取某表单下一条提交记录（字段值 + 关联申请 id）。
+      parameters:
+      - description: 表单 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 提交 ID
+        in: path
+        name: submission_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.FormSubmissionResp'
+              type: object
+        "400":
+          description: 表单或提交记录不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 提交详情
+      tags:
+      - 管理端-表单
+  /api/v1/forms/public/{shareToken}:
+    get:
+      description: |-
+        登录用户按分享令牌读取表单定义与字段；关闭的表单照样返回定义（is_open=false），
+        并返回当前用户在该表单上的提交情况，供填写页提示"已提交"。
+      parameters:
+      - description: 分享令牌
+        in: path
+        name: shareToken
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.ShareFormResp'
+              type: object
+        "400":
+          description: 分享链接无效
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 读取分享表单
+      tags:
+      - 表单模块
+  /api/v1/forms/public/{shareToken}/submit:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        登录用户经分享链接提交：答案由服务端校验（必填 / 类型 / select 选项合法性），
+        提交人取自令牌；提交会按统一申请模型创建申请，不产生重复申请记录。
+      parameters:
+      - description: 分享令牌
+        in: path
+        name: shareToken
+        required: true
+        type: string
+      - description: 提交内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.FormSubmitReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.SubmitFormResp'
+              type: object
+        "400":
+          description: 表单关闭 / 校验失败 / 重复提交
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 提交表单
+      tags:
+      - 表单模块
   /api/v1/login:
     post:
       consumes:
@@ -1405,6 +2306,78 @@ paths:
       summary: 更新本人资料
       tags:
       - 认证模块
+  /api/v1/me/candidates:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MyCandidateListResp'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 本人候选人记录
+      tags:
+      - 用户端-招新
+  /api/v1/me/invitations:
+    get:
+      description: 只含归属本人申请的邀请；expired 由服务端按当前时刻判定。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.MyInvitationListResp'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 本人邀请列表
+      tags:
+      - 用户端-招新
+  /api/v1/me/invitations/accept:
+    post:
+      consumes:
+      - application/json
+      description: 必须登录且当前账号是邀请对应申请的归属人；重复接受幂等返回当前候选人视图。
+      parameters:
+      - description: 邀请 token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.AcceptInvitationReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功（含幂等重复接受）
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.AcceptInvitationResp'
+              type: object
+        "400":
+          description: token 无效/已过期/已撤销/非归属人
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 接受邀请
+      tags:
+      - 用户端-招新
   /api/v1/recruitment/applications:
     get:
       description: 分页列出当前用户本人的报名申请。

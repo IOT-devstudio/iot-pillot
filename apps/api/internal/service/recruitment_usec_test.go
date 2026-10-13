@@ -91,6 +91,16 @@ func (s *stubRecruitmentRepo) GetActiveRound(_ context.Context) (*domain.Recruit
 	return nil, repository.ErrRoundNotFound
 }
 
+// GetRoundByID 供 SubmitToRound（表单模块 #92 的入口）使用。
+func (s *stubRecruitmentRepo) GetRoundByID(_ context.Context, id int) (*domain.RecruitmentRound, error) {
+	for _, r := range s.rounds {
+		if r.ID == id {
+			return r, nil
+		}
+	}
+	return nil, repository.ErrRoundNotFound
+}
+
 func (s *stubRecruitmentRepo) CreateApplication(_ context.Context, app *domain.Application) error {
 	if s.duplicateOnCreate {
 		return repository.ErrDuplicateApplication

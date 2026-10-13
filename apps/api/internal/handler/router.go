@@ -34,6 +34,7 @@ func NewRouter(
 	mailHandler *MailHandler,
 	recruitmentHandler *RecruitmentHandler,
 	invitationHandler *RecruitmentInvitationHandler,
+	formHandler *FormHandler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -170,6 +171,24 @@ func NewRouter(
 		apiV1.GET("/me/invitations", authRequired, invitationHandler.ListMyInvitations)
 		apiV1.POST("/me/invitations/accept", authRequired, invitationHandler.AcceptInvitation)
 		apiV1.GET("/me/candidates", authRequired, invitationHandler.ListMyCandidates)
+
+		// ── 表单（BE-05，issue #92）──
+		// 路径与 docs/architecture.md 的 FormModule 一致：/api/v1/forms 下的读接口
+		// 对 admin/member 开放，写接口在**同一条路由**上补 requireAdmin，
+		// 不另开 /admin 前缀 —— 让文档里的路径就是真实路径。
+		//
+		// 分享入口同样挂在 authRequired 之后：share_token 只是定位符，
+		// 不存在匿名读取或匿名提交的路径（#92 裁决）。读取也要求登录，
+		// 是为了让填写页能直接拿到"当前用户是否已提交"。
+		apiV1.GET("/forms", authRequired, formHandler.ListForms)
+		apiV1.POST("/forms", authRequired, requireAdmin, formHandler.CreateForm)
+		// 静态段 public 与参数段 :id 同层共存（gin v1.10 允许，已实测）。
+		apiV1.GET("/forms/public/:shareToken", authRequired, formHandler.ReadShareForm)
+		apiV1.POST("/forms/public/:shareToken/submit", authRequired, formHandler.SubmitForm)
+		apiV1.GET("/forms/:id", authRequired, formHandler.GetFormDetail)
+		apiV1.PATCH("/forms/:id", authRequired, requireAdmin, formHandler.UpdateForm)
+		apiV1.GET("/forms/:id/submissions", authRequired, requireAdmin, formHandler.ListFormSubmissions)
+		apiV1.GET("/forms/:id/submissions/:submission_id", authRequired, requireAdmin, formHandler.GetFormSubmission)
 	}
 	return &Router{eng: r, cfg: cfg}
 }

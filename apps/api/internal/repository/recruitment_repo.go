@@ -50,6 +50,11 @@ type RecruitmentRepo interface {
 	// GetActiveRound 返回当前处于报名开放状态的轮次。
 	// 没有开放轮次时返回 ErrRoundNotFound（上层据此拒绝报名）。
 	GetActiveRound(ctx context.Context) (*domain.RecruitmentRound, error)
+	// GetRoundByID 按 id 取轮次；不存在返回 ErrRoundNotFound。
+	//
+	// 表单模块（#92）需要按"表单绑定的那一轮"核验与报名：它不能借
+	// GetActiveRound，那是"当前开放的那一轮"的语义 —— 表单可能在开放前建好。
+	GetRoundByID(ctx context.Context, id int) (*domain.RecruitmentRound, error)
 
 	// ── 报名申请 ──
 	// CreateApplication 写入一条初始状态（applied）的申请。
@@ -156,6 +161,22 @@ func (r *gormRecruitmentRepo) GetActiveRound(ctx context.Context) (*domain.Recru
 		Where("accepting = ?", true).
 		Order("round_num ASC, id ASC").
 		First(&round).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrRoundNotFound
+		}
+		return nil, err
+	}
+	return &round, nil
+}
+
+// GetRoundByID 按 id 取轮次；不存在返回 ErrRoundNotFound。
+//
+// 表单模块（#92）要按"表单绑定的那一轮"核验与报名，不能借 GetActiveRound：
+// 那是"当前开放的那一轮"的语义，而表单可能在开放前就建好了。
+func (r *gormRecruitmentRepo) GetRoundByID(ctx context.Context, id int) (*domain.RecruitmentRound, error) {
+	var round domain.RecruitmentRound
+	err := r.db.WithContext(ctx).First(&round, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrRoundNotFound

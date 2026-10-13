@@ -188,6 +188,354 @@
                 }
             }
         },
+        "/api/v1/admin/candidates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "候选人列表（可按状态过滤）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页条数，默认 20",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "interviewing|offered|hired|rejected",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.CandidateListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/candidates/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "候选人详情（含时间线）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "候选人 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.CandidateDetailResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "候选人不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/candidates/{id}/advance": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "send_offer 与 reject 在邮件投递成功后才流转状态；失败保持原状态可安全重试。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "推进候选人状态（send_offer / hire / reject）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "候选人 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "动作与模板",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.AdvanceCandidateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.CandidateResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "非法流转/缺模板/候选人不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "500": {
+                        "description": "邮件投递失败",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/invitations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "邀请列表（可按申请过滤）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页条数，默认 20",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "按申请过滤",
+                        "name": "application_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.InvitationListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/invitations/send": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "针对一个报名申请发送邀请邮件。已有 pending 邀请时复用该行重试投递；邮件投递失败不产生\"已邀请\"状态。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "发送邀请（含投递失败重试）",
+                "parameters": [
+                    {
+                        "description": "邀请内容",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.SendInvitationReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.InvitationResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "申请不存在/状态不允许/无邮箱/模板类型不符/已有 pending 邀请",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "500": {
+                        "description": "邮件投递失败",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/invitations/{id}/revoke": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "pending（含已过期未处理的）邀请落为 revoked；已接受/已撤销的返回业务错误。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "撤销邀请",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "邀请 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.InvitationResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "邀请不存在或状态不允许撤销",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/mail-templates": {
             "get": {
                 "security": [
@@ -1202,6 +1550,541 @@
                 }
             }
         },
+        "/api/v1/forms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页列出全部表单，含开放状态与提交数。管理员与成员都可读。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "表单模块"
+                ],
+                "summary": "表单列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码，从 1 开始",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.FormListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员建表：绑定一轮招新与一个方向，生成分享令牌；新建默认关闭。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-表单"
+                ],
+                "summary": "创建表单",
+                "parameters": [
+                    {
+                        "description": "建表请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.FormCreateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.FormDetailResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "配置不合法或轮次/方向不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/forms/public/{shareToken}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "登录用户按分享令牌读取表单定义与字段；关闭的表单照样返回定义（is_open=false），\n并返回当前用户在该表单上的提交情况，供填写页提示\"已提交\"。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "表单模块"
+                ],
+                "summary": "读取分享表单",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "分享令牌",
+                        "name": "shareToken",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.ShareFormResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "分享链接无效",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/forms/public/{shareToken}/submit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "登录用户经分享链接提交：答案由服务端校验（必填 / 类型 / select 选项合法性），\n提交人取自令牌；提交会按统一申请模型创建申请，不产生重复申请记录。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "表单模块"
+                ],
+                "summary": "提交表单",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "分享令牌",
+                        "name": "shareToken",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "提交内容",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.FormSubmitReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.SubmitFormResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "表单关闭 / 校验失败 / 重复提交",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/forms/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "取表单定义、字段列表与提交数。管理员与成员都可读。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "表单模块"
+                ],
+                "summary": "表单详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "表单 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.FormDetailResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "表单不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员改表：标题 / 说明 / 开放状态；带 fields 时整份替换字段列表。\n轮次与方向绑定不可修改（要换请新建表单）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-表单"
+                ],
+                "summary": "修改表单",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "表单 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "修改请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.FormUpdateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.FormDetailResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "配置不合法或表单不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/forms/{id}/submissions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页列出某表单的提交记录（新提交在前）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-表单"
+                ],
+                "summary": "表单提交列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "表单 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.FormSubmissionListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "表单不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/forms/{id}/submissions/{submission_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "取某表单下一条提交记录（字段值 + 关联申请 id）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-表单"
+                ],
+                "summary": "提交详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "表单 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "提交 ID",
+                        "name": "submission_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.FormSubmissionResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "表单或提交记录不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/login": {
             "post": {
                 "description": "通过用户名**或邮箱** + 密码登录，返回双令牌（access_token + refresh_token）。",
@@ -1397,6 +2280,136 @@
                     },
                     "401": {
                         "description": "未认证、令牌失效或账号已不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/me/candidates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户端-招新"
+                ],
+                "summary": "本人候选人记录",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.MyCandidateListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/me/invitations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "只含归属本人申请的邀请；expired 由服务端按当前时刻判定。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户端-招新"
+                ],
+                "summary": "本人邀请列表",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.MyInvitationListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/me/invitations/accept": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "必须登录且当前账号是邀请对应申请的归属人；重复接受幂等返回当前候选人视图。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户端-招新"
+                ],
+                "summary": "接受邀请",
+                "parameters": [
+                    {
+                        "description": "邀请 token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.AcceptInvitationReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功（含幂等重复接受）",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.AcceptInvitationResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "token 无效/已过期/已撤销/非归属人",
                         "schema": {
                             "$ref": "#/definitions/response.Result"
                         }
@@ -1915,6 +2928,19 @@
         }
     },
     "definitions": {
+        "request.AcceptInvitationReq": {
+            "type": "object",
+            "required": [
+                "token"
+            ],
+            "properties": {
+                "token": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 10
+                }
+            }
+        },
         "request.AdminUserIDReq": {
             "type": "object",
             "required": [
@@ -1924,6 +2950,40 @@
                 "user_id": {
                     "type": "integer",
                     "minimum": 1
+                }
+            }
+        },
+        "request.AdvanceCandidateReq": {
+            "type": "object",
+            "required": [
+                "action"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "send_offer",
+                        "hire",
+                        "reject"
+                    ]
+                },
+                "note": {
+                    "description": "Note 随本次流转写入时间线的备注（如面试记录）。",
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "template_id": {
+                    "description": "TemplateID offer / 感谢信模板 id；send_offer 与 reject 时必填。",
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "vars": {
+                    "description": "Vars 模板变量覆盖（offer / reject 发信时生效）。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/request.MailVars"
+                        }
+                    ]
                 }
             }
         },
@@ -1940,6 +3000,95 @@
                     "minLength": 6
                 },
                 "old_password": {
+                    "type": "string"
+                }
+            }
+        },
+        "request.FormCreateReq": {
+            "type": "object",
+            "required": [
+                "direction_code",
+                "fields",
+                "round_id",
+                "title"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "direction_code": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/request.FormFieldReq"
+                    }
+                },
+                "round_id": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "request.FormFieldReq": {
+            "type": "object",
+            "required": [
+                "label",
+                "type"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "placeholder": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "request.FormSubmitReq": {
+            "type": "object",
+            "properties": {
+                "values": {
+                    "type": "object",
+                    "additionalProperties": {}
+                }
+            }
+        },
+        "request.FormUpdateReq": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/request.FormFieldReq"
+                    }
+                },
+                "is_open": {
+                    "type": "boolean"
+                },
+                "title": {
                     "type": "string"
                 }
             }
@@ -2151,6 +3300,38 @@
                 }
             }
         },
+        "request.SendInvitationReq": {
+            "type": "object",
+            "required": [
+                "application_id",
+                "template_id"
+            ],
+            "properties": {
+                "application_id": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "expires_in_days": {
+                    "description": "ExpiresInDays 邀请有效天数；缺省 7，上限 90（再长就失去\"限期响应\"的语义）。",
+                    "type": "integer",
+                    "maximum": 90,
+                    "minimum": 1
+                },
+                "template_id": {
+                    "description": "TemplateID invitation 类型模板的 id；不存在或类型不符由服务层校验并报业务错误。",
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "vars": {
+                    "description": "Vars 模板变量覆盖。服务端会预填 invitation_token 等邀请上下文，\n调用方传同键会覆盖预填值。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/request.MailVars"
+                        }
+                    ]
+                }
+            }
+        },
         "request.SendMailBulkReq": {
             "type": "object",
             "required": [
@@ -2232,11 +3413,6 @@
                     ],
                     "example": "front-end"
                 },
-                "name": {
-                    "description": "姓名；null 清除，缺省不动（issue #86 新增可改字段）",
-                    "type": "string",
-                    "example": "张三"
-                },
                 "qq": {
                     "description": "QQ；null 清除，缺省不动",
                     "type": "string",
@@ -2275,6 +3451,14 @@
                         "email",
                         "phone"
                     ]
+                }
+            }
+        },
+        "response.AcceptInvitationResp": {
+            "type": "object",
+            "properties": {
+                "candidate": {
+                    "$ref": "#/definitions/response.MyCandidate"
                 }
             }
         },
@@ -2349,6 +3533,284 @@
                 },
                 "user_id": {
                     "type": "integer"
+                }
+            }
+        },
+        "response.CandidateDetailResp": {
+            "type": "object",
+            "properties": {
+                "candidate": {
+                    "$ref": "#/definitions/response.CandidateResp"
+                },
+                "timeline": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.CandidateTimelineResp"
+                    }
+                }
+            }
+        },
+        "response.CandidateListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.CandidateResp"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.CandidateResp": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.CandidateTimelineResp": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "from_status": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "operator_id": {
+                    "type": "integer"
+                },
+                "to_status": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.FormDetailResp": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.FormFieldResp"
+                    }
+                },
+                "form": {
+                    "$ref": "#/definitions/response.FormResp"
+                }
+            }
+        },
+        "response.FormFieldResp": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "placeholder": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.FormListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.FormResp"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.FormResp": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "direction_code": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_open": {
+                    "type": "boolean"
+                },
+                "round_id": {
+                    "type": "integer"
+                },
+                "share_token": {
+                    "type": "string"
+                },
+                "submission_count": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.FormSubmissionListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.FormSubmissionResp"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.FormSubmissionResp": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "integer"
+                },
+                "form_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "submitted_at": {
+                    "type": "string"
+                },
+                "submitter_id": {
+                    "type": "integer"
+                },
+                "values": {
+                    "type": "object",
+                    "additionalProperties": {}
+                }
+            }
+        },
+        "response.InvitationListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.InvitationResp"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.InvitationResp": {
+            "type": "object",
+            "properties": {
+                "accepted_at": {
+                    "type": "string"
+                },
+                "application_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email_sent_at": {
+                    "description": "EmailSentAt 空串表示邮件从未投递成功——此时不算「已邀请」，允许重试投递。",
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "sent_by": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -2531,6 +3993,84 @@
                 }
             }
         },
+        "response.MyCandidate": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.MyCandidateListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.MyCandidate"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.MyInvitation": {
+            "type": "object",
+            "properties": {
+                "accepted_at": {
+                    "type": "string"
+                },
+                "application_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "expired": {
+                    "description": "Expired 由服务端按查询时刻判定，前端不必自行比对过期时间。",
+                    "type": "boolean"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.MyInvitationListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.MyInvitation"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "response.RecruitmentApplicationDetailResp": {
             "type": "object",
             "properties": {
@@ -2706,6 +4246,40 @@
                 "message": {
                     "description": "提示信息",
                     "type": "string"
+                }
+            }
+        },
+        "response.ShareFormResp": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.FormFieldResp"
+                    }
+                },
+                "form": {
+                    "$ref": "#/definitions/response.FormResp"
+                },
+                "my_submission_id": {
+                    "type": "integer"
+                },
+                "submitted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "response.SubmitFormResp": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "integer"
+                },
+                "application_status": {
+                    "type": "string"
+                },
+                "submission": {
+                    "$ref": "#/definitions/response.FormSubmissionResp"
                 }
             }
         },
