@@ -61,6 +61,26 @@ async function load() {
   }
 }
 onMounted(load);
+
+/**
+ * 页内锚点的平滑滚动（issue #94）。
+ *
+ * 不用原生锚点跳转：`scroll-behavior: smooth` 挂在 .swiss-signal 上，而实际
+ * 滚动容器是视口，样式管不到；这里直接 scrollIntoView。系统开了
+ * 「减少动态效果」时退回瞬时跳转，和壳层动画的降级口径一致。
+ */
+function scrollToSection(event: MouseEvent, id: string): void {
+  event.preventDefault();
+  const target = document.getElementById(id);
+  if (!target) return;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  target.scrollIntoView({
+    behavior: reduced ? "auto" : "smooth",
+    block: "start",
+  });
+  // 同步地址栏锚点，保持链接可分享
+  history.replaceState(null, "", `#${id}`);
+}
 function updateIndex() {
   if (!rail.value) return;
   const panels = [
@@ -134,7 +154,13 @@ function steps(application: DirectionApplication) {
     <nav class="space-nav" aria-label="页面内导航">
       <span class="mono">YOUR PERSONAL SPACE / 2026</span>
       <div>
-        <a href="#directions">探索方向</a><a href="#journey">我的进度</a>
+        <a
+          href="#directions"
+          @click="scrollToSection($event, 'directions')"
+          >探索方向</a
+        ><a href="#journey" @click="scrollToSection($event, 'journey')"
+          >我的进度</a
+        >
       </div>
     </nav>
     <section class="home-poster">
@@ -151,7 +177,10 @@ function steps(application: DirectionApplication) {
       </h1>
       <div class="home-poster-bottom">
         <p>前端、后端与智能体。<br />选择一个起点，把你的想法做成作品。</p>
-        <a class="action-button" href="#directions"
+        <a
+          class="action-button"
+          href="#directions"
+          @click="scrollToSection($event, 'directions')"
           ><span>找到我的方向</span><b aria-hidden="true">↘</b></a
         >
       </div>

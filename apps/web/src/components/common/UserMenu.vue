@@ -11,14 +11,25 @@
  *
  * el-popover trigger="click"：hover 在 sticky header 上容易误触，且要支持触屏。
  */
-import { onMounted, ref } from "vue";
+import { inject, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { AuthRequestError } from "@/api/auth";
 import { fetchCurrentUser, type CurrentUser } from "@/api/admin";
 import { signOut } from "@/auth/session";
+import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 
 const router = useRouter();
+/**
+ * 壳层的擦除过渡（issue #94）：进入个人设置与「返回用户首页」共用同一款
+ * 登录转场动画。壳外使用（理论上不会发生）时降级为直接跳转。
+ */
+const transition = inject(
+  SIGNAL_TRANSITION,
+  async (change: () => unknown) => {
+    await change();
+  },
+);
 const user = ref<CurrentUser | null>(null);
 const loadError = ref("");
 const signingOut = ref(false);
@@ -44,7 +55,7 @@ onMounted(loadUser);
  */
 function openSettings(): void {
   popoverVisible.value = false;
-  void router.push("/user/settings");
+  void transition(() => router.push("/user/settings"));
 }
 
 async function handleSignOut(): Promise<void> {

@@ -12,15 +12,14 @@ const emit = defineEmits<{ "transition-active": [active: boolean] }>();
 const route = useRoute();
 const router = useRouter();
 /**
- * 顶栏导航按页面分区（issue #94）：
- *   - 认证页（/、/login）：01 登录 / 02 注册 + 03 用户首页
- *   - 用户侧（/user/*）：已登录，不再展示登录/注册；「用户首页」只出现在
- *     非首页的用户页面上（首页本身就是落点，再放一个自己链自己没有意义）；
- *     用户名菜单（UserMenu）挂到 masthead，个人设置与退出登录都从这里进
+ * masthead 的导航（issue #94）：
+ *   - 认证页（/、/login）：不放导航——表单自带登录/注册切换，顶栏再来一份
+ *     完全重复
+ *   - 用户侧（/user/*）：用户名菜单（UserMenu）常驻；「返回用户首页」只出现
+ *     在非首页的用户页面（首页本身就是落点，再放一个自己链自己没有意义）
  */
 const isUserPage = () => route.path.startsWith("/user/");
-const showAuthNav = () => !isUserPage();
-const showHomeJump = () => !isUserPage() || route.path !== "/user/home";
+const isUserHome = () => route.path === "/user/home";
 const root = ref<HTMLElement | null>(null);
 const wipe = ref<HTMLElement | null>(null);
 const wiping = ref(false);
@@ -34,12 +33,13 @@ onUnmounted(() => {
 });
 provide(SIGNAL_MODE, mode);
 provide(SIGNAL_BUSY, busy);
-async function openAuth(next: AuthMode) {
-  if (busy.value) return;
-  if (!["/", "/login"].includes(route.path)) await router.push("/");
-  mode.value = next;
-}
-provide(SIGNAL_TRANSITION, async (change) => {
+/**
+ * 页面切换的三板擦除过渡（黄块带着 CONNECTING IDEAS 划过）。
+ * 认证页的登录/注册切换、用户侧「返回用户首页」与进入个人设置都走它——
+ * change 只管真正执行路由跳转，动画的启停、中断与 reduced-motion 降级
+ * 全部收敛在这里。
+ */
+async function withWipe(change: () => unknown) {
   if (wiping.value || disposed) return;
   if (!motion.enabled()) {
     await change();
@@ -78,7 +78,14 @@ provide(SIGNAL_TRANSITION, async (change) => {
     wiping.value = false;
     emit("transition-active", false);
   }
-});
+}
+provide(SIGNAL_TRANSITION, withWipe);
+
+/** 「返回用户首页」：与登录转场同款的擦除动画 */
+function goHome(): void {
+  void withWipe(() => router.push("/user/home"));
+}
+
 watch(mode, async () => {
   await nextTick();
   motion.form();
@@ -109,30 +116,13 @@ watch(
         ><span>IoT STUDIO<small>物联网工作室</small></span></RouterLink
       >
       <span class="masthead-note">A PLACE FOR CURIOUS MINDS.</span>
-      <nav v-if="showAuthNav() || showHomeJump()" class="view-nav" aria-label="页面导航">
-        <template v-if="showAuthNav()">
-          <button
-            :aria-pressed="mode === 'login'"
-            :disabled="busy"
-            @click="openAuth('login')"
-          >
-            01 登录
-          </button>
-          <button
-            :aria-pressed="mode === 'register'"
-            :disabled="busy"
-            @click="openAuth('register')"
-          >
-            02 注册
-          </button>
-        </template>
-        <button
-          v-if="showHomeJump()"
-          :aria-pressed="route.path.startsWith('/user/')"
-          :disabled="busy"
-          @click="router.push('/user/home')"
-        >
-          {{ isUserPage() ? "返回用户首页" : "03 用户首页" }} <span>↗</span>
+      <nav
+        v-if="isUserPage() && !isUserHome()"
+        class="view-nav"
+        aria-label="页面导航"
+      >
+        <button aria-pressed="true" :disabled="busy" @click="goHome">
+          返回用户首页 <span>↗</span>
         </button>
       </nav>
       <span v-if="isUserPage()" class="masthead__user">
