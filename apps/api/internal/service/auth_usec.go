@@ -200,6 +200,17 @@ func (auc *AuthUseCase) UpdateProfile(ctx context.Context, userID int, patch *re
 		}
 	}
 
+	// name（issue #86 新增可改字段）：只改 user.Name 本身，不碰登录名 / 邮箱 /
+	// 密码，也不触发令牌重签或会话失效——改名后已签发的 JWT 只是名字旧一点，
+	// 刷新时自然更新（与 triage 决策一致：改名不应打扰现有会话）。
+	if patch.Name.Present {
+		if patch.Name.Clear {
+			user.Name = ""
+		} else {
+			user.Name = patch.Name.Value
+		}
+	}
+
 	if err := auc.userRepo.Update(ctx, user); err != nil {
 		return nil, err
 	}

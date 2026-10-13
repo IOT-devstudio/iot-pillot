@@ -3407,6 +3407,11 @@ const docTemplate = `{
                     "type": "string",
                     "example": "物联网工程 2301"
                 },
+                "name": {
+                    "description": "姓名；null 清除，缺省不动（issue #86 新增可改字段）",
+                    "type": "string",
+                    "example": "张三"
+                },
                 "direction": {
                     "description": "方向；null/空串清除，缺省不动",
                     "type": "string",

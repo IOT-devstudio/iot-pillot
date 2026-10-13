@@ -48,6 +48,8 @@ export interface MyProfileUpdate {
   student_id?: number | null;
   qq?: string | null;
   direction?: Direction | null;
+  /** 姓名；issue #86 起可改，3~20 字符；null 清空，未传不动。 */
+  name?: string | null;
 }
 
 /** 读取自己的完整资料。 */
