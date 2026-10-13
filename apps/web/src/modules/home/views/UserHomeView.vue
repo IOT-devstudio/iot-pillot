@@ -129,8 +129,14 @@ function steps(application: DirectionApplication) {
 </script>
 <template>
   <main class="home-view">
-    <!-- 页内导航已收敛到壳层 masthead（issue #94）：用户名菜单进顶栏，
-         本页不再单挂一条 space-nav；探索方向/我的进度由页内锚点按钮直达 -->
+    <!-- 页内锚点导航（issue #94 review 保留）：只留探索方向/我的进度两个
+         页内跳转；个人设置走 masthead 的用户名菜单，关于我们走页脚 -->
+    <nav class="space-nav" aria-label="页面内导航">
+      <span class="mono">YOUR PERSONAL SPACE / 2026</span>
+      <div>
+        <a href="#directions">探索方向</a><a href="#journey">我的进度</a>
+      </div>
+    </nav>
     <section class="home-poster">
       <div class="mono home-poster-top">
         <span v-if="displayName">HELLO, {{ displayName }}.</span
