@@ -46,7 +46,11 @@ async (page) => {
             sawWipe = true;
             const strips = [...wipe.children].filter(el => el.matches("i, .wipe-panel"));
             const offsets = strips.map(el => el.getBoundingClientRect().top);
-            window.__wipeCheck.samples.push({ ms, offsets, overflow: document.documentElement.scrollWidth > innerWidth });
+            window.__wipeCheck.samples.push({
+              ms, offsets, overflow: document.documentElement.scrollWidth > innerWidth,
+              hiddenTargetClickable: wipe.closest(".transition-only") &&
+                getComputedStyle(wipe).pointerEvents !== "auto",
+            });
           } else if (sawWipe || (ms > 200 && location.pathname !== "/login")) {
             window.__wipeCheck.done = true;
             window.__wipeCheck.duration = ms;
@@ -67,6 +71,8 @@ async (page) => {
       const check = await page.evaluate(() => window.__wipeCheck);
       if (await page.locator(".page-wipe").count()) throw new Error(scenario.name + ": overlay remains");
       if (check.samples.some(s => s.overflow)) throw new Error(scenario.name + ": horizontal overflow");
+      if (check.samples.some(s => s.hiddenTargetClickable))
+        throw new Error(scenario.name + ": hidden destination controls can be clicked during exit");
       if (!scenario.slow && check.duration > 1500) throw new Error(scenario.name + ": transition took " + Math.round(check.duration) + "ms (budget 1500ms including navigation)");
       if (!scenario.slow && !scenario.reduced && !scenario.interrupt && check.duration < 1050)
         throw new Error(scenario.name + ": transition ended before the requested 1100ms animation");

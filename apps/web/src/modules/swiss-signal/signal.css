@@ -1942,6 +1942,9 @@
 .swiss-signal.transition-only > :not(.page-wipe) {
   display: none;
 }
+.swiss-signal.transition-only .page-wipe {
+  pointer-events: auto;
+}
 .swiss-signal .page-wipe > .wipe-panel {
   position: relative;
   flex: 1 0 0;
