@@ -111,6 +111,10 @@
   margin-left: auto;
   margin-right: 30px;
 }
+.swiss-signal .masthead__user {
+  flex-shrink: 0;
+  margin-left: 18px;
+}
 .swiss-signal .view-nav {
   display: flex;
   border: 1px solid var(--line);

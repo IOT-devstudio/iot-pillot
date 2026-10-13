@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onUnmounted, provide, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import UserMenu from "@/components/common/UserMenu.vue";
 import type { AuthMode } from "@/auth/submit";
 import { SIGNAL_BUSY, SIGNAL_MODE, SIGNAL_TRANSITION } from "./context";
 import { useSignalMotion } from "./motion";
@@ -10,6 +11,16 @@ defineProps<{ transitionOnly?: boolean }>();
 const emit = defineEmits<{ "transition-active": [active: boolean] }>();
 const route = useRoute();
 const router = useRouter();
+/**
+ * 顶栏导航按页面分区（issue #94）：
+ *   - 认证页（/、/login）：01 登录 / 02 注册 + 03 用户首页
+ *   - 用户侧（/user/*）：已登录，不再展示登录/注册；「用户首页」只出现在
+ *     非首页的用户页面上（首页本身就是落点，再放一个自己链自己没有意义）；
+ *     用户名菜单（UserMenu）挂到 masthead，个人设置与退出登录都从这里进
+ */
+const isUserPage = () => route.path.startsWith("/user/");
+const showAuthNav = () => !isUserPage();
+const showHomeJump = () => !isUserPage() || route.path !== "/user/home";
 const root = ref<HTMLElement | null>(null);
 const wipe = ref<HTMLElement | null>(null);
 const wiping = ref(false);
@@ -98,31 +109,35 @@ watch(
         ><span>IoT STUDIO<small>物联网工作室</small></span></RouterLink
       >
       <span class="masthead-note">A PLACE FOR CURIOUS MINDS.</span>
-      <nav class="view-nav" aria-label="页面导航">
+      <nav v-if="showAuthNav() || showHomeJump()" class="view-nav" aria-label="页面导航">
+        <template v-if="showAuthNav()">
+          <button
+            :aria-pressed="mode === 'login'"
+            :disabled="busy"
+            @click="openAuth('login')"
+          >
+            01 登录
+          </button>
+          <button
+            :aria-pressed="mode === 'register'"
+            :disabled="busy"
+            @click="openAuth('register')"
+          >
+            02 注册
+          </button>
+        </template>
         <button
-          :aria-pressed="!route.path.startsWith('/user/') && mode === 'login'"
-          :disabled="busy"
-          @click="openAuth('login')"
-        >
-          01 登录
-        </button>
-        <button
-          :aria-pressed="
-            !route.path.startsWith('/user/') && mode === 'register'
-          "
-          :disabled="busy"
-          @click="openAuth('register')"
-        >
-          02 注册
-        </button>
-        <button
+          v-if="showHomeJump()"
           :aria-pressed="route.path.startsWith('/user/')"
           :disabled="busy"
           @click="router.push('/user/home')"
         >
-          03 用户首页 <span>↗</span>
+          {{ isUserPage() ? "返回用户首页" : "03 用户首页" }} <span>↗</span>
         </button>
       </nav>
+      <span v-if="isUserPage()" class="masthead__user">
+        <UserMenu />
+      </span>
     </header>
     <slot />
     <div class="signal-tape" aria-hidden="true">

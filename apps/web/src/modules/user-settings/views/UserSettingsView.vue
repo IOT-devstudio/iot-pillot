@@ -9,7 +9,6 @@
  */
 import { onMounted } from "vue";
 
-import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import PageHeader from "@/components/common/PageHeader.vue";
 import { nextFormFromProfile, useUserSettings } from "../composables/useUserSettings";
 import UserSettingsForm from "../components/UserSettingsForm.vue";
@@ -44,8 +43,6 @@ function resetForm(): void {
 <template>
   <div class="page settings-page">
     <main class="page__body">
-      <BackToDashboard />
-
       <PageHeader
         eyebrow="iot-pillot · 用户侧"
         title="个人设置"

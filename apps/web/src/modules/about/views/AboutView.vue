@@ -16,7 +16,8 @@
  * 统一以「待补充」状态呈现（见 fixtures.ts 与 issue #94）；简介与方向
  * 沿用登录页已有文案，不涉及具体数据。底部有一行标注兜底。
  *
- * 返回入口按角色分流（issue #94）：普通用户回个人首页，管理员保留控制台。
+ * 出路（issue #94）：页面挂在 SignalShell 壳内，回个人首页走 masthead 的
+ * 「返回用户首页」，不再单放返回链接。
  *
  * 布局与视觉沿用 home 模块（`/user/home`）：`__inner` 是唯一的宽度容器，
  * `__body` 只负责卡片间距，因此四块卡片天然等宽、整页水平居中。
@@ -26,7 +27,6 @@
  * 但「只有真实需要时才创建」），而本步骤只允许改 about 模块下的文件。
  * M3 做设计基线时应当把这两套抽到全局。
  */
-import BackToDashboard from "@/components/common/BackToDashboard.vue";
 import {
   STUDIO_FOCUS,
   STUDIO_INTRO,
@@ -48,10 +48,6 @@ const members = STUDIO_MEMBERS;
   <div class="about">
     <!-- 唯一的宽度容器：标题区和四块卡片都跟着它走，宽度天然一致 -->
     <div class="about__inner">
-      <div class="about__back">
-        <BackToDashboard />
-      </div>
-
       <header class="about__header">
         <h1 class="about__title">关于我们</h1>
         <p class="about__subtitle">{{ profile.name }} · 招新项目手册</p>
@@ -99,10 +95,6 @@ const members = STUDIO_MEMBERS;
 .about__inner {
   max-width: var(--about-content-width);
   margin: 0 auto;
-}
-
-.about__back {
-  margin-bottom: 16px;
 }
 
 .about__header {

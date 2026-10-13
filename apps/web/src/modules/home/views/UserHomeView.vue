@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from "vue";
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile, type MyProfile } from "@/api/profile";
-import UserMenu from "@/components/common/UserMenu.vue";
 import SignalDialog from "@/modules/swiss-signal/SignalDialog.vue";
 import {
   findDirection,
@@ -130,14 +129,8 @@ function steps(application: DirectionApplication) {
 </script>
 <template>
   <main class="home-view">
-    <nav class="space-nav" aria-label="个人空间">
-      <span class="mono">YOUR PERSONAL SPACE / 2026</span>
-      <div>
-        <a href="#directions">探索方向</a><a href="#journey">我的进度</a
-        ><RouterLink to="/user/settings">个人资料</RouterLink
-        ><RouterLink to="/user/about">关于我们</RouterLink><UserMenu />
-      </div>
-    </nav>
+    <!-- 页内导航已收敛到壳层 masthead（issue #94）：用户名菜单进顶栏，
+         本页不再单挂一条 space-nav；探索方向/我的进度由页内锚点按钮直达 -->
     <section class="home-poster">
       <div class="mono home-poster-top">
         <span v-if="displayName">HELLO, {{ displayName }}.</span
