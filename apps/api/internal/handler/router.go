@@ -32,6 +32,7 @@ func NewRouter(
 	authHandler *AuthHandler,
 	adminHandler *AdminHandler,
 	mailHandler *MailHandler,
+	recruitmentHandler *RecruitmentInvitationHandler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -132,6 +133,21 @@ func NewRouter(
 		admin.GET("/mails", mailHandler.ListMails)
 		// 批量删除用 DELETE 方法（语义即删除；body 携带 ids 数组，gin 正常绑定）
 		admin.DELETE("/mails/batch-delete", mailHandler.DeleteMails)
+
+		// ── 管理端-招新（同样要求管理员）──
+		// 邀请与候选人流转的操作者一律取自登录身份；归属核验在服务层。
+		admin.POST("/invitations/send", recruitmentHandler.SendInvitation)
+		admin.GET("/invitations", recruitmentHandler.ListInvitations)
+		admin.POST("/invitations/:id/revoke", recruitmentHandler.RevokeInvitation)
+		admin.GET("/candidates", recruitmentHandler.ListCandidates)
+		admin.GET("/candidates/:id", recruitmentHandler.CandidateDetail)
+		admin.POST("/candidates/:id/advance", recruitmentHandler.AdvanceCandidate)
+
+		// ── 用户端-招新（需要登录）──
+		// 接受邀请必须登录并核对申请归属（服务层 application.user_id == 当前用户）。
+		apiV1.GET("/me/invitations", authRequired, recruitmentHandler.ListMyInvitations)
+		apiV1.POST("/me/invitations/accept", authRequired, recruitmentHandler.AcceptInvitation)
+		apiV1.GET("/me/candidates", authRequired, recruitmentHandler.ListMyCandidates)
 	}
 	return &Router{eng: r, cfg: cfg}
 }
