@@ -16,10 +16,12 @@ const router = useRouter();
  *   - 认证页（/、/login）：不放导航——表单自带登录/注册切换，顶栏再来一份
  *     完全重复
  *   - 用户侧（/user/*）：用户名菜单（UserMenu）常驻；「返回用户首页」只出现
- *     在非首页的用户页面（首页本身就是落点，再放一个自己链自己没有意义）
+ *     在非首页的用户页面（首页本身就是落点，再放一个自己链自己没有意义）；
+ *     个人设置页不放用户名菜单——页面本身就是「个人设置」，入口重复（issue #94 review）
  */
 const isUserPage = () => route.path.startsWith("/user/");
 const isUserHome = () => route.path === "/user/home";
+const isUserSettings = () => route.path === "/user/settings";
 const root = ref<HTMLElement | null>(null);
 const wipe = ref<HTMLElement | null>(null);
 const wiping = ref(false);
@@ -125,7 +127,7 @@ watch(
           返回用户首页 <span>↗</span>
         </button>
       </nav>
-      <span v-if="isUserPage()" class="masthead__user">
+      <span v-if="isUserPage() && !isUserSettings()" class="masthead__user">
         <UserMenu />
       </span>
     </header>
