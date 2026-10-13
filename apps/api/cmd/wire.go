@@ -47,15 +47,18 @@ func InitializeApp() (*handler.Router, func(), error) {
 		repository.NewUserRepo,
 		repository.NewMailModelRepo,
 		repository.NewMailRepo,
+		repository.NewRecruitmentRepo,
 
 		service.NewAuthUseCase,
 		service.NewMailUseCase,
 		service.NewAdminUseCase,
+		service.NewRecruitmentUseCase,
 
 		handler.NewHealthHandler,
 		handler.NewAuthHandler,
 		handler.NewAdminHandler,
 		handler.NewMailHandler,
+		handler.NewRecruitmentHandler,
 
 		handler.NewRouter,
 	)

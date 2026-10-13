@@ -63,7 +63,10 @@ func InitializeApp() (*handler.Router, func(), error) {
 	mailSender := service.NewMailSender(mailManager)
 	mailUseCase := service.NewMailUseCase(mailModelRepo, mailRepo, userRepo, mailSender)
 	mailHandler := handler.NewMailHandler(mailUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, tokenManager, adminStore)
+	recruitmentRepo := repository.NewRecruitmentRepo(db)
+	recruitmentUseCase := service.NewRecruitmentUseCase(recruitmentRepo, userRepo)
+	recruitmentHandler := handler.NewRecruitmentHandler(recruitmentUseCase)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, tokenManager, adminStore)
 	return router, func() {
 		cleanup()
 	}, nil

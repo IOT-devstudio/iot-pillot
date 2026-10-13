@@ -37,6 +37,11 @@ psql "$DSN" -v ON_ERROR_STOP=1 -f apps/api/migrations/0002_mail_tables.up.sql
 | --- | --- |
 | `0001_users_recruitment_fields.up.sql` | `users` 补 `detail_*` 四列与 `parse`；放开 `name` 唯一约束；补索引 |
 | `0002_mail_tables.up.sql` | 新建 `mail_models`（模板）与 `mails`（发信记录） |
+| `0003_rename_mail_user_id_columns.up.sql` | `mails.from`/`to` 改名 `from_user_id`/`to_user_id` |
+| `0004_mail_required_columns.up.sql` | `mail_models` 补 `title`、`mail_example` 必填 |
+| `0005_email_unique_and_template_type.up.sql` | 用户邮箱唯一索引 + 邮件模板类型去唯一化（支持扩展新增） |
+| `0006_users_detail_qq.up.sql` | `users` 补 `detail_qq` 字段（issue #57） |
+| `0007_recruitment_tables.up.sql` | 招新模块四表（轮次/方向/报名申请/时间线）+ 种子数据（issue #88） |
 
 回滚用同名的 `.down.sql`。
 

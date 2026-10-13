@@ -33,6 +33,11 @@ func FailUnauthorized(c *gin.Context, msg string) {
 	Fail(c, http.StatusUnauthorized, CodeUnauthorized, msg)
 }
 
+// FailForbidden 无权限（HTTP 403）
+func FailForbidden(c *gin.Context, msg string) {
+	Fail(c, http.StatusForbidden, CodeForbidden, msg)
+}
+
 // FailServer 服务器内部错误（HTTP 500）
 func FailServer(c *gin.Context, msg string) {
 	Fail(c, http.StatusInternalServerError, CodeServerError, msg)
