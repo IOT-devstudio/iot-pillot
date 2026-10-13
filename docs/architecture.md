@@ -103,8 +103,8 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
   - `GET /forms/:id` 详情
   - `PATCH /forms/:id` 修改（admin）
   - `DELETE /forms/:id` 删除（admin）
-  - `GET /forms/public/:shareToken` 匿名获取表单定义
-  - `POST /forms/public/:shareToken/submit` 匿名提交（限流）
+  - `GET /forms/public/:shareToken` 分享链接读取表单定义（需登录；shareToken 仅用于定位分享表单，不构成匿名访问）
+  - `POST /forms/public/:shareToken/submit` 登录用户经分享链接提交（需登录 + 限流）
 - **依赖**：DB（GORM）+ 限流中间件
 - **引入 GORM 时机**：本模块开工时
 
@@ -160,7 +160,7 @@ CandidateStatus:  interviewing ─► offered ─► hired
 
 - `Prospect.email`：用于 SMTP 发送邀请函的主键
 - `Prospect.sourceFormId`：来自哪个表单（form 提交自动创建 prospect）
-- `Prospect.shareToken`：表单匿名访问令牌（`FormDefinition.shareToken`）
+- `Prospect.shareToken`：表单分享定位符（`FormDefinition.shareToken`，仅用于定位分享表单，不构成鉴权绕过）
 - `Candidate.notes`：面试记录（自由文本，admin 编辑）
 - `EmailTemplate.variables`：从 body 扫描出的占位符名（`{{name}}` 等），前端用来渲染表单、后端用来校验必填字段
 
