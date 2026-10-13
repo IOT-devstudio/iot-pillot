@@ -368,3 +368,19 @@ MailModule 当前是后端能力，不单独创建前端 `modules/mail/`；招�
 | 2026-09-09 | 加 `ci.yml` + `deploy.yml`，bot 终于有 status check 可等 | `ci.yml`（PR 触发 Go vet/build/test + 前端 typecheck/build）；`deploy.yml`（push main → Docker build → SCP → SSH 部署到 VPS）；同期把 README 残留测试注释删掉、补 `.env.example`、整理 CLAUDE.md 与 go.mod 一致性 |
 | 2026-09-09 | 文档收尾：README 填实快速开始 + 项目状态、docs/architecture.md 落地、.gitignore 覆盖 Vite/unplugin/vue-tsc 副产物 | README 补 install/dev/build/test 命令与项目状态表；docs/architecture.md 记录当前架构 + 5 个业务模块引入顺序 + 数据模型与状态机；.gitignore 加 *.tsbuildinfo 与 apps/web/{auto-imports.d.ts, components.d.ts, vite.config.{d.ts,js}} 避免 pnpm build 污染 PR |
 | 2026-09-20 | 接口文档选 swag v1（Swagger 2.0）+ gin-swagger：UI 挂 `/docs`，spec 挂 `/openapi.json` | handler 里早已写好 swaggo 注解，只差生成器与 UI；FastAPI 的 `/docs` 本身就是 Swagger UI，界面观感一致。swag v2（OpenAPI 3.1）仍是 rc，暂不引入。默认 debug 开、release 关（`docs.enabled` 可覆盖）——文档会暴露整个接口面。生成物随源码入库，镜像/CI 只跑 go build，不装 swag CLI |
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as GitHub Issues for `IOT-devstudio/iot-pillot` (use the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+single-context — one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
