@@ -31,6 +31,7 @@ type TokenIssuer interface {
 	GenerateTokens(ctx context.Context, userID int, username string, role string) (accessToken string, refreshToken string, err error)
 	ValidateRefreshToken(ctx context.Context, tokenString string) (userID int, username string, role string, err error)
 	RevokeSession(ctx context.Context, accessToken string, refreshToken string) error
+	RevokeUserSessions(ctx context.Context, userID int) error
 }
 
 // NewTokenIssuer 把 *utils.TokenManager 作为 TokenIssuer 提供给装配层。
@@ -42,9 +43,11 @@ func NewTokenIssuer(manager *utils.TokenManager) TokenIssuer {
 }
 
 // VerifyCodeChecker 认证服务对验证码的全部依赖。
+//
+// purpose 维度见 utils.VerifyCodePurpose：同一邮箱的注册码与重置码是两张独立的码。
 type VerifyCodeChecker interface {
-	VerifyCode(ctx context.Context, verifier string, code string) error
-	SendVerifyCode(ctx context.Context, verifier string, verifierType utils.VerifierType) error
+	VerifyCode(ctx context.Context, verifier string, purpose utils.VerifyCodePurpose, code string) error
+	SendVerifyCode(ctx context.Context, verifier string, purpose utils.VerifyCodePurpose, verifierType utils.VerifierType) error
 }
 
 // NewVerifyCodeChecker 与 NewTokenIssuer 同理，只是换了 CodeManager。
@@ -95,6 +98,15 @@ var ErrAccountLocked = errors.New("登录失败次数过多，请 15 分钟后�
 
 // ErrEmailTaken 邮箱已被注册。
 var ErrEmailTaken = errors.New("该邮箱已被注册，请直接登录或更换邮箱")
+
+// ErrPasswordReused 新密码与当前密码相同（issue #84）。
+var ErrPasswordReused = errors.New("新密码不能与当前密码相同")
+
+// ErrAccountNotFoundForReset 重置密码时邮箱未注册。
+//
+// 刻意与 ErrEmailTaken 分开：注册时要提示"已注册"，重置时要提示"未注册"，
+// 两者对用户的下一步动作指引完全相反。
+var ErrAccountNotFoundForReset = errors.New("该邮箱尚未注册")
 
 /* ------------------------------------------------------------------ *
  * 角色
@@ -300,7 +312,7 @@ func (auc *AuthUseCase) Register(ctx context.Context, req *request.RegisterReq) 
 		return nil, err
 	}
 
-	if err := auc.codeManager.VerifyCode(ctx, email, req.Code); err != nil {
+	if err := auc.codeManager.VerifyCode(ctx, email, utils.VerifyPurposeRegister, req.Code); err != nil {
 		return nil, err
 	}
 
@@ -376,5 +388,105 @@ func (auc *AuthUseCase) Logout(ctx context.Context, accessToken string, refreshT
 }
 
 func (auc *AuthUseCase) SendVerifyCode(ctx context.Context, verifier string, verifierType string) error {
-	return auc.codeManager.SendVerifyCode(ctx, verifier, utils.VerifierType(verifierType))
+	return auc.codeManager.SendVerifyCode(ctx, verifier, utils.VerifyPurposeRegister, utils.VerifierType(verifierType))
+}
+
+/* ------------------------------------------------------------------ *
+ * 密码找回与修改（issue #84）
+ * ------------------------------------------------------------------ */
+
+// SendResetCode 发送找回密码用的验证码（purpose=reset）。
+func (auc *AuthUseCase) SendResetCode(ctx context.Context, email string) error {
+	return auc.codeManager.SendVerifyCode(ctx, email, utils.VerifyPurposeReset, utils.VerifierTypeEmail)
+}
+
+// ResetPassword 通过邮箱验证码重置密码。
+//
+// 安全取舍：邮箱未注册时返回明确的 ErrAccountNotFoundForReset，
+// 这在技术上构成邮箱枚举面。但本接口要求先通过验证码门槛，
+// 攻击者必须真的收到一封邮件才能确认账号存在，成本远高于裸查邮箱。
+func (auc *AuthUseCase) ResetPassword(ctx context.Context, req *request.ResetPasswordReq) error {
+	email := strings.TrimSpace(req.Email)
+
+	user, err := auc.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return ErrAccountNotFoundForReset
+		}
+		return err
+	}
+	if user == nil {
+		return ErrAccountNotFoundForReset
+	}
+
+	if err := auc.codeManager.VerifyCode(ctx, email, utils.VerifyPurposeReset, req.Code); err != nil {
+		return err
+	}
+
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		return err
+	}
+
+	// 先 Get 后改：userRepo.Update 底层是 GORM Save（全字段覆盖），
+	// 直接 Save 空壳会把其它列清零（同 UpdateProfile 的套路）。
+	user.Password = hashedPassword
+	if err := auc.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
+
+	// 密码已变，旧令牌必须全部作废：攻击者拿着旧 access token
+	// 仍能继续操作，改密就失去了意义。
+	if err := auc.tokenManager.RevokeUserSessions(ctx, user.ID); err != nil {
+		// 撤销失败不能让改密整体失败（用户密码确实已改），
+		// 但必须留下痕迹，否则会出现"改了密码但旧会话还活着"的静默窗口。
+		log.Printf("[auth] 用户 %d 重置密码后撤销会话失败（旧令牌可能仍然有效）: %v", user.ID, err)
+	}
+
+	return nil
+}
+
+// ChangePassword 登录状态下修改密码：校验旧密码 → 更新 → 撤销全部会话。
+//
+// 旧密码猜错同样计入登录失败锁定（failureKey 与 Login 同一个）：
+// 否则拿到一枚有效 access token 的人可以无限次试旧密码，
+// 而 Login 侧的 ErrAccountLocked 防爆破就被绕过去了。
+func (auc *AuthUseCase) ChangePassword(ctx context.Context, userID int, req *request.ChangePasswordReq) error {
+	user, err := auc.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return ErrInvalidCredentials
+		}
+		return err
+	}
+	if user == nil {
+		return ErrInvalidCredentials
+	}
+
+	if !utils.CheckPassword(req.OldPassword, user.Password) {
+		auc.recordLoginFailure(ctx, utils.LoginFailureKey(strings.ToLower(user.Name)))
+		return ErrInvalidCredentials
+	}
+
+	if utils.CheckPassword(req.NewPassword, user.Password) {
+		return ErrPasswordReused
+	}
+
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		return err
+	}
+
+	user.Password = hashedPassword
+	if err := auc.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
+
+	// 撤销该用户全部会话（含当前这次请求的令牌）：
+	// 改密后强制所有端重新登录，避免旧令牌成为后门。
+	if err := auc.tokenManager.RevokeUserSessions(ctx, userID); err != nil {
+		log.Printf("[auth] 用户 %d 修改密码后撤销会话失败（旧令牌可能仍然有效）: %v", userID, err)
+	}
+
+	return nil
 }

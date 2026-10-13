@@ -4,10 +4,12 @@ package middleware
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -72,7 +74,19 @@ func AuthRequired(validator TokenValidator) gin.HandlerFunc {
 
 		userID, username, role, err := validator.ValidateAccessToken(c.Request.Context(), token)
 		if err != nil {
-			response.FailUnauthorized(c, err.Error())
+			// 精确区分失效原因（issue #84）：
+			//   4010 纯过期（签名有效只是 exp 到了）→ 前端安静刷新即可；
+			//   4011 会话失效（登出 / 被新登录顶替 / 改密后撤销）→ 必须重新登录；
+			//   其余（存储不可用等）走 500 脱敏，绝不冒充成"登录冲突"。
+			switch {
+			case errors.Is(err, utils.ErrTokenExpired):
+				response.FailTokenExpired(c, err.Error())
+			case errors.Is(err, utils.ErrSessionRevoked),
+				errors.Is(err, utils.ErrSessionSuperseded):
+				response.FailSessionInvalidated(c, err.Error())
+			default:
+				failTokenStoreUnavailable(c, err)
+			}
 			c.Abort()
 			return
 		}
@@ -148,4 +162,19 @@ func CurrentUser(c *gin.Context) (userID int, username string, role string, ok b
 	}
 
 	return id, name, roleValue, true
+}
+
+// failTokenStoreUnavailable 令牌校验遇到非逻辑故障（Redis 不可用等）时的出口。
+//
+// 刻意走 500 而不是 401：把 Redis 故障报成"会话失效"会让用户被误导去重新登录，
+// 而重新登录同样要写 Redis，只会再失败一次。这类故障必须显式暴露为服务端错误。
+func failTokenStoreUnavailable(c *gin.Context, err error) {
+	if errors.Is(err, utils.ErrTokenStoreUnavailable) {
+		log.Printf("[middleware] 令牌校验因存储不可用而失败: %v", err)
+		response.FailServer(c, "会话校验服务暂不可用，请稍后重试")
+		return
+	}
+	// 兜底：未知错误按无效令牌处理，但不外泄原文
+	log.Printf("[middleware] 令牌校验出现未知错误: %v", err)
+	response.FailUnauthorized(c, "无效的令牌")
 }

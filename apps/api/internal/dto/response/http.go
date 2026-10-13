@@ -38,6 +38,16 @@ func FailServer(c *gin.Context, msg string) {
 	Fail(c, http.StatusInternalServerError, CodeServerError, msg)
 }
 
+// FailTokenExpired token 已过期，需要刷新（HTTP 401，业务码 4010）
+func FailTokenExpired(c *gin.Context, msg string) {
+	Fail(c, http.StatusUnauthorized, CodeTokenExpired, msg)
+}
+
+// FailSessionInvalidated 会话已失效（HTTP 401，业务码 4011）
+func FailSessionInvalidated(c *gin.Context, msg string) {
+	Fail(c, http.StatusUnauthorized, CodeSessionInvalidated, msg)
+}
+
 // FailTooManyRequests 请求过于频繁（HTTP 429）
 func FailTooManyRequests(c *gin.Context, msg string) {
 	Fail(c, http.StatusTooManyRequests, CodeTooManyRequests, msg)
