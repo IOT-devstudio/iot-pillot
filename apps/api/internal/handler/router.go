@@ -104,6 +104,9 @@ func NewRouter(
 		apiV1.POST("/login", authHandler.Login)
 		// 注册必须先拿到邮箱验证码：Register 的 code 字段由这里发出的验证码校验。
 		apiV1.POST("/send-verify-code", authHandler.SendVerifyCode)
+		// 找回密码（issue #84）：独立的 reset 验证码，与注册码互不覆盖
+		apiV1.POST("/send-reset-code", authHandler.SendResetCode)
+		apiV1.POST("/reset-password", authHandler.ResetPassword)
 		apiV1.POST("/refresh", authHandler.Refresh)
 		apiV1.POST("/logout", authHandler.Logout)
 
@@ -112,6 +115,8 @@ func NewRouter(
 		// 目标身份由 authRequired 解出的 userID 决定，body 里塞目标参数无效。
 		apiV1.GET("/me", authRequired, authHandler.Me)
 		apiV1.PUT("/me", authRequired, authHandler.UpdateMe)
+		// 修改密码（issue #84）：成功后撤销全部会话，当前令牌一并失效
+		apiV1.POST("/change-password", authRequired, authHandler.ChangePassword)
 
 		// ── 管理端（需要管理员）──
 		// 两级中间件缺一不可：RequireAdmin 依赖 AuthRequired 写入的身份，

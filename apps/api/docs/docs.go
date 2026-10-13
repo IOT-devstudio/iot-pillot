@@ -4,16 +4,16 @@ package docs
 import "github.com/swaggo/swag"
 
 const docTemplate = `{
-    "schemes": [[ marshal .Schemes ]],
+    "schemes": {{ marshal .Schemes }},
     "swagger": "2.0",
     "info": {
-        "description": "[[escape .Description]]",
-        "title": "[[.Title]]",
+        "description": "{{escape .Description}}",
+        "title": "{{.Title}}",
         "contact": {},
-        "version": "[[.Version]]"
+        "version": "{{.Version}}"
     },
-    "host": "[[.Host]]",
-    "basePath": "[[.BasePath]]",
+    "host": "{{.Host}}",
+    "basePath": "{{.BasePath}}",
     "paths": {
         "/api/v1/admin/admins": {
             "get": {
@@ -1158,6 +1158,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/change-password": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "需要登录：校验旧密码 → 更新 → 撤销该用户全部会话（含当前令牌）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "修改密码",
+                "parameters": [
+                    {
+                        "description": "修改密码请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.ChangePasswordReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "修改成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误或新密码与旧密码相同",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证、令牌失效或旧密码错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/login": {
             "post": {
                 "description": "通过用户名**或邮箱** + 密码登录，返回双令牌（access_token + refresh_token）。",
@@ -1691,6 +1742,92 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/reset-password": {
+            "post": {
+                "description": "公开接口：邮箱 + 验证码（purpose=reset）+ 新密码。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "重置密码",
+                "parameters": [
+                    {
+                        "description": "重置密码请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.ResetPasswordReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "重置成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误、邮箱未注册或验证码错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/send-reset-code": {
+            "post": {
+                "description": "向已注册邮箱发送 purpose=reset 的验证码，5 分钟内有效、只能使用一次、猜错 5 次即作废。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证模块"
+                ],
+                "summary": "发送找回密码验证码",
+                "parameters": [
+                    {
+                        "description": "验证目标（已绑定邮箱）",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.ResetCodeReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "发送验证码成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "429": {
+                        "description": "请求过于频繁",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/send-verify-code": {
             "post": {
                 "description": "发送邮箱验证码，5 分钟内有效、只能使用一次、猜错 5 次即作废。",
@@ -1794,6 +1931,23 @@ const docTemplate = `{
                 "user_id": {
                     "type": "integer",
                     "minimum": 1
+                }
+            }
+        },
+        "request.ChangePasswordReq": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "old_password"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "maxLength": 20,
+                    "minLength": 6
+                },
+                "old_password": {
+                    "type": "string"
                 }
             }
         },
@@ -1968,6 +2122,42 @@ const docTemplate = `{
                 }
             }
         },
+        "request.ResetCodeReq": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 50
+                }
+            }
+        },
+        "request.ResetPasswordReq": {
+            "type": "object",
+            "required": [
+                "code",
+                "email",
+                "new_password"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 6,
+                    "minLength": 6
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "new_password": {
+                    "type": "string",
+                    "maxLength": 20,
+                    "minLength": 6
+                }
+            }
+        },
         "request.SendMailBulkReq": {
             "type": "object",
             "required": [
@@ -2073,6 +2263,14 @@ const docTemplate = `{
                 "verifier_type"
             ],
             "properties": {
+                "purpose": {
+                    "description": "Purpose 用途（issue #84）：register | reset。\n\n不带的旧请求一律按 register 处理，保证既有前端不改也能继续注册。",
+                    "type": "string",
+                    "enum": [
+                        "register",
+                        "reset"
+                    ]
+                },
                 "verifier": {
                     "type": "string",
                     "maxLength": 50,
@@ -2559,8 +2757,8 @@ var SwaggerInfo = &swag.Spec{
 	Description:      "IoT 全栈开发工作室的招新管理后台 API。\n统一响应体是 {code, message, data}；除公开端点（注册/登录/发码/刷新/登出）外都需要 Authorization: Bearer <access_token>。",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
-	LeftDelim:        "[[",
-	RightDelim:       "]]",
+	LeftDelim:        "{{",
+	RightDelim:       "}}",
 }
 
 func init() {

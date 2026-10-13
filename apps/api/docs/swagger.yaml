@@ -8,6 +8,18 @@ definitions:
     required:
     - user_id
     type: object
+  request.ChangePasswordReq:
+    properties:
+      new_password:
+        maxLength: 20
+        minLength: 6
+        type: string
+      old_password:
+        type: string
+    required:
+    - new_password
+    - old_password
+    type: object
   request.LoginReq:
     properties:
       password:
@@ -128,6 +140,32 @@ definitions:
     - name
     - password
     type: object
+  request.ResetCodeReq:
+    properties:
+      email:
+        maxLength: 50
+        type: string
+    required:
+    - email
+    type: object
+  request.ResetPasswordReq:
+    properties:
+      code:
+        maxLength: 6
+        minLength: 6
+        type: string
+      email:
+        maxLength: 50
+        type: string
+      new_password:
+        maxLength: 20
+        minLength: 6
+        type: string
+    required:
+    - code
+    - email
+    - new_password
+    type: object
   request.SendMailBulkReq:
     properties:
       recipients:
@@ -202,6 +240,15 @@ definitions:
     type: object
   request.VerifyCodeReq:
     properties:
+      purpose:
+        description: |-
+          Purpose 用途（issue #84）：register | reset。
+
+          不带的旧请求一律按 register 处理，保证既有前端不改也能继续注册。
+        enum:
+        - register
+        - reset
+        type: string
       verifier:
         maxLength: 50
         minLength: 6
@@ -1205,6 +1252,38 @@ paths:
       summary: 用户列表
       tags:
       - 管理端
+  /api/v1/change-password:
+    post:
+      consumes:
+      - application/json
+      description: 需要登录：校验旧密码 → 更新 → 撤销该用户全部会话（含当前令牌）。
+      parameters:
+      - description: 修改密码请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.ChangePasswordReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 修改成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 参数错误或新密码与旧密码相同
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证、令牌失效或旧密码错误
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 修改密码
+      tags:
+      - 认证模块
   /api/v1/login:
     post:
       consumes:
@@ -1519,6 +1598,62 @@ paths:
           schema:
             $ref: '#/definitions/response.Result'
       summary: 用户注册
+      tags:
+      - 认证模块
+  /api/v1/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: 公开接口：邮箱 + 验证码（purpose=reset）+ 新密码。
+      parameters:
+      - description: 重置密码请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.ResetPasswordReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 重置成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 参数错误、邮箱未注册或验证码错误
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 重置密码
+      tags:
+      - 认证模块
+  /api/v1/send-reset-code:
+    post:
+      consumes:
+      - application/json
+      description: 向已注册邮箱发送 purpose=reset 的验证码，5 分钟内有效、只能使用一次、猜错 5 次即作废。
+      parameters:
+      - description: 验证目标（已绑定邮箱）
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.ResetCodeReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 发送验证码成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Result'
+        "429":
+          description: 请求过于频繁
+          schema:
+            $ref: '#/definitions/response.Result'
+      summary: 发送找回密码验证码
       tags:
       - 认证模块
   /api/v1/send-verify-code:

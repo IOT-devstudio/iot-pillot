@@ -145,18 +145,18 @@ func parseAndValidateToken(tokenString string, secret string, expectedType strin
 	})
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return 0, "", "", "", errors.New("token 已过期")
+			return 0, "", "", "", ErrTokenExpired
 		}
-		return 0, "", "", "", err
+		return 0, "", "", "", ErrTokenInvalid
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
-		return 0, "", "", "", errors.New("无效的 token")
+		return 0, "", "", "", ErrTokenInvalid
 	}
 
 	if claims["type"] != expectedType {
-		return 0, "", "", "", errors.New("token 类型不匹配")
+		return 0, "", "", "", ErrTokenInvalid
 	}
 
 	userIDFloat, okID := claims["user_id"].(float64)
@@ -164,7 +164,7 @@ func parseAndValidateToken(tokenString string, secret string, expectedType strin
 	role, _ := claims["role"].(string)
 	sub, _ := claims["sub"].(string)
 	if !okID || !okName {
-		return 0, "", "", "", errors.New("token 缺少必要的用户信息字段")
+		return 0, "", "", "", ErrTokenInvalid
 	}
 
 	return int(userIDFloat), username, role, sub, nil
@@ -180,8 +180,16 @@ func (tm *TokenManager) validateToken(ctx context.Context, tokenString string, e
 
 	getCmd := tm.redis.B().Get().Key(tm.uniqueKey(userID)).Build()
 	current, err := tm.redis.Do(ctx, getCmd).ToString()
-	if err != nil || current == "" || current != sub {
-		return 0, "", "", errors.New("token 已失效（会话已登出或已被新登录顶替）")
+	if err != nil {
+		if rueidis.IsRedisNil(err) {
+			// Redis key 不存在 = 唯一码已被删除（登出 / RevokeUserSessions）
+			return 0, "", "", ErrSessionRevoked
+		}
+		// Redis 网络/服务故障，非逻辑错误
+		return 0, "", "", ErrTokenStoreUnavailable
+	}
+	if current != sub {
+		return 0, "", "", ErrSessionSuperseded
 	}
 	return userID, username, role, nil
 }
@@ -223,7 +231,7 @@ func (tm *TokenManager) RevokeSession(ctx context.Context, accessToken string, r
 		userID = uid
 	}
 	if userID < 0 {
-		return errors.New("token 无效，无法登出")
+		return ErrTokenInvalid
 	}
 	return tm.revokeByUserID(ctx, userID)
 }
@@ -258,3 +266,25 @@ func generateRandomToken() (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+// ==================== 令牌校验 sentinel 错误 ====================
+//
+// 用于中间件/接口层精确区分 4010（纯过期） vs 4011（会话失效/凭据变更） vs 500（存储不可用）。
+// 见 issue #84。
+
+// ErrTokenExpired JWT 签名有效但已过期 → 前端可安静刷新。
+var ErrTokenExpired = errors.New("token 已过期")
+
+// ErrTokenInvalid JWT 签名/类型/字段不合法，不是过期问题 → 视为无效 token。
+var ErrTokenInvalid = errors.New("token 无效")
+
+// ErrSessionRevoked 会话唯一码在 Redis 中不存在（登出 / RevokeUserSessions 删除）
+// → 凭据安全但需要重新登录。
+var ErrSessionRevoked = errors.New("会话已登出")
+
+// ErrSessionSuperseded 唯一码被新登录覆盖（同一用户在其他设备登录后旧唯一码被替换）
+// → 多端互斥场景下旧设备被顶替。
+var ErrSessionSuperseded = errors.New("会话已被新登录顶替")
+
+// ErrTokenStoreUnavailable Redis 故障导致无法校验会话唯一码 → 走 5xx 脱敏。
+var ErrTokenStoreUnavailable = errors.New("令牌存储不可用")

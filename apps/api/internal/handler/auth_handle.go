@@ -126,6 +126,13 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		return
 	}
 
+	// purpose=reset 走专用端点 /send-reset-code，这里只发注册码。
+	// 拒绝而不是忽略：静默按 register 处理会让用户拿着重置码去注册。
+	if req.Purpose == "reset" {
+		response.FailInvalidParam(c, "重置密码请使用 /send-reset-code")
+		return
+	}
+
 	ctx := c.Request.Context()
 
 	// 冷却 + 配额两道限流都放在发信之前：这个接口未认证即可调用，
@@ -162,6 +169,118 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 	response.OKWithMsg(c, "发送验证码成功", nil)
 }
 
+// SendResetCode 发送找回密码验证码接口（issue #84）
+// @Summary 发送找回密码验证码
+// @Description 向已注册邮箱发送 purpose=reset 的验证码，5 分钟内有效、只能使用一次、猜错 5 次即作废。
+// 与注册验证码相互独立：两张码不会互相覆盖。
+// @Tags 认证模块
+// @Accept json
+// @Produce json
+// @Param request body request.ResetCodeReq true "验证目标（已绑定邮箱）"
+// @Success 200 {object} response.Result "发送验证码成功"
+// @Failure 400 {object} response.Result "参数错误"
+// @Failure 429 {object} response.Result "请求过于频繁"
+// @Router /api/v1/send-reset-code [post]
+func (h *AuthHandler) SendResetCode(c *gin.Context) {
+	var req request.ResetCodeReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, err.Error())
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// 与注册码同一套冷却 + IP 配额：这个接口同样未认证即可调用，
+	// 无限流就能被用来对任意邮箱刷信（烧 SMTP 配额、毁发信信誉）。
+	allowed, err := h.limiter.AllowOnce(ctx, utils.VerifyCooldownKey(req.Email), utils.VerifyResendCooldown)
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+	if !allowed {
+		response.FailTooManyRequests(c, "验证码已发送，请 60 秒后再试")
+		return
+	}
+
+	allowed, err = h.limiter.AllowWithin(
+		ctx,
+		utils.VerifyIPQuotaKey(c.ClientIP()),
+		int64(utils.VerifyIPHourlyQuota),
+		utils.VerifyIPQuotaWindow,
+	)
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+	if !allowed {
+		response.FailTooManyRequests(c, "请求过于频繁，请稍后再试")
+		return
+	}
+
+	if err := h.authService.SendResetCode(ctx, req.Email); err != nil {
+		failInternal(c, err)
+		return
+	}
+	response.OKWithMsg(c, "发送验证码成功", nil)
+}
+
+// ResetPassword 通过邮箱验证码重置密码（issue #84）
+// @Summary 重置密码
+// @Description 公开接口：邮箱 + 验证码（purpose=reset）+ 新密码。
+// 成功后该用户全部会话立即失效，所有端需重新登录。
+// @Tags 认证模块
+// @Accept json
+// @Produce json
+// @Param request body request.ResetPasswordReq true "重置密码请求参数"
+// @Success 200 {object} response.Result "重置成功"
+// @Failure 400 {object} response.Result "参数错误、邮箱未注册或验证码错误"
+// @Router /api/v1/reset-password [post]
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req request.ResetPasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, err.Error())
+		return
+	}
+
+	if err := h.authService.ResetPassword(c.Request.Context(), &req); err != nil {
+		failAuth(c, err)
+		return
+	}
+	response.OKWithMsg(c, "密码重置成功，请重新登录", nil)
+}
+
+// ChangePassword 登录状态下修改密码（issue #84）
+// @Summary 修改密码
+// @Description 需要登录：校验旧密码 → 更新 → 撤销该用户全部会话（含当前令牌）。
+// @Tags 认证模块
+// @Accept json
+// @Produce json
+// @Param request body request.ChangePasswordReq true "修改密码请求参数"
+// @Success 200 {object} response.Result "修改成功"
+// @Failure 400 {object} response.Result "参数错误或新密码与旧密码相同"
+// @Failure 401 {object} response.Result "未认证、令牌失效或旧密码错误"
+// @Security BearerAuth
+// @Router /api/v1/change-password [post]
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID, _, _, ok := middleware.CurrentUser(c)
+	if !ok {
+		response.FailUnauthorized(c, "缺少认证信息")
+		return
+	}
+
+	var req request.ChangePasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, err.Error())
+		return
+	}
+
+	if err := h.authService.ChangePassword(c.Request.Context(), userID, &req); err != nil {
+		failAuth(c, err)
+		return
+	}
+	response.OKWithMsg(c, "密码修改成功，请重新登录", nil)
+}
+
 // Logout 用户退出登录接口
 // @Summary 用户退出登录接口
 // @Description 退出登录接口（需要 access token 和 refresh token）
@@ -184,8 +303,9 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 	err := h.authService.Logout(c.Request.Context(), accessToken, req.RefreshToken)
 	if err != nil {
-		// "token 无效，无法登出" 是域错误，可以外发；Redis 故障走脱敏
-		if strings.Contains(err.Error(), "token 无效") {
+		// 用 errors.Is 而不是字符串匹配：令牌校验已 sentinel 化（见 utils.ErrTokenInvalid），
+		// 靠文案匹配会在改文案时静默失效。
+		if errors.Is(err, utils.ErrTokenInvalid) {
 			response.FailInvalidParam(c, err.Error())
 			return
 		}
@@ -317,10 +437,22 @@ func failAuth(c *gin.Context, err error) {
 		response.FailTooManyRequests(c, err.Error())
 
 	case errors.Is(err, service.ErrEmailTaken),
+		errors.Is(err, service.ErrAccountNotFoundForReset),
+		errors.Is(err, service.ErrPasswordReused),
 		errors.Is(err, repository.ErrAmbiguousUsername),
 		errors.Is(err, utils.ErrVerifyCodeMismatch),
-		errors.Is(err, utils.ErrVerifyCodeExhausted):
+		errors.Is(err, utils.ErrVerifyCodeExhausted),
+		errors.Is(err, utils.ErrVerifyCodeExpired),
+		errors.Is(err, utils.ErrVerifyCodeReused),
+		errors.Is(err, utils.ErrVerifyCodePurposeMismatch):
 		response.FailInvalidParam(c, err.Error())
+
+	case errors.Is(err, utils.ErrTokenExpired):
+		response.FailTokenExpired(c, err.Error())
+
+	case errors.Is(err, utils.ErrSessionRevoked),
+		errors.Is(err, utils.ErrSessionSuperseded):
+		response.FailSessionInvalidated(c, err.Error())
 
 	default:
 		failInternal(c, err)
