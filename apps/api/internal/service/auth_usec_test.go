@@ -89,12 +89,15 @@ func (issue86TokenManager) ValidateRefreshToken(_ context.Context, _ string) (in
 }
 
 func (issue86TokenManager) RevokeSession(_ context.Context, _, _ string) error { return nil }
+func (issue86TokenManager) RevokeUserSessions(_ context.Context, _ int) error { return nil }
 
 // issue86CodeManager 空实现 VerifyCodeChecker。
 type issue86CodeManager struct{}
 
-func (issue86CodeManager) VerifyCode(_ context.Context, _, _ string) error   { return nil }
-func (issue86CodeManager) SendVerifyCode(_ context.Context, _ string, _ utils.VerifierType) error {
+func (issue86CodeManager) VerifyCode(_ context.Context, _ string, _ utils.VerifyCodePurpose, _ string) error {
+	return nil
+}
+func (issue86CodeManager) SendVerifyCode(_ context.Context, _ string, _ utils.VerifyCodePurpose, _ utils.VerifierType) error {
 	return nil
 }
 
