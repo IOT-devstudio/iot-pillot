@@ -91,11 +91,29 @@ describe("resolveRouteAccess", () => {
       }),
     });
 
+    // 4010/未细分的 401：reason=expired，登录页出「已过期」提示条
     await expect(
       resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
     ).resolves.toEqual({
       path: "/",
-      query: { redirect: "/admin/buildings" },
+      query: { redirect: "/admin/buildings", reason: "expired" },
+    });
+    expect(deps.clearSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries the invalidated reason for business code 4011", async () => {
+    // issue #84 契约：4011 = 会话被撤销（登出/顶替/改密），提示要区分
+    const deps = makeDeps({
+      fetchRole: vi.fn(async () => {
+        throw new AuthRequestError("会话已失效", 401, 4011);
+      }),
+    });
+
+    await expect(
+      resolveRouteAccess(MEMBER_PAGES, "/admin/buildings", deps),
+    ).resolves.toEqual({
+      path: "/",
+      query: { redirect: "/admin/buildings", reason: "invalidated" },
     });
     expect(deps.clearSession).toHaveBeenCalledTimes(1);
   });

@@ -119,10 +119,11 @@ describe("session requester", () => {
     await expect(request("/api/v1/admin/users")).rejects.toBe(refreshError);
 
     expect(deps.clearSession).toHaveBeenCalledTimes(1);
-    expect(deps.onSessionExpired).toHaveBeenCalledTimes(1);
+    expect(deps.onSessionExpired).toHaveBeenCalledWith("expired");
   });
 
-  it("clears the session when refresh throws synchronously", async () => {
+  it("keeps the session when refresh fails with a network error", async () => {
+    // issue #85 验收：网络异常不能被误报成会话失效——不断网也别把人登出
     const refreshError = new Error("refresh unavailable");
     const deps = makeDeps({
       request: vi
@@ -136,8 +137,38 @@ describe("session requester", () => {
 
     await expect(request("/api/v1/admin/users")).rejects.toBe(refreshError);
 
+    expect(deps.clearSession).not.toHaveBeenCalled();
+    expect(deps.onSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it("skips the refresh and reports invalidation for business code 4011", async () => {
+    // 4011 = 会话已被服务端撤销（顶替/改密/登出），刷新注定失败，直接收尾
+    const invalidated = new AuthRequestError("会话已失效", 401, 4011);
+    const deps = makeDeps({
+      request: vi.fn().mockRejectedValue(invalidated),
+    });
+    const request = createSessionRequester(deps);
+
+    await expect(request("/api/v1/admin/users")).rejects.toBe(invalidated);
+
+    expect(deps.refreshSession).not.toHaveBeenCalled();
     expect(deps.clearSession).toHaveBeenCalledTimes(1);
-    expect(deps.onSessionExpired).toHaveBeenCalledTimes(1);
+    expect(deps.onSessionExpired).toHaveBeenCalledWith("invalidated");
+  });
+
+  it("reports invalidation when refresh itself fails with 4011", async () => {
+    const refreshError = new AuthRequestError("会话已失效", 401, 4011);
+    const deps = makeDeps({
+      request: vi
+        .fn()
+        .mockRejectedValue(new AuthRequestError("token 已过期", 401, 4002)),
+      refreshSession: vi.fn().mockRejectedValue(refreshError),
+    });
+    const request = createSessionRequester(deps);
+
+    await expect(request("/api/v1/admin/users")).rejects.toBe(refreshError);
+
+    expect(deps.onSessionExpired).toHaveBeenCalledWith("invalidated");
   });
 
   it("shares one refresh across concurrent expired requests", async () => {

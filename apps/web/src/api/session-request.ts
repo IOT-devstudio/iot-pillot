@@ -1,4 +1,5 @@
 import {
+  AUTH_CODE_SESSION_INVALIDATED,
   AuthRequestError,
   requestBackend,
   refreshAuthSession,
@@ -14,12 +15,20 @@ import {
   saveAuthSession,
 } from "@/auth/session";
 
+/**
+ * 会话被服务端判定失效的原因（issue #84/#85）：
+ *   expired     —— 4010 纯过期且刷新失败，或刷新令牌缺失；
+ *   invalidated —— 4011 会话被撤销（登出 / 被新登录顶替 / 改密）。
+ * 网络异常两者都不是，不会触发 onSessionExpired，更不会误报「其他位置登录」。
+ */
+export type SessionEndReason = "expired" | "invalidated";
+
 export interface SessionRequestDeps {
   readSession: () => AuthSession | null;
   refreshSession: (refreshToken: string) => Promise<RefreshAuthSession>;
   saveSession: (session: AuthSession) => void;
   clearSession: () => void;
-  onSessionExpired: () => void;
+  onSessionExpired: (reason: SessionEndReason) => void;
   request: (
     path: string,
     init: RequestInit,
@@ -36,9 +45,10 @@ export type SessionRequester = <T>(
 
 const SESSION_EXPIRED_MESSAGE = "登录状态已失效，请重新登录";
 
-function defaultSessionExpired(): void {
+function defaultSessionExpired(reason: SessionEndReason): void {
   if (typeof window !== "undefined") {
-    window.location.assign("/");
+    // 带 reason 回登录页：登录面板按 ?reason= 出对应提示条（AuthView）
+    window.location.assign(`/?reason=${reason}`);
   }
 }
 
@@ -124,7 +134,10 @@ function createSessionRunner(
   let refreshInFlight: Promise<AuthSession> | null = null;
   let expirationKey: string | null = null;
 
-  function expireSession(session: AuthSession | null = null): void {
+  function expireSession(
+    session: AuthSession | null = null,
+    reason: SessionEndReason = "expired",
+  ): void {
     const nextExpirationKey = session?.access_token ?? "<none>";
     if (expirationKey === nextExpirationKey) {
       return;
@@ -132,7 +145,19 @@ function createSessionRunner(
 
     expirationKey = nextExpirationKey;
     deps.clearSession();
-    deps.onSessionExpired();
+    deps.onSessionExpired(reason);
+  }
+
+  /**
+   * 4011 会话已被服务端撤销（顶替/改密/登出）：刷新没有意义——refresh
+   * token 和 access token 属于同一个已销毁的会话，必定同样 401。直接
+   * 收尾并把 invalidated 原因带给登录页，别再走一轮注定失败的刷新。
+   */
+  function isSessionInvalidated(error: AuthRequestError): boolean {
+    return (
+      error.status === 401 &&
+      error.businessCode === AUTH_CODE_SESSION_INVALIDATED
+    );
   }
 
   function refreshFor(attemptedAccessToken: string): Promise<AuthSession> {
@@ -159,7 +184,17 @@ function createSessionRunner(
           return nextSession;
         })
         .catch((error: unknown) => {
-          expireSession();
+          // 只有后端明确说令牌无效（401/4011）才认定会话结束；
+          // 网络异常等其余失败保留本地会话——断网不该把人登出
+          if (
+            error instanceof AuthRequestError &&
+            (error.status === 401 || isSessionInvalidated(error))
+          ) {
+            expireSession(
+              null,
+              isSessionInvalidated(error) ? "invalidated" : "expired",
+            );
+          }
           throw error;
         })
         .finally(() => {
@@ -190,6 +225,11 @@ function createSessionRunner(
         throw error;
       }
 
+      if (isSessionInvalidated(error)) {
+        expireSession(session, "invalidated");
+        throw error;
+      }
+
       const nextSession = await refreshFor(session.access_token);
 
       try {
@@ -200,7 +240,10 @@ function createSessionRunner(
         return unwrap<T>(retry);
       } catch (retryError: unknown) {
         if (retryError instanceof AuthRequestError && retryError.status === 401) {
-          expireSession(nextSession);
+          expireSession(
+            nextSession,
+            isSessionInvalidated(retryError) ? "invalidated" : "expired",
+          );
         }
         throw retryError;
       }
