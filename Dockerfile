@@ -39,6 +39,7 @@ COPY apps/api .
 # 构建目标必须是 ./cmd（包），不是 cmd/main.go：
 # cmd/ 下还有 wire.go 与 wire_gen.go，单文件编译会 undefined: InitializeApp。
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/iot-migrate ./tools/migrate
 
 # ---- 阶段 3：运行时 ----
 # alpine + apk 装 nginx 比 nginx:alpine 小一半（约 45MB vs 约 70MB）。
@@ -52,6 +53,7 @@ COPY deploy/nginx.conf    /etc/nginx/nginx.conf
 COPY deploy/entrypoint.sh /entrypoint.sh
 COPY --from=frontend /src/apps/web/dist /var/www/html
 COPY --from=backend  /out/api           /usr/local/bin/api
+COPY --from=backend  /out/iot-migrate   /usr/local/bin/iot-migrate
 RUN chmod +x /entrypoint.sh
 
 # nginx 监听 80；Go 用它的默认端口 8080，仅在 127.0.0.1 上被 nginx 反代，不对外暴露。

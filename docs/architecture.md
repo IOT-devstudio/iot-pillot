@@ -26,6 +26,13 @@ iot-pillot/
 
 ## 已落地
 
+### 数据库迁移（Issue #107）
+
+- `apps/api/tools/migrate` 是独立部署命令，使用固定版本 golang-migrate 和 `migrations/embed.go` 编入的原始 SQL，不走 API 启动或 GORM AutoMigrate。
+- `up` 在 `public.schema_migrations` 记录版本和 dirty 状态。未纳管的已有库拒绝重放，先用 `check/adopt --applied` 在隔离参考 schema 比对结构，接管非连续历史并记录校验和；已执行版本不重复 DDL。
+- `deploy.yml` 使用待发布镜像在目标网络同步执行迁移，成功后才停止旧容器。失败保留旧应用和部署水位；已成功迁移不自动 down，应用健康失败可回滚镜像，但要求结构兼容。
+- CI/部署 runner 用 PostgreSQL 临时库覆盖空库、已有库与失败场景。生产首次接管须备份并在已有库副本验证，详见[迁移操作说明](../apps/api/migrations/README.md)。
+
 ### 前端（apps/web）
 
 - Vue 3 + `<script setup>` 单文件组件
@@ -62,7 +69,7 @@ import type { ApiResponse, Prospect, EmailTemplate } from "@iot-pillot/shared-ty
 | --- | --- | --- |
 | `auto-merge.yml` | PR open/sync/reopen + check_run completed | 检查成员 + 无冲突 -> `pulls.merge` (squash) + `git.deleteRef` |
 | `ci.yml` | PR + push main | Go `vet`/`build`/`test` + 前端 `typecheck`/`build`（ubuntu-latest） |
-| `deploy.yml` | push main + manual dispatch | Docker build -> SCP -> SSH 部署到 VPS（需 secrets: `HOST`/`USERNAME`/`SSH_KEY`/`PORT`） |
+| `deploy.yml` | auto-merge 成功后的 workflow_run + push main + manual dispatch | Go/迁移测试 -> Docker build + 冒烟 -> SCP -> 目标库 migrate up -> SSH 切换应用（迁移失败保留旧容器） |
 
 Branch protection：`enforce_admins=true`、`required_approving_review_count=0`、`required_linear_history=true`、`allow_force_pushes=false`。
 
@@ -179,8 +186,7 @@ CandidateStatus:  interviewing ─► offered ─► hired
 下列事项是 audit 已识别但**不在本 PR 范围**的，明确列出避免误解：
 
 - 模板渲染方案（`html/template` + Handlebars 子集 vs 纯文本+占位符）
-- 数据库迁移工具（golang-migrate vs goose）
-- ~~数据库 schema（业务模块开工时才需要）~~——已落地：迁移文件在 `apps/api/migrations/`，随招新域演进
+- 数据库 schema（业务模块开工时才需要）
 - 国际化范围（仅中文 / 中英双语）
 - Postgres 备份策略
 - Docker 镜像发布到 ghcr.io 的 release workflow（当前 `deploy.yml` 走 SCP 直推，不依赖镜像仓库）

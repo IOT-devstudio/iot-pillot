@@ -54,12 +54,13 @@ IoT 全栈开发工作室 [IOT-devstudio](https://github.com/IOT-devstudio) 的�
 - **前端**：Vue 3 + Element Plus + TypeScript + Vite
 - **后端**：Go + Gin + Viper
 - **数据库**：PostgreSQL
+- **数据库迁移**：golang-migrate；部署在切换应用前自动执行，首次接管已有库需先校验迁移清单
 - **Monorepo**：pnpm workspaces
 - **CI/CD**：GitHub Actions（auto-merge + ci + deploy）
 
 ### 已规划（业务模块开工时引入）
 
-GORM · go-mail · `html/template` + Handlebars 子集 · casbin · golang-migrate
+GORM · go-mail · `html/template` + Handlebars 子集 · casbin
 
 ---
 
@@ -87,7 +88,10 @@ cp .env.example .env
 # 4. 安装前端依赖
 pnpm install
 
-# 5. 启动两个 dev server（两个终端窗口）
+# 5. 先迁移数据库，再启动两个 dev server（两个终端窗口）
+(cd apps/api && go run ./tools/migrate up)
+# 已有手工迁移库先 check/adopt，见迁移说明；不要从头重放 SQL。
+# 以下各命令从仓库根目录执行：
 cd apps/api && go run ./cmd         # 监听 :8080
 cd apps/web && pnpm dev             # 监听 :5173，/api 代理到 :8080
 
@@ -95,6 +99,8 @@ cd apps/web && pnpm dev             # 监听 :5173，/api 代理到 :8080
 #    登录页支持登录 / 注册模式切换；注册需先发邮箱验证码（需后端配置 SMTP）
 #    后端健康检查地址为 http://localhost:8080/health，就绪探针为 /health/ready
 ```
+
+数据库本地执行、已有库接管和失败恢复见[迁移操作说明](./apps/api/migrations/README.md)。迁移失败会中止部署并保留旧容器；应用镜像回滚不会自动回滚数据库。
 
 ### 接口文档与在线调试（Swagger UI）
 
