@@ -186,7 +186,8 @@ stop_line=$(grep -n '^docker stop ' "$WORK/log" | head -1 | cut -d: -f1)
 if [ "$RC" = "0" ] && [ -n "$migrate_line" ] && [ -n "$stop_line" ] \
    && [ "$migrate_line" -lt "$stop_line" ] \
    && grep '^MIGRATE_ARGS' "$WORK/log" | grep -q -- '--network iot-pilot-net' \
-   && grep '^MIGRATE_ARGS' "$WORK/log" | grep -q -- 'IOT_PILOT_DB_PASSWORD=stub_pw'; then
+   && grep -qx 'MIGRATE_ENV_PASSWORD stub_pw' "$WORK/log" \
+   && ! grep '^MIGRATE_ARGS' "$WORK/log" | grep -q -- 'stub_pw'; then
   ok "迁移使用目标库配置，在停止旧容器前执行"
 else
   bad "迁移执行顺序或配置不对" "调用：$(cat "$WORK/log")"

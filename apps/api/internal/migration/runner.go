@@ -277,6 +277,23 @@ func verifyLegacy(ctx context.Context, tx *sql.Tx, applied []uint) error {
 			return fmt.Errorf("unexpected schema object: %s; no adoption performed", key)
 		}
 	}
+	for _, version := range applied {
+		if version != 7 {
+			continue
+		}
+		// These seed identities are required by 0007. Names, open flags and sort
+		// orders remain editable business data and must never be reset on adopt.
+		var complete bool
+		if err := tx.QueryRowContext(ctx, `SELECT
+			EXISTS(SELECT 1 FROM public.recruitment_rounds WHERE round_num=1)
+			AND (SELECT count(*) FROM public.recruitment_directions
+			WHERE code IN ('front-end','back-end','agent'))=3`).Scan(&complete); err != nil {
+			return err
+		}
+		if !complete {
+			return errors.New("version 7 seed identities are incomplete; inspect partial execution or intentional removal before adoption")
+		}
+	}
 	// Reference schema must not survive a successful adoption commit either.
 	_, err = tx.ExecContext(ctx, `DROP SCHEMA `+pq.QuoteIdentifier(schema)+` CASCADE`)
 	return err

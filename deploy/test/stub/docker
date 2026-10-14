@@ -18,6 +18,8 @@ case "$1 $2" in
   "run "*)
     if printf '%s' "$*" | grep -q -- '--entrypoint /usr/local/bin/iot-migrate'; then
       echo "MIGRATE_ARGS $*" >> "$STUB_LOG"
+      # Only fixture credentials are used by this stub, never production config.
+      echo "MIGRATE_ENV_PASSWORD ${IOT_PILOT_DB_PASSWORD:-}" >> "$STUB_LOG"
       exit "${STUB_MIGRATE_RC:-0}"
     fi
     echo "RUN_ARGS $*" >> "$STUB_LOG"

@@ -359,13 +359,15 @@ jobs:
             # 已有未纳管库必须先按 migrations/README.md 在副本验证并手工 adopt；
             # 不允许部署根据最高迁移号自动 force baseline。
             echo "执行目标库迁移（旧容器保持运行）"
+            # Docker 从环境读取密码，只把变量名放进客户端参数。
+            export IOT_PILOT_DB_PASSWORD="$DB_PASSWORD"
             docker run --rm \
               --network iot-pilot-net \
               --entrypoint /usr/local/bin/iot-migrate \
               -e IOT_PILOT_DB_HOST="$DB_HOST" \
               -e IOT_PILOT_DB_PORT="$DB_PORT" \
               -e IOT_PILOT_DB_USER="$DB_USER" \
-              -e IOT_PILOT_DB_PASSWORD="$DB_PASSWORD" \
+              -e IOT_PILOT_DB_PASSWORD \
               -e IOT_PILOT_DB_NAME="$DB_NAME" \
               "${IMAGE_NAME}:${NEW_TAG}" up
 

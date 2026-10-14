@@ -247,3 +247,26 @@ func TestAdoptionChecksumChangeRejected(t *testing.T) {
 		t.Fatalf("checksum guard: %v", err)
 	}
 }
+
+func TestAdoptRejectsIncompleteRecruitmentSeeds(t *testing.T) {
+	for _, scenario := range []string{"no_seeds", "missing_direction"} {
+		t.Run(scenario, func(t *testing.T) {
+			db := testDB(t)
+			if scenario == "no_seeds" {
+				query, err := readUp(7)
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Reproduce manually running the DDL but omitting the seed INSERTs.
+				prefix := strings.SplitN(string(query), "INSERT INTO recruitment_rounds", 2)[0]
+				execSQL(t, db, prefix+"COMMIT;")
+			} else {
+				manual(t, db, []uint{7})
+				execSQL(t, db, "DELETE FROM recruitment_directions WHERE code='agent'")
+			}
+			if err := Run(context.Background(), db, "adopt", []uint{7}); err == nil {
+				t.Fatal("incomplete seed state accepted")
+			}
+		})
+	}
+}
