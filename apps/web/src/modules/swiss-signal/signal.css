@@ -111,6 +111,10 @@
   margin-left: auto;
   margin-right: 30px;
 }
+.swiss-signal .masthead__user {
+  flex-shrink: 0;
+  margin-left: 18px;
+}
 .swiss-signal .view-nav {
   display: flex;
   border: 1px solid var(--line);
@@ -1696,7 +1700,7 @@
   .swiss-signal .wordmark {
     font-size: 12px;
   }
-  .swiss-signal .view-nav {
+  .swiss-signal:not([data-view="home"]) .view-nav {
     width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr 1.3fr;
@@ -1824,13 +1828,20 @@
   position: relative;
   z-index: 1;
 }
-.swiss-signal .view-nav {
+/*
+ * 认证页的三列导航（01 登录 / 02 注册 / 03 用户首页）：蓝色高亮块用 :before
+ * 按 data-view 滑到当前列下面。这套网格与「pressed 按钮背景透明、文字反白」
+ * 的组合只对认证页成立；用户侧页面（data-view="home"）的 view-nav 只有
+ * 一个「返回用户首页」按钮，若也套这套样式，按钮会落进第一格、文字反白
+ * 又没有蓝块垫底，直接看不见（issue #94 review）。所以整段限定在认证视图。
+ */
+.swiss-signal:not([data-view="home"]) .view-nav {
   position: relative;
   isolation: isolate;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
 }
-.swiss-signal .view-nav:before {
+.swiss-signal:not([data-view="home"]) .view-nav:before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
@@ -1842,10 +1853,7 @@
 .swiss-signal[data-view="register"] .view-nav:before {
   transform: translateX(100%);
 }
-.swiss-signal[data-view="home"] .view-nav:before {
-  transform: translateX(200%);
-}
-.swiss-signal .view-nav button[aria-pressed="true"] {
+.swiss-signal:not([data-view="home"]) .view-nav button[aria-pressed="true"] {
   background: transparent;
 }
 .swiss-signal .action-button,

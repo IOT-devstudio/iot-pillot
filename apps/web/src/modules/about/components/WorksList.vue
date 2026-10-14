@@ -2,8 +2,8 @@
 /**
  * 成果 / 项目（纯展示组件）。
  *
- * 内容全部是占位示例（见 ../fixtures.ts 头部说明），页面底部另有一行标注。
- * 组件不持状态、不发请求，数据由页面传入。
+ * 未经工作室确认的成果不展示（issue #94）：fixtures 为空数组时渲染
+ * 「成果待补充」空态，而不是编造的示例项目。组件不持状态、不发请求。
  */
 import type { StudioWork } from "../fixtures";
 
@@ -16,7 +16,11 @@ defineProps<{
   <section class="works" aria-labelledby="about-works-title">
     <h2 id="about-works-title" class="works__title">成果</h2>
 
-    <ul class="works__list">
+    <p v-if="!works.length" class="works__empty">
+      成果待补充：正式项目清单确认后展示。
+    </p>
+
+    <ul v-else class="works__list">
       <li v-for="work in works" :key="work.id" class="works__item">
         <div class="works__head">
           <h3 class="works__name">{{ work.title }}</h3>
@@ -40,6 +44,16 @@ defineProps<{
   margin: 0 0 14px;
   color: var(--about-ink);
   font-size: 15px;
+}
+
+.works__empty {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--about-muted);
+  border: 1px dashed var(--about-border);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .works__list {

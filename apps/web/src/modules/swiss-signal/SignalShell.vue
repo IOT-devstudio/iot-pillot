@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onUnmounted, provide, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import UserMenu from "@/components/common/UserMenu.vue";
 import type { AuthMode } from "@/auth/submit";
 import { SIGNAL_BUSY, SIGNAL_MODE, SIGNAL_TRANSITION } from "./context";
 import { useSignalMotion } from "./motion";
@@ -10,6 +11,17 @@ defineProps<{ transitionOnly?: boolean }>();
 const emit = defineEmits<{ "transition-active": [active: boolean] }>();
 const route = useRoute();
 const router = useRouter();
+/**
+ * masthead 的导航（issue #94）：
+ *   - 认证页（/、/login）：不放导航——表单自带登录/注册切换，顶栏再来一份
+ *     完全重复
+ *   - 用户侧（/user/*）：用户名菜单（UserMenu）常驻；「返回用户首页」只出现
+ *     在非首页的用户页面（首页本身就是落点，再放一个自己链自己没有意义）；
+ *     个人设置页不放用户名菜单——页面本身就是「个人设置」，入口重复（issue #94 review）
+ */
+const isUserPage = () => route.path.startsWith("/user/");
+const isUserHome = () => route.path === "/user/home";
+const isUserSettings = () => route.path === "/user/settings";
 const root = ref<HTMLElement | null>(null);
 const wipe = ref<HTMLElement | null>(null);
 const wiping = ref(false);
@@ -23,12 +35,13 @@ onUnmounted(() => {
 });
 provide(SIGNAL_MODE, mode);
 provide(SIGNAL_BUSY, busy);
-async function openAuth(next: AuthMode) {
-  if (busy.value) return;
-  if (!["/", "/login"].includes(route.path)) await router.push("/");
-  mode.value = next;
-}
-provide(SIGNAL_TRANSITION, async (change) => {
+/**
+ * 页面切换的三板擦除过渡（黄块带着 CONNECTING IDEAS 划过）。
+ * 认证页的登录/注册切换、用户侧「返回用户首页」与进入个人设置都走它——
+ * change 只管真正执行路由跳转，动画的启停、中断与 reduced-motion 降级
+ * 全部收敛在这里。
+ */
+async function withWipe(change: () => unknown) {
   if (wiping.value || disposed) return;
   if (!motion.enabled()) {
     await change();
@@ -67,7 +80,14 @@ provide(SIGNAL_TRANSITION, async (change) => {
     wiping.value = false;
     emit("transition-active", false);
   }
-});
+}
+provide(SIGNAL_TRANSITION, withWipe);
+
+/** 「返回用户首页」：与登录转场同款的擦除动画 */
+function goHome(): void {
+  void withWipe(() => router.push("/user/home"));
+}
+
 watch(mode, async () => {
   await nextTick();
   motion.form();
@@ -98,31 +118,18 @@ watch(
         ><span>IoT STUDIO<small>物联网工作室</small></span></RouterLink
       >
       <span class="masthead-note">A PLACE FOR CURIOUS MINDS.</span>
-      <nav class="view-nav" aria-label="页面导航">
-        <button
-          :aria-pressed="!route.path.startsWith('/user/') && mode === 'login'"
-          :disabled="busy"
-          @click="openAuth('login')"
-        >
-          01 登录
-        </button>
-        <button
-          :aria-pressed="
-            !route.path.startsWith('/user/') && mode === 'register'
-          "
-          :disabled="busy"
-          @click="openAuth('register')"
-        >
-          02 注册
-        </button>
-        <button
-          :aria-pressed="route.path.startsWith('/user/')"
-          :disabled="busy"
-          @click="router.push('/user/home')"
-        >
-          03 用户首页 <span>↗</span>
+      <nav
+        v-if="isUserPage() && !isUserHome()"
+        class="view-nav"
+        aria-label="页面导航"
+      >
+        <button aria-pressed="true" :disabled="busy" @click="goHome">
+          返回用户首页 <span>↗</span>
         </button>
       </nav>
+      <span v-if="isUserPage() && !isUserSettings()" class="masthead__user">
+        <UserMenu />
+      </span>
     </header>
     <slot />
     <div class="signal-tape" aria-hidden="true">
