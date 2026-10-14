@@ -126,7 +126,7 @@ iot-pillot/
 | 修改密码 | `POST /api/v1/change-password` | 前端已对接 | 设置页修改密码卡片；成功后端撤销全部会话，前端清会话跳登录页 |
 | 会话失效错误契约 | 401 业务码 4010 / 4011 | 前端已对接 | 4010 纯过期走安静刷新；4011（顶替/改密/登出）清会话并以 `?reason=invalidated` 提示；网络异常不清会话 |
 | 当前用户 | `GET /api/v1/me` | 前端已对接 | 路由守卫和用户首页读取真实的用户名与 `admin/member` 角色 |
-| 更新本人资料 | `PUT /api/v1/me` | 前端已对接 | 白名单 `class/student_id/qq/direction` 三态补丁；**name 与 email 不可修改** |
+| 更新本人资料 | `PUT /api/v1/me` | 前端已对接 | 白名单 `class/student_id/qq/direction/name` 三态补丁（name 复用注册口径 min=3/max=20，UTF-8 rune 计数）；**email 不可修改**（登录凭据）；身份从 JWT 取，body 无目标参数，结构上无越权；改名不动已签发令牌 |
 | 管理员用户列表 | `GET /api/v1/admin/users` | 前端已对接 | 管理员控制台分页读取用户 ID、用户名和注册时间 |
 | 管理员名单管理 | `GET/POST/DELETE /api/v1/admin/admins*` | 前端已对接 | 用户与权限页展示、授予与撤销管理员 |
 | 邮件模板 CRUD、发送与记录 | `/api/v1/admin/mail-templates*`、`/api/v1/admin/mails*` | 前端已对接 | 邮件中心页面；招新流程内的邮件动作前端待 #91 接入 |
