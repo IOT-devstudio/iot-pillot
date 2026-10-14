@@ -1,6 +1,6 @@
 # Architecture
 
-本文档记录 iot-pillot 的当前架构状态——脚手架、认证、管理端与招新（方向/报名/审核）已落地；表单与 SMTP 系统设置待开工。
+本文档记录 iot-pillot 的当前架构状态——脚手架、认证、管理端、招新（方向/报名/审核）与表单后端（BE-05）已落地；表单前端页面与 SMTP 系统设置待开工。
 
 ---
 
@@ -102,16 +102,18 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
 - **提供**：登录/登出、当前用户查询与本人资料读写（`GET/PUT /me`，白名单 `class/student_id/qq/direction`）、`RequireAdmin` 中间件
 - **后续依赖**：引入 casbin 时升级为策略驱动的 RBAC
 
-### FormModule（独立域，可先行）
+### FormModule（BE-05 已落地；前端页面见 #93）
 
-- **路由**（`/api/v1/forms`）：
+- **路由**（BE-05 已落地，与 `internal/handler/router.go` 一致；issue #96 回填）：
+  - `GET /forms` 列表（需登录）
   - `POST /forms` 创建表单（admin）
-  - `GET /forms` 列表（admin/member）
-  - `GET /forms/:id` 详情
+  - `GET /forms/:id` 详情（需登录）
   - `PATCH /forms/:id` 修改（admin）
-  - `DELETE /forms/:id` 删除（admin）
+  - `GET /forms/:id/submissions` 提交记录列表（admin）
+  - `GET /forms/:id/submissions/:submission_id` 提交详情（admin）
   - `GET /forms/public/:shareToken` 分享链接读取表单定义（需登录；shareToken 仅用于定位分享表单，不构成匿名访问）
   - `POST /forms/public/:shareToken/submit` 登录用户经分享链接提交（需登录 + 限流）
+  - 表单删除端点（`DELETE /forms/:id`）本轮未实现；如需删除另立票据
 - **依赖**：DB（GORM）+ 限流中间件
 - **引入 GORM 时机**：本模块开工时
 
