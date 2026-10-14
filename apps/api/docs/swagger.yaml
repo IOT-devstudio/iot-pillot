@@ -330,6 +330,10 @@ definitions:
         description: 班级；null 清除，缺省不动
         example: 物联网工程 2301
         type: string
+      name:
+        description: 姓名；null 清除，缺省不动（issue #86 新增可改字段）
+        example: 张三
+        type: string
       direction:
         description: 方向；null/空串清除，缺省不动
         enum:

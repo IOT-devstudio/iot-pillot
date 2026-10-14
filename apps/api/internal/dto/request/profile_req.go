@@ -13,6 +13,11 @@ import (
 const (
 	maxClassLen = 64
 	maxQQLen    = 20
+
+	// 姓名长度边界，复用 RegisterReq.Name 的约束（user_req.go），
+	// 保证注册时与改名时完全一致（issue #86）。
+	minNameLen = 3
+	maxNameLen = 20
 )
 
 // UpdateMePatch PUT /me 的 body 文档形状（swag 注解引用）。
@@ -24,6 +29,7 @@ type UpdateMePatch struct {
 	StudentID *int    `json:"student_id" example:"2023114514"`                                               // 学号；null 清除（0 视为未填），缺省不动
 	QQ        *string `json:"qq" example:"1044696157"`                                                       // QQ；null 清除，缺省不动
 	Direction *string `json:"direction" example:"front-end" enums:"front-end,back-end,agent,all,game,other"` // 方向；null/空串清除，缺省不动
+	Name      *string `json:"name" example:"张三"`                                                            // 姓名；null 清除，缺省不动（issue #86 新增可改字段）
 }
 
 // PatchField 白名单字段的三态值。
@@ -39,13 +45,16 @@ type PatchField[T any] struct {
 
 // UpdateMeReq PUT /me 的字段补丁。
 //
-// 只有白名单四个键会进到这里：body 里的其他键（如 user_id）在解析阶段
+// 只有白名单键会进到这里：body 里的其他键（如 user_id）在解析阶段
 // 直接丢弃 —— 目标永远是令牌本人，越权在结构上不可能（issue #57 验收项）。
+// 白名单 = class / student_id / qq / direction / name（name 自 issue #86 起可改；
+// email 仍不可改，它是登录凭据）。
 type UpdateMeReq struct {
 	Class     PatchField[string]
 	StudentID PatchField[int]
 	QQ        PatchField[string]
 	Direction PatchField[string]
+	Name      PatchField[string] // 姓名；issue #86 新增可改字段
 }
 
 // ParseUpdateMe 解析并校验 PUT /me 的请求体。
@@ -56,7 +65,8 @@ type UpdateMeReq struct {
 //   - 有值        → Present=true，覆盖（校验失败返回中文错误）
 //
 // 校验规则与前端表单一致：class ≤ 64 字符、qq ≤ 20 字符、student_id
-// 为非负整数、direction 必须是 domain.Direction 枚举之一。
+// 为非负整数、direction 必须是 domain.Direction 枚举之一、name 为 3~20 字符
+// （复用注册时的姓名约束，issue #86）。
 // 返回的 error 文案直接外发给调用方，措辞必须是用户能看懂的中文。
 func ParseUpdateMe(body []byte) (*UpdateMeReq, error) {
 	var raw map[string]json.RawMessage
@@ -101,6 +111,20 @@ func ParseUpdateMe(body []byte) (*UpdateMeReq, error) {
 		return nil, fmt.Errorf("direction 必须是 front-end / back-end / agent / all / game / other 之一")
 	}
 	req.Direction = direction
+
+	// name（issue #86 新增）：3~20 个字符，使用 UTF-8 码点计数，
+	// 与 RegisterReq.Name 的 min=3/max=20 完全一致。
+	name, err := parsePatchString(raw, "name", maxNameLen)
+	if err != nil {
+		return nil, err
+	}
+	if name.Present && !name.Clear {
+		n := utf8.RuneCountInString(name.Value)
+		if n < minNameLen || n > maxNameLen {
+			return nil, fmt.Errorf("name 长度需在 3 到 20 个字符之间")
+		}
+	}
+	req.Name = name
 
 	return req, nil
 }
