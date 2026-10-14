@@ -14,9 +14,10 @@
 - 部署脚本先添加负例，未接入迁移时新增两例失败；接入后 `bash deploy/test/run.sh` 全部 13 项通过，包括失败保留旧容器、不写 `DEPLOYED_SHA`、迁移先于 stop，以及原有跨端口镜像回滚。
 - CI/部署 workflow YAML 解析通过，Bash 语法通过，`git diff --check` 通过。
 - `CGO_ENABLED=0 GOOS=linux go build ./tools/migrate` 通过。
-- 最终单镜像 `iot-pillot-api:issue107-test` 构建通过，image ID 为 `sha256:0df0a0e854e5c936a42e6a04927e5c655548889199af166629f293dc494c4bc2`。镜像内真实 CLI 验证 3 组端到端场景：空库+重复 up；拒绝未纳管库再 check/adopt 非连续历史并保留用户、修改后的轮次名称和索引 OID；重复邮箱迁移失败留下 `5,true`，再次 up 拒绝 dirty。
+- 最终单镜像 `iot-pillot-api:issue107-test` 构建通过，`docker image inspect` 返回 image ID `sha256:99ab088b51593fe08150dfaa3ffa6cfe0aadd4be9e3e5efc4bef4c13724d77d6`；构建输出中的 config digest 为 `sha256:0df0a0e854e5c936a42e6a04927e5c655548889199af166629f293dc494c4bc2`。镜像内真实 CLI 验证 3 组端到端场景：空库+重复 up；拒绝未纳管库再 check/adopt 非连续历史并保留用户、修改后的轮次名称和索引 OID；重复邮箱迁移失败留下 `5,true`，再次 up 拒绝 dirty。
 - 最终镜像 HTTP 冒烟 7 项通过，生命周期冒烟通过（杀 API 后第 1 秒容器退出）。Windows Git Bash 首次把 `/usr/local/bin/api` 转成 `E:/Git/usr/local/bin/api` 导致 pkill 未匹配；本地设置 `MSYS_NO_PATHCONV=1` 后使用同一原脚本通过，不需要改变 Linux CI 脚本。
 - 构建仍有原前端 bundle 大于 500KB 的 Vite 提示，构建成功，未修改前端源码。
+- Docker Desktop 更新至 4.95.0、Engine 29.8.2 后，本轮复验再次通过镜像 CLI 三组场景、HTTP 冒烟 7 项和生命周期冒烟（第 1 秒退出）。测试复用了本任务隔离的 PostgreSQL/Redis，未启动或修改其他项目容器。
 
 ## 双轴审查
 
