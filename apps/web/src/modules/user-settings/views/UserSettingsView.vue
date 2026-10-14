@@ -11,6 +11,7 @@ import { onMounted } from "vue";
 
 import PageHeader from "@/components/common/PageHeader.vue";
 import { nextFormFromProfile, useUserSettings } from "../composables/useUserSettings";
+import ChangePasswordCard from "../components/ChangePasswordCard.vue";
 import UserSettingsForm from "../components/UserSettingsForm.vue";
 
 const {
@@ -77,15 +78,19 @@ function resetForm(): void {
         </el-button>
       </section>
 
-      <UserSettingsForm
-        v-else-if="profile !== null"
-        :profile="profile"
-        :form="form"
-        :needs-completion="needsCompletion"
-        :saving="saving"
-        @submit="save"
-        @cancel="resetForm"
-      />
+      <template v-else-if="profile !== null">
+        <UserSettingsForm
+          :profile="profile"
+          :form="form"
+          :needs-completion="needsCompletion"
+          :saving="saving"
+          @submit="save"
+          @cancel="resetForm"
+        />
+
+        <!-- 修改密码（issue #85）：成功后清会话跳登录页，失败原地重试 -->
+        <ChangePasswordCard />
+      </template>
 
       <!-- 保存失败的局部提示：toast 容易被错过，把这条放在表单下面兜底 -->
       <p v-if="saveError" class="settings-save-error" role="alert">
