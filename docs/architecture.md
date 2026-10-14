@@ -187,7 +187,6 @@ CandidateStatus:  interviewing ─► offered ─► hired
 
 - 鉴权方案（JWT / OAuth 选型）
 - 模板渲染方案（`html/template` + Handlebars 子集 vs 纯文本+占位符）
-- 数据库迁移工具（golang-migrate vs goose）
 - 数据库 schema（业务模块开工时才需要）
 - 国际化范围（仅中文 / 中英双语）
 - Postgres 备份策略
