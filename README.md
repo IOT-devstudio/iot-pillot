@@ -25,6 +25,8 @@ IoT 全栈开发工作室 [IOT-devstudio](https://github.com/IOT-devstudio) 的�
 
 ## 项目状态
 
+两条贯穿全文的业务约束：**报名与表单提交必须登录**（分享链接进入也需先登录，不支持匿名提交）；**账号绑定邮箱不可修改**（登录凭据，密码找回也使用原邮箱）。
+
 | 模块 | 状态 |
 | --- | --- |
 | Monorepo 脚手架（apps/web + apps/api + packages/shared-types） | ✅ 落地 |
@@ -33,12 +35,15 @@ IoT 全栈开发工作室 [IOT-devstudio](https://github.com/IOT-devstudio) 的�
 | `auto-merge.yml`：有写权限成员的非 Draft PR + 无冲突 → squash merge 并删远端分支（不等待 CI） | ✅ 落地 |
 | `ci.yml`：PR 触发 Go vet/build/test、前端 typecheck/test/build，以及 Docker 镜像构建与冒烟测试 | ✅ 落地 |
 | `deploy.yml`：auto-merge 成功后触发部署，也支持手动触发（需配置服务器 secrets） | ✅ 落地 |
-| 认证（3D 开屏 / `/login` 备用页） | ✅ 登录、注册、邮箱验证码、刷新令牌与登出 API 已接入；发码需配置 SMTP |
-| 管理端（控制台 / 用户与权限） | ✅ 仪表盘、用户和管理员管理页面及对应受保护 API 已落地 |
+| 认证（3D 开屏 / `/login` 备用页） | ✅ 登录、注册、邮箱验证码、刷新令牌与登出 API 已接入；发码需配置 SMTP；`GET/PUT /me` 资料读写已接入（可改班级/学号/QQ/方向，姓名与邮箱不可改） |
+| 用户侧页面（个人首页 `/user/home` / 个人设置 `/user/settings` / 关于我们 `/user/about`） | ✅ 页面与导航已落地；首页的方向与申请记录仍为明确标注的演示 fixture，接入真实招新 API 见 #89；关于页的年份/人数/成果/成员为「待补充」状态，等工作室正式资料 |
+| 管理端（控制台 / 用户与权限 / 邮件中心） | ✅ 仪表盘、用户与管理员管理、邮件模板 CRUD 与发送记录页面及对应受保护 API 已落地 |
 | 邮件能力 | 🟡 邮件中心页面与后端模板 CRUD、发送和记录 API 已落地；招新邀请/offer/感谢信的后端发送已接入 MailModule 真实路径，前端页面仍用本地 fixture |
 | 招新（邀请 / 候选人后端） | ✅ BE-04 已落地：发送/撤销邀请、本人接受（幂等/归属校验/过期撤销拒绝）、候选人推进（send_offer/hire/reject，邮件失败不落状态）与两端列表；迁移 0008 |
+| 招新（用户端：方向 / 报名 / 申请进度） | 🟡 后端 API 已落地（需登录）；前端页面仍用演示 fixture，接入见 #89 |
+| 招新（管理端：轮次 / 审核） | 🟡 后端 API 已落地（管理员）；前端接入见 #93 |
 | 招新（前端页面） | 🟡 前端流程页面已落地，目前使用本地 fixture，待 FE-04 接入 BE-04 API |
-| 表单管理 / 系统设置 | ⏳ 当前为占位页面，待实现 |
+| 表单管理 / 系统设置（SMTP） | ⏳ 当前为占位路由，待实现 |
 
 ---
 
@@ -91,7 +96,7 @@ cd apps/api && go run ./cmd         # 监听 :8080
 cd apps/web && pnpm dev             # 监听 :5173，/api 代理到 :8080
 
 # 6. 浏览器打开 http://localhost:5173/login
-#    登录页支持登录 / 注册模式切换；注册验证码按钮在后端路由接入前保持禁用
+#    登录页支持登录 / 注册模式切换；注册需先发邮箱验证码（需后端配置 SMTP）
 #    后端健康检查地址为 http://localhost:8080/health，就绪探针为 /health/ready
 ```
 

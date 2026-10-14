@@ -9,7 +9,9 @@ const route = useRoute();
 const signalTransitioning = ref(false);
 const usesAdminLayout = computed(() => route.meta.adminShell === true);
 const usesSignal = computed(() =>
-  ["/", "/login", "/user/home", "/user/settings"].includes(route.path),
+  ["/", "/login", "/user/home", "/user/settings", "/user/about"].includes(
+    route.path,
+  ),
 );
 </script>
 

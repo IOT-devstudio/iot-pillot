@@ -1,12 +1,14 @@
 /**
- * about 模块（用户侧「关于我们」）的静态文案与假数据。
+ * about 模块（用户侧「关于我们」）的静态文案。
  *
- * ⚠️ 这里的**每一句涉及事实的话都是编的**——成立年份、成员人数、项目成果、
- * 成员姓名全部是占位内容，不是工作室的真实资料。页面底部因此有一行明确的
- * 标注提醒读者。按 CLAUDE.md「M0」的约定，fixture 只能服务界面开发，
- * **不能伪装成已经完成**。
+ * ⚠️ 成立年份、成员人数、项目成果、成员姓名等**未经工作室确认的事实
+ * 一律不提供数据**（issue #94）：stats 值统一为「待补充」，works / members
+ * 为空数组，页面渲染对应的待补充状态。曾经编造的示例年份、人数、项目名与
+ * 成员姓名已全部移除——它们不是真实资料，不能以任何形式展示。
  *
- * 正式资料由工作室提供后只需要改这一个文件，页面与组件都不用动。
+ * 保留的只有不涉及具体数据的介绍文案（tagline / description 沿用登录页
+ * 品牌面板，方向列表是通用技术定位）。正式资料由工作室提供后只需要改这
+ * 一个文件，页面与组件都不用动。
  *
  * ── 为什么方向数据不和 home 模块共用 ──
  * home 的 `fixtures.ts` 里也有一份「前端开发 / 后端开发 / Agent 开发」，
@@ -38,6 +40,9 @@ export interface StudioProfile {
  *
  * `tagline` 与 `description` 沿用登录页品牌面板（views/AuthView.vue）里
  * 已有的文案，保证两个页面口径一致——改的话两边都要改。
+ *
+ * stats 保留三个标签位，但值一律是「待补充」：年份与人数未经工作室确认，
+ * 不能编（issue #94）。页面照常渲染数字位，只是读到的是待补充状态。
  */
 export const STUDIO_INTRO: StudioProfile = {
   name: "iot 全栈工作室",
@@ -45,9 +50,9 @@ export const STUDIO_INTRO: StudioProfile = {
   description:
     "iot 全栈工作室以前端与后端开发为核心，围绕真实问题做项目：拆需求、写代码、联调服务，再把结果交付给真正的用户。",
   stats: [
-    { label: "成立", value: "2021" },
-    { label: "成员", value: "12" },
-    { label: "在做项目", value: "4" },
+    { label: "成立", value: "待补充" },
+    { label: "成员", value: "待补充" },
+    { label: "在做项目", value: "待补充" },
   ],
 };
 
@@ -95,26 +100,14 @@ export interface StudioWork {
   year: string;
 }
 
-export const STUDIO_WORKS: StudioWork[] = [
-  {
-    id: "work-pillot",
-    title: "iot-pillot 招新管理后台",
-    summary: "工作室自用的招新系统：表单收集、邮件邀请、候选人流转一站式处理。",
-    year: "2026",
-  },
-  {
-    id: "work-campus-model",
-    title: "校园楼栋可视化",
-    summary: "把校园楼栋数据渲染成可交互的三维白模，用于展示与布局编辑。",
-    year: "2025",
-  },
-  {
-    id: "work-device-gateway",
-    title: "设备接入网关",
-    summary: "为社团设备提供统一的数据上报与转发入口，支撑后续的数据看板。",
-    year: "2025",
-  },
-];
+/**
+ * 成果 / 项目。
+ *
+ * 有意留空（issue #94）：此前的三个项目全是编造的示例，未经工作室确认
+ * 不能展示。WorksList 对空数组渲染「成果待补充」状态；正式清单由工作室
+ * 提供后在本文件补回。
+ */
+export const STUDIO_WORKS: StudioWork[] = [];
 
 /** 一位工作室成员 */
 export interface StudioMember {
@@ -131,29 +124,10 @@ export interface StudioMember {
   bio: string;
 }
 
-export const STUDIO_MEMBERS: StudioMember[] = [
-  {
-    id: "member-lead",
-    name: "林知远",
-    title: "工作室负责人",
-    bio: "统筹招新与项目排期，自己也写后端。",
-  },
-  {
-    id: "member-frontend",
-    name: "苏晚",
-    title: "前端负责人",
-    bio: "负责界面与交互，偏爱克制的排版。",
-  },
-  {
-    id: "member-backend",
-    name: "周叙",
-    title: "后端负责人",
-    bio: "管 API、数据与部署，喜欢把事情做简单。",
-  },
-  {
-    id: "member-agent",
-    name: "程野",
-    title: "Agent 方向负责人",
-    bio: "研究大模型应用，把智能体接进真实流程。",
-  },
-];
+/**
+ * 工作室成员。
+ *
+ * 有意留空（issue #94）：此前的四位「成员」全是编造的姓名，未经本人与
+ * 工作室确认不能展示。MemberList 对空数组渲染「成员待补充」状态。
+ */
+export const STUDIO_MEMBERS: StudioMember[] = [];

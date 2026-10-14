@@ -11,6 +11,8 @@
 
 ## 当前功能范围（招新管理）
 
+两条贯穿全文的业务约束：**报名与表单提交必须登录**（分享链接进入也需先登录，不支持匿名提交）；**账号绑定邮箱不可修改**（登录凭据，密码找回也使用原邮箱）。
+
 1. **表单系统**
    - 支持创建表单、收集新生的报名意向、获取基本信息（姓名/邮箱等）
    - 支持登录后填写（分享链接进入，未登录引导登录）
@@ -104,7 +106,7 @@ iot-pillot/
 
 ### 1. 当前基线与开发边界
 
-前端当前已完成认证与角色分流的基础交付：`apps/web/src/views/AuthView.vue` 为 `/` 与 `/login` 提供瑞士信号 2D 登录 / 注册模式切换，`apps/web/src/api/auth.ts` 对接认证、验证码、当前用户和管理员用户列表接口，`apps/web/src/auth/` 包含表单校验、提交编排、会话保存与刷新，相关行为由 Vitest 覆盖。后台完整布局和招新业务页面仍在规划中。后续开发必须以实际代码为准，不能把 `packages/shared-types` 中已经存在的类型误认为后端接口已经实现。
+前端当前已完成认证与角色分流的基础交付：`apps/web/src/views/AuthView.vue` 为 `/` 与 `/login` 提供瑞士信号 2D 登录 / 注册模式切换，`apps/web/src/api/auth.ts` 对接认证、验证码、当前用户和管理员用户列表接口，`apps/web/src/auth/` 包含表单校验、提交编排、会话保存与刷新，相关行为由 Vitest 覆盖。管理端外壳、控制台、用户与权限、邮件中心、招新意向列表/详情，以及用户侧个人首页、个人设置、关于我们页面均已落地（其中首页方向与申请记录、招新流程页仍使用明确标注的演示 fixture）；表单管理与 SMTP 系统设置仍为占位路由。后续开发必须以实际代码为准，不能把 `packages/shared-types` 中已经存在的类型误认为后端接口已经实现。
 
 认证页的视觉与布局约束：桌面端使用固定 `100dvh` 双栏，左侧是全栈工作室招新品牌面板，右侧认证表单独立滚动；切换登录 / 注册时左侧面板不重新挂载、不随注册表单高度变化。宽度小于 `820px` 时隐藏左侧面板，表单恢复自然文档流。页面文案应继续突出以前端与后端开发为核心的 IoT 全栈项目实践。
 
@@ -121,7 +123,12 @@ iot-pillot/
 | 刷新令牌 | `POST /api/v1/refresh` | 前端已对接 | 路由守卫在 access token 收到 401 时最多轮换一次并重试 `/me` |
 | 退出登录 | `POST /api/v1/logout` | 前端已对接 | Header 携带 access token，请求体携带 refresh token；网络失败也清理本地会话 |
 | 当前用户 | `GET /api/v1/me` | 前端已对接 | 路由守卫和用户首页读取真实的用户名与 `admin/member` 角色 |
+| 更新本人资料 | `PUT /api/v1/me` | 前端已对接 | 白名单 `class/student_id/qq/direction` 三态补丁；**name 与 email 不可修改** |
 | 管理员用户列表 | `GET /api/v1/admin/users` | 前端已对接 | 管理员控制台分页读取用户 ID、用户名和注册时间 |
+| 管理员名单管理 | `GET/POST/DELETE /api/v1/admin/admins*` | 前端已对接 | 用户与权限页展示、授予与撤销管理员 |
+| 邮件模板 CRUD、发送与记录 | `/api/v1/admin/mail-templates*`、`/api/v1/admin/mails*` | 前端已对接 | 邮件中心页面；招新流程内的邮件动作前端待 #91 接入 |
+| 招新方向 / 报名 / 我的申请（用户端，需登录） | `/api/v1/recruitment/directions` 等 | 后端已落地，前端未接入 | 前端接入见 #89；报名必须登录，无匿名提交 |
+| 招新轮次 / 方向开关 / 申请审核（管理端） | `/api/v1/admin/recruitment/*` | 后端已落地，前端未接入 | 前端接入见 #93 |
 | 招新邀请与候选人流程（BE-04） | `POST /api/v1/admin/invitations/send`、`GET /api/v1/admin/invitations`、`POST /api/v1/admin/invitations/:id/revoke`、`GET /api/v1/admin/candidates`、`GET /api/v1/admin/candidates/:id`、`POST /api/v1/admin/candidates/:id/advance`、`GET /api/v1/me/invitations`、`POST /api/v1/me/invitations/accept`、`GET /api/v1/me/candidates` | 后端已交付，前端未接入 | `packages/shared-types` 的 BE-04 段是真实契约（number ID）；邀请邮件复用 MailModule 模板发送 |
 | 表单、模板、用户权限、SMTP 设置 | 部分尚无路由 | 阻塞 | 共享 TS 类型中未标 BE-04 的招新类型与表单类型仍是领域草案，不能直接当作已交付 API |
 
@@ -131,7 +138,7 @@ iot-pillot/
 - 后端登录返回 `user_id: number`，共享类型的通用 `ID` 当前定义为 UUID 字符串；在后端迁移到 UUID 前，认证 DTO 必须如实使用 number，禁止靠类型断言掩盖差异。
 - `/api/v1/refresh` 当前复用 `LoginResp`，实际返回 `user_id: -1`；前端通过合并旧会话保留真实用户 ID。
 - JWT 的 `admin/member` 角色由后端管理员白名单签发，前端通过 `/api/v1/me` 查询并由路由守卫控制可见性；真正权限仍由后端中间件强制。
-- 注册 DTO 接收 `email`，但当前 `domain.User` 没有邮箱字段，注册逻辑也没有持久化邮箱；依赖邮箱的个人资料和招新关联功能必须等后端模型补齐。
+- 邮箱已随注册持久化（`GET /me` 返回 detail.email），但它是登录凭据：**不可修改**，密码找回也只走原绑定邮箱；依赖邮箱的个人资料与招新关联功能按此约束设计。
 - `packages/shared-types` 仅供 TypeScript 工作区消费，不是 Go 与 TypeScript 自动共享的 schema；每次后端 DTO 变化都必须同步核对。
 
 ### 2. 总体开发策略

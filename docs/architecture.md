@@ -1,6 +1,6 @@
 # Architecture
 
-本文档记录 iot-pillot 的当前架构状态——脚手架已落地、业务模块待开工。
+本文档记录 iot-pillot 的当前架构状态——脚手架、认证、管理端与招新（方向/报名/审核）已落地；表单与 SMTP 系统设置待开工。
 
 ---
 
@@ -45,7 +45,7 @@ iot-pillot/
 
 - Go 1.25 + Gin + Viper
 - `cmd/api/main.go` -> `internal/config.Load()` -> `internal/server.New()` -> `:8080`
-- `internal/handler/` 装 HTTP handler，目前只有 `health.go`
+- `internal/handler/` 装 HTTP handler：health / auth / admin / mail / recruitment
 - `internal/middleware/cors.go` 手写白名单 CORS（不依赖 `gin-contrib/cors`）
 - 配置优先级：env `IOT_PILOT_*` > `config.yaml`（可选） > 默认值
 - 多阶段 `Dockerfile`：golang:1.25-alpine -> alpine:3.20
@@ -98,8 +98,8 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
 
 ### AuthModule
 
-- **依赖**：鉴权方案（本地邮箱密码 + JWT vs OAuth）—— 待定
-- **提供**：登录/登出、当前用户查询、`RequireRole("admin")` 中间件
+- **鉴权方案**：已落地——本地邮箱密码 + access/refresh JWT（邮箱为登录凭据，**不可修改**；报名与表单提交必须登录）
+- **提供**：登录/登出、当前用户查询与本人资料读写（`GET/PUT /me`，白名单 `class/student_id/qq/direction`）、`RequireAdmin` 中间件
 - **后续依赖**：引入 casbin 时升级为策略驱动的 RBAC
 
 ### FormModule（独立域，可先行）
@@ -185,7 +185,6 @@ CandidateStatus:  interviewing ─► offered ─► hired
 
 下列事项是 audit 已识别但**不在本 PR 范围**的，明确列出避免误解：
 
-- 鉴权方案（JWT / OAuth 选型）
 - 模板渲染方案（`html/template` + Handlebars 子集 vs 纯文本+占位符）
 - 数据库 schema（业务模块开工时才需要）
 - 国际化范围（仅中文 / 中英双语）
@@ -197,4 +196,4 @@ CandidateStatus:  interviewing ─► offered ─► hired
 
 ## 瑞士信号 2D 用户界面（Issue #81）
 
-认证与普通用户首页/个人设置共用局部视觉外壳，不覆盖后台样式。首页身份与资料读取 GET `/api/v1/me`；方向、申请与报名体验仍为明确标注的 fixture。资料编辑复用现有 GET/PUT `/me` 白名单契约。动画按 Vue 生命周期清理，支持暂停、减少动态效果和后台暂停；认证网络请求有 15 秒超时兜底。登录转场两侧蓝块从下方、中间黄块从上方同时拼合，文字跟随黄块；入场 450ms、退场 650ms，路由与接口等待另计。动画终点写入元素样式，避免结束或中断后回闪，外壳卸载后停止转场。实现基准、业务差异与验收材料见 [Issue #81 审查说明](reviews/issue-81-swiss-signal.md)。
+认证与普通用户首页/个人设置/关于我们共用局部视觉外壳，不覆盖后台样式。首页身份与资料读取 GET `/api/v1/me`；方向、申请与报名体验仍为明确标注的 fixture。资料编辑复用现有 GET/PUT `/me` 白名单契约（`class/student_id/qq/direction` 三态；name 与 email 不可修改）。用户侧导航收敛在壳层 masthead（Issue #94）：认证页保留 01 登录 / 02 注册；用户侧页面不再展示登录/注册，「返回用户首页」只出现在非首页的用户页面，个人设置与退出登录经用户名菜单（UserMenu）进入，「关于我们」在页脚——各页不再单挂返回链接。关于我们页的年份、人数、成果、成员等未经工作室确认的事实一律不展示，以「待补充」状态呈现。招新方向、报名与申请查询后端 API 已落地（需登录，无匿名提交），前端接入另见 Issue #89。动画按 Vue 生命周期清理，支持暂停、减少动态效果和后台暂停；认证网络请求有 15 秒超时兜底。登录转场两侧蓝块从下方、中间黄块从上方同时拼合，文字跟随黄块；入场 450ms、退场 650ms，路由与接口等待另计。动画终点写入元素样式，避免结束或中断后回闪，外壳卸载后停止转场。实现基准、业务差异与验收材料见 [Issue #81 审查说明](reviews/issue-81-swiss-signal.md)。
