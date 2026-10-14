@@ -38,6 +38,7 @@
 | 配置管理      | **viper**                              | env prefix `IOT_PILOT_`，自动 ENV 覆盖；已装                     |
 | 数据库        | **PostgreSQL**                        | `docker-compose.yml` 启动本地实例；Redis 同文件，两者都是启动期硬依赖 |
 | ORM           | **GORM**                              | `apps/api/go.mod` 与 `internal/repository` 已实际使用               |
+| 数据库迁移    | **golang-migrate v4.18.3**            | 独立工具，部署切换应用前执行；已有手工库先校验并接管              |
 | SMTP 库       | **gomail**                            | `apps/api/go.mod` 与 `internal/utils/mail_util.go` 已实际使用       |
 | Monorepo 工具 | **pnpm workspaces**                   | 前后端统一管理                                                   |
 | CI/CD         | **GitHub Actions**                    | `auto-merge.yml`（bot）+ `ci.yml`（PR 验证）+ `deploy.yml`（push main → VPS） |
@@ -48,7 +49,6 @@
 | ---------- | ----------------------------------- | ---------------- | ------------------------- |
 | 模板渲染   | `html/template` + Handlebars 子集 | —               | TemplateModule 开工       |
 | RBAC       | casbin                              | JWT + 中间件手写 | 角色模型与路由守卫落地时引入 |
-| 数据库迁移 | golang-migrate                      | goose            | schema 第一次演进         |
 
 ### 待确认
 
@@ -339,7 +339,7 @@ MailModule 当前是后端能力，不单独创建前端 `modules/mail/`；招�
 - [ ] 部署目标平台（VPS / Railway / Fly.io）
 - [x] 基础鉴权方案（用户名密码 + access/refresh JWT）已落地；`admin/member` RBAC 与前端路由守卫已联调
 - [ ] 邮件模板渲染选型（`html/template` + Handlebars 子集 或纯文本+占位符）
-- [ ] 数据库迁移工具（golang-migrate / goose）
+- [x] 数据库迁移工具：golang-migrate v4.18.3，独立命令 + 部署闸门；已有手工库先 check/adopt，见 `apps/api/migrations/README.md`
 - [ ] 国际化范围（仅中文 / 中英双语）
 - [ ] Postgres 备份策略（频度、保留周期、灾备位置）
 
@@ -362,6 +362,7 @@ MailModule 当前是后端能力，不单独创建前端 `modules/mail/`；招�
 
 | 日期       | 决策                                       | 理由                                                                                       |
 | ---------- | ------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| 2026-10-14 | 数据库迁移采用 golang-migrate v4.18.3（#107） | 兼容 Go 1.25 和既有 up/down SQL，无需改写 goose 注解；独立命令校验已有库非连续历史，停止旧应用前执行 up，失败保留旧容器，数据库默认 roll-forward |
 | 2026-09-09 | 后端选 Go（排除 NestJS、Express、FastAPI） | 招新规模适配，单二进制部署契合"代代传承"；开发/部署/CI 全链路 Go 更轻                      |
 | 2026-09-09 | 部署走 GitHub Actions + ghcr.io            | 与 GitHub 仓库同源，免费私有，PR 反馈快（Go 单测秒级）                                     |
 | 2026-09-09 | 前端定 Vue 3 + Element Plus + TS           | Element Plus 同样覆盖管理后台表格/表单场景                                                 |
