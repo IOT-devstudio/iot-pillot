@@ -10,6 +10,7 @@
  * 绕过前端直接请求管理端接口依然会拿到 403。
  */
 import {
+  AUTH_CODE_SESSION_INVALIDATED,
   AuthRequestError,
 } from "@/api/auth";
 import { fetchCurrentUser, type UserRole } from "@/api/admin";
@@ -47,9 +48,16 @@ const defaultDeps: RouteGateDeps = {
  */
 const LOGIN_ROUTE = "/";
 
-/** 去登录入口并记住原目标，便于登录后跳回 */
-function toLogin(fullPath: string): RouteRedirect {
-  return { path: LOGIN_ROUTE, query: { redirect: fullPath } };
+/** 去登录入口并记住原目标，便于登录后跳回；reason 会转成登录页的提示条 */
+function toLogin(
+  fullPath: string,
+  reason?: "expired" | "invalidated",
+): RouteRedirect {
+  const query: Record<string, string> = { redirect: fullPath };
+  if (reason !== undefined) {
+    query.reason = reason;
+  }
+  return { path: LOGIN_ROUTE, query };
 }
 
 /**
@@ -103,8 +111,18 @@ export async function resolveRouteAccess(
     role = await deps.fetchRole(token);
   } catch (error: unknown) {
     if (error instanceof AuthRequestError && isTokenRejected(error.status)) {
-      // 令牌确实无效：清掉会话，否则会带着一个坏令牌反复重试
+      // 令牌确实无效：清掉会话，否则会带着一个坏令牌反复重试。
+      // 401 带上失效原因（issue #84 契约：4011=被顶替/改密/登出），
+      // 登录页按 ?reason= 提示；403 是权限问题不是会话结束，不带。
       deps.clearSession();
+      if (error.status === 401) {
+        return toLogin(
+          fullPath,
+          error.businessCode === AUTH_CODE_SESSION_INVALIDATED
+            ? "invalidated"
+            : "expired",
+        );
+      }
     }
     return toLogin(fullPath);
   }
