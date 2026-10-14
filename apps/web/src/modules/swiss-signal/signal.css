@@ -1074,6 +1074,13 @@
   line-height: 1.9;
   margin: 20px 0;
 }
+/* 弹窗内的整表错误（报名失败等，issue #89） */
+.swiss-signal .dialog-error {
+  color: #ba291b;
+  font-size: 11px;
+  line-height: 1.8;
+  margin: 12px 0 0;
+}
 .swiss-signal .direction-facts {
   margin: 25px 0;
   border-top: 1px solid var(--line);
