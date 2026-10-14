@@ -26,6 +26,9 @@ vi.mock("@/modules/about/views/AboutView.vue", () => ({
 vi.mock("@/modules/recruitment/views/ProspectsView.vue", () => ({
   default: { name: "ProspectsView" },
 }));
+vi.mock("@/modules/recruitment/views/ApplicationsView.vue", () => ({
+  default: { name: "ApplicationsView" },
+}));
 vi.mock("@/modules/recruitment/views/ProspectDetailView.vue", () => ({
   default: { name: "ProspectDetailView" },
 }));
@@ -138,6 +141,7 @@ describe("application routes", () => {
       "/user/about",
       "/user/settings",
       "/recruitment",
+      "/recruitment/applications",
       "/recruitment/prospects",
       "/recruitment/prospects/:id",
     ];
@@ -169,6 +173,7 @@ describe("application routes", () => {
 
     expect(recruitmentPaths).toEqual([
       "/recruitment",
+      "/recruitment/applications",
       "/recruitment/prospects",
       "/recruitment/prospects/:id",
     ]);
@@ -179,7 +184,7 @@ describe("application routes", () => {
       (route) => route.path.startsWith("/recruitment") && route.component,
     );
 
-    expect(recruitmentPages).toHaveLength(2);
+    expect(recruitmentPages).toHaveLength(3);
     for (const page of recruitmentPages) {
       // 漏标 allowRoles 的页面会被守卫当成公开路由，这里锁死
       expect(page.meta?.allowRoles).toEqual(["admin"]);
