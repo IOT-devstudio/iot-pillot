@@ -122,6 +122,9 @@ iot-pillot/
 | 发送验证码 | `POST /api/v1/send-verify-code` | 前端已对接 | 根路径与兼容 `/login` 的二维认证页均可发送邮箱验证码；手机号由后端暂未实现 |
 | 刷新令牌 | `POST /api/v1/refresh` | 前端已对接 | 路由守卫在 access token 收到 401 时最多轮换一次并重试 `/me` |
 | 退出登录 | `POST /api/v1/logout` | 前端已对接 | Header 携带 access token，请求体携带 refresh token；网络失败也清理本地会话 |
+| 找回密码（发送重置码 / 重置） | `POST /api/v1/send-reset-code`、`POST /api/v1/reset-password` | 前端已对接 | 登录页第三面板「找回密码」；验证码与注册码互不覆盖；成功后全部会话失效 |
+| 修改密码 | `POST /api/v1/change-password` | 前端已对接 | 设置页修改密码卡片；成功后端撤销全部会话，前端清会话跳登录页 |
+| 会话失效错误契约 | 401 业务码 4010 / 4011 | 前端已对接 | 4010 纯过期走安静刷新；4011（顶替/改密/登出）清会话并以 `?reason=invalidated` 提示；网络异常不清会话 |
 | 当前用户 | `GET /api/v1/me` | 前端已对接 | 路由守卫和用户首页读取真实的用户名与 `admin/member` 角色 |
 | 更新本人资料 | `PUT /api/v1/me` | 前端已对接 | 白名单 `class/student_id/qq/direction` 三态补丁；**name 与 email 不可修改** |
 | 管理员用户列表 | `GET /api/v1/admin/users` | 前端已对接 | 管理员控制台分页读取用户 ID、用户名和注册时间 |
