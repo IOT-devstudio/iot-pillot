@@ -169,6 +169,29 @@ else
 fi
 
 # --- 场景 4：部署 workflow 自身变化 -------------------------------------------
+# 迁移必须发生在停止旧容器之前；失败不得切换应用或推进部署水位。
+export STUB_MIGRATE_RC=1
+run_deploy "sha256:OLDIMAGE" "8080" "ok"
+if [ "$RC" != "0" ] && grep -q '^MIGRATE_ARGS' "$WORK/log" \
+   && ! grep -qE '^docker (stop|rm) |^RUN_ARGS' "$WORK/log" \
+   && [ ! -f "$WORK/home/app/DEPLOYED_SHA" ]; then
+  ok "迁移失败保留旧容器，不启动新版、不写部署水位"
+else
+  bad "迁移失败保护不成立" "exit=$RC，调用：$(cat "$WORK/log")"
+fi
+unset STUB_MIGRATE_RC
+run_deploy "sha256:OLDIMAGE" "8080" "ok"
+migrate_line=$(grep -n '^MIGRATE_ARGS' "$WORK/log" | head -1 | cut -d: -f1)
+stop_line=$(grep -n '^docker stop ' "$WORK/log" | head -1 | cut -d: -f1)
+if [ "$RC" = "0" ] && [ -n "$migrate_line" ] && [ -n "$stop_line" ] \
+   && [ "$migrate_line" -lt "$stop_line" ] \
+   && grep '^MIGRATE_ARGS' "$WORK/log" | grep -q -- '--network iot-pilot-net' \
+   && grep '^MIGRATE_ARGS' "$WORK/log" | grep -q -- 'IOT_PILOT_DB_PASSWORD=stub_pw'; then
+  ok "迁移使用目标库配置，在停止旧容器前执行"
+else
+  bad "迁移执行顺序或配置不对" "调用：$(cat "$WORK/log")"
+fi
+
 # workflow 决定了镜像如何启动和注入配置；即使镜像内容没变，部署脚本变化也必须
 # 重新执行。这里在临时 git 仓库里真实运行 gate 的 decide 脚本，而不是只 grep YAML。
 GATE_REPO="$WORK/gate-repo"

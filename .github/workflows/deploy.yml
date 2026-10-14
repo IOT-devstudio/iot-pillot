@@ -175,6 +175,9 @@ jobs:
 
       - name: go vet + go test
         working-directory: apps/api
+        env:
+          # 只连接 runner 的临时 PostgreSQL；集成测试逐例建库并清理。
+          IOT_MIGRATION_TEST_DSN: postgres://iot_pillot:iot_pillot@127.0.0.1:5432/iot_pillot?sslmode=disable
         run: |
           go vet ./...
           go test ./...
@@ -208,6 +211,16 @@ jobs:
         run: |
           set -euo pipefail
           docker load < "${GITHUB_WORKSPACE}/app.tar"
+          # 同一镜像的迁移命令先在临时库执行；失败时镜像不能离开 runner。
+          docker run --rm \
+            --add-host=host.docker.internal:host-gateway \
+            --entrypoint /usr/local/bin/iot-migrate \
+            -e IOT_PILOT_DB_HOST=host.docker.internal \
+            -e IOT_PILOT_DB_PORT=5432 \
+            -e IOT_PILOT_DB_USER=iot_pillot \
+            -e IOT_PILOT_DB_PASSWORD=iot_pillot \
+            -e IOT_PILOT_DB_NAME=iot_pillot \
+            "iot-pillot-api:${{ steps.meta.outputs.short }}" up
           docker run -d --name smoke \
             -p 18080:80 \
             --add-host=host.docker.internal:host-gateway \
@@ -340,6 +353,21 @@ jobs:
             docker image inspect "${IMAGE_NAME}:${NEW_TAG}" >/dev/null \
               || { echo "load 失败 —— 镜像 tag 缺失"; exit 1; }
             rm -f app.tar.gz
+
+            # 迁移工具与 SQL 已编入同一个待部署镜像。同步执行，不启动 API，
+            # 不依赖 Redis。失败时 set -e 立即退出，下面的 stop/rm 不会执行。
+            # 已有未纳管库必须先按 migrations/README.md 在副本验证并手工 adopt；
+            # 不允许部署根据最高迁移号自动 force baseline。
+            echo "执行目标库迁移（旧容器保持运行）"
+            docker run --rm \
+              --network iot-pilot-net \
+              --entrypoint /usr/local/bin/iot-migrate \
+              -e IOT_PILOT_DB_HOST="$DB_HOST" \
+              -e IOT_PILOT_DB_PORT="$DB_PORT" \
+              -e IOT_PILOT_DB_USER="$DB_USER" \
+              -e IOT_PILOT_DB_PASSWORD="$DB_PASSWORD" \
+              -e IOT_PILOT_DB_NAME="$DB_NAME" \
+              "${IMAGE_NAME}:${NEW_TAG}" up
 
             # Postgres 与 Redis 以容器名运行在 iot-pilot-net 自定义网络里，
             # secrets 里的 DB_HOST / REDIS_HOST 就是容器名。

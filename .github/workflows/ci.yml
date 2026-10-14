@@ -23,6 +23,19 @@ jobs:
   backend:
     name: Go (apps/api)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: iot_pillot
+          POSTGRES_PASSWORD: iot_pillot
+          POSTGRES_DB: iot_pillot
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U iot_pillot -d iot_pillot"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+    env:
+      IOT_MIGRATION_TEST_DSN: postgres://iot_pillot:iot_pillot@127.0.0.1:5432/iot_pillot?sslmode=disable
     defaults:
       run:
         working-directory: apps/api
@@ -117,6 +130,15 @@ jobs:
       # service container 的端口发布在宿主 localhost 上，容器内经 host.docker.internal 访问。
       - name: 启动容器
         run: |
+          docker run --rm \
+            --add-host=host.docker.internal:host-gateway \
+            --entrypoint /usr/local/bin/iot-migrate \
+            -e IOT_PILOT_DB_HOST=host.docker.internal \
+            -e IOT_PILOT_DB_PORT=5432 \
+            -e IOT_PILOT_DB_USER=iot_pillot \
+            -e IOT_PILOT_DB_PASSWORD=iot_pillot \
+            -e IOT_PILOT_DB_NAME=iot_pillot \
+            iot-pillot-api:ci up
           docker run -d --name smoke \
             -p 18080:80 \
             --add-host=host.docker.internal:host-gateway \

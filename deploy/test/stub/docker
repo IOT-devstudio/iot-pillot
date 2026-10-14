@@ -16,6 +16,10 @@ case "$1 $2" in
   "load "*|"load") exit 0 ;;
   "stop "*|"rm "*)  exit 0 ;;
   "run "*)
+    if printf '%s' "$*" | grep -q -- '--entrypoint /usr/local/bin/iot-migrate'; then
+      echo "MIGRATE_ARGS $*" >> "$STUB_LOG"
+      exit "${STUB_MIGRATE_RC:-0}"
+    fi
     echo "RUN_ARGS $*" >> "$STUB_LOG"
     echo "containerid123"
     exit 0
