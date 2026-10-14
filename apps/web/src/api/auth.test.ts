@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  changePassword,
   login,
   logout,
   refreshAuthSession,
   register,
+  resetPassword,
+  sendResetCode,
   sendVerifyCode,
 } from "./auth";
 
@@ -210,5 +213,97 @@ describe("auth api", () => {
         },
       }),
     );
+  });
+});
+
+describe("password recovery api", () => {
+  it("posts the reset-code request without data expectations", async () => {
+    // send-reset-code 同样是 OKWithMsg(..., nil)，响应没有 data 字段
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 0, message: "发送验证码成功" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(sendResetCode("ada@example.com")).resolves.toBe(
+      "发送验证码成功",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/send-reset-code",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "ada@example.com" }),
+      }),
+    );
+  });
+
+  it("posts the exact reset DTO (snake_case new_password)", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 0, message: "密码重置成功，请重新登录" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      resetPassword({
+        email: "ada@example.com",
+        code: "123456",
+        new_password: "secret1",
+      }),
+    ).resolves.toBe("密码重置成功，请重新登录");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/reset-password",
+      expect.objectContaining({
+        body: JSON.stringify({
+          email: "ada@example.com",
+          code: "123456",
+          new_password: "secret1",
+        }),
+      }),
+    );
+  });
+
+  it("changes the password with the bearer token of the current session", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 0, message: "密码修改成功，请重新登录" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      changePassword("access-token", {
+        old_password: "old-secret",
+        new_password: "new-secret",
+      }),
+    ).resolves.toBe("密码修改成功，请重新登录");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/change-password",
+      expect.objectContaining({
+        body: JSON.stringify({
+          old_password: "old-secret",
+          new_password: "new-secret",
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer access-token",
+        },
+      }),
+    );
+  });
+
+  it("surfaces the backend message when resetting fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ code: 4001, message: "验证码错误或已过期" }), {
+        status: 400,
+      }),
+    );
+
+    await expect(
+      resetPassword({
+        email: "ada@example.com",
+        code: "000000",
+        new_password: "secret1",
+      }),
+    ).rejects.toThrow("验证码错误或已过期");
   });
 });
