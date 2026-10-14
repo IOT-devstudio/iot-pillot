@@ -1,66 +1,138 @@
 <script setup lang="ts">
+/**
+ * 用户侧个人首页 `/user/home`（issue #89：接入真实招新数据）。
+ *
+ * 数据全部来自后端（需登录，路由守卫已把关；未登录访问会被带到登录页
+ * 并带上 ?redirect= 原目标）：
+ *   - GET  /api/v1/recruitment/directions        方向与开放状态
+ *   - POST /api/v1/recruitment/applications      报名（归属由令牌决定）
+ *   - GET  /api/v1/recruitment/applications      本人申请（进度/统计）
+ *   - GET  /api/v1/recruitment/applications/:id  详情（时间线）
+ * 卡片标语等纯视觉元数据在 directionPresentation.ts，不属于接口契约。
+ *
+ * 三块数据彼此独立加载：方向挂了不该拖垮进度区，反之亦然。
+ */
 import { computed, onMounted, ref } from "vue";
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile, type MyProfile } from "@/api/profile";
-import SignalDialog from "@/modules/swiss-signal/SignalDialog.vue";
 import {
-  findDirection,
-  MY_APPLICATIONS,
-  RECRUITMENT_DIRECTIONS,
-  type DirectionApplication,
+  fetchDirections,
+  fetchMyApplication,
+  fetchMyApplications,
+  submitApplication,
+  type ApplicationStatus,
+  type RecruitmentApplication,
   type RecruitmentDirection,
-} from "../fixtures";
+  type RecruitmentTimelineEntry,
+} from "@/api/recruitment";
+import SignalDialog from "@/modules/swiss-signal/SignalDialog.vue";
+import { presentationOf } from "../directionPresentation";
 import { formatISODate } from "../format";
+
+/** 申请状态的中文标签（与后端状态机一致） */
+const STATUS_LABELS: Record<ApplicationStatus, string> = {
+  applied: "待审核",
+  reviewing: "审核中",
+  accepted: "已通过",
+  rejected: "未通过",
+};
+
 const user = ref<MyProfile | null>(null);
 const userError = ref("");
 const loading = ref(true);
+
+const directions = ref<RecruitmentDirection[]>([]);
+const directionsError = ref("");
+const directionsLoading = ref(true);
+
+const applications = ref<RecruitmentApplication[]>([]);
+const applicationsError = ref("");
+const applicationsLoading = ref(true);
+
 const rail = ref<HTMLElement | null>(null);
 const railIndex = ref(0);
+
+/** 报名弹窗状态 */
 const selectedDirection = ref<RecruitmentDirection | null>(null);
-const selectedApplication = ref<DirectionApplication | null>(null);
-const intent = ref<RecruitmentDirection | null>(null);
-const applications = MY_APPLICATIONS;
-const showApplications = ref(false);
+const submitting = ref(false);
+const submitError = ref("");
+const submitNotice = ref("");
+
+/** 进度区：当前展示第几条申请 + 全部申请弹窗 */
 const selectedRecordIndex = ref(0);
-const activeApplications = computed(() => {
-  const item = applications[selectedRecordIndex.value];
-  return item ? [item] : [];
-});
-const directions = RECRUITMENT_DIRECTIONS;
+const showApplications = ref(false);
+const activeApplication = computed(
+  () => applications.value[selectedRecordIndex.value] ?? null,
+);
+
+/** 详情弹窗（时间线按需拉取） */
+const selectedApplication = ref<RecruitmentApplication | null>(null);
+const detailTimeline = ref<RecruitmentTimelineEntry[]>([]);
+const detailLoading = ref(false);
+const detailError = ref("");
+
 const displayName = computed(() => user.value?.name || user.value?.username);
-const labels = {
-  pending: "待处理",
-  invited: "已邀请",
-  accepted: "已接受",
-  rejected: "未通过",
-};
-const tags = [
-  "VUE / TYPESCRIPT / EXPERIENCE",
-  "GO / API / POSTGRESQL",
-  "LLM / TOOLS / WORKFLOW",
-];
-const headlines = [
-  "INTERFACE / EXPERIENCE",
-  "DATA / SYSTEM",
-  "MODEL / WORKFLOW",
-];
-const symbols = ["↗", "{ }", "⌁"];
-async function load() {
+const openDirectionCount = computed(
+  () => directions.value.filter((direction) => direction.open).length,
+);
+const appliedCodes = computed(
+  () => new Set(applications.value.map((application) => application.direction_code)),
+);
+
+function describeError(error: unknown, fallback: string): string {
+  return error instanceof AuthRequestError ? error.message : fallback;
+}
+
+async function loadProfile(): Promise<void> {
   loading.value = true;
   userError.value = "";
   try {
     user.value = await fetchMyProfile();
   } catch (error) {
     user.value = null;
-    userError.value =
-      error instanceof AuthRequestError
-        ? error.message
-        : "暂时无法加载用户信息，请稍后重试";
+    userError.value = describeError(error, "暂时无法加载用户信息，请稍后重试");
   } finally {
     loading.value = false;
   }
 }
-onMounted(load);
+
+async function loadDirections(): Promise<void> {
+  directionsLoading.value = true;
+  directionsError.value = "";
+  try {
+    directions.value = (await fetchDirections()).items;
+  } catch (error) {
+    directions.value = [];
+    directionsError.value = describeError(error, "暂时无法加载方向，请稍后重试");
+  } finally {
+    directionsLoading.value = false;
+  }
+}
+
+async function loadApplications(): Promise<void> {
+  applicationsLoading.value = true;
+  applicationsError.value = "";
+  try {
+    applications.value = (await fetchMyApplications()).items;
+    if (selectedRecordIndex.value >= applications.value.length) {
+      selectedRecordIndex.value = 0;
+    }
+  } catch (error) {
+    applications.value = [];
+    applicationsError.value = describeError(
+      error,
+      "暂时无法加载报名记录，请稍后重试",
+    );
+  } finally {
+    applicationsLoading.value = false;
+  }
+}
+
+onMounted(() => {
+  void loadProfile();
+  void loadDirections();
+  void loadApplications();
+});
 
 /**
  * 页内锚点的平滑滚动（issue #94）。
@@ -81,6 +153,7 @@ function scrollToSection(event: MouseEvent, id: string): void {
   // 同步地址栏锚点，保持链接可分享
   history.replaceState(null, "", `#${id}`);
 }
+
 function updateIndex() {
   if (!rail.value) return;
   const panels = [
@@ -96,9 +169,10 @@ function updateIndex() {
     0,
   );
 }
+
 function move(index: number) {
   if (!rail.value) return;
-  const target = Math.max(0, Math.min(directions.length - 1, index));
+  const target = Math.max(0, Math.min(directions.value.length - 1, index));
   const panel = rail.value.children[target] as HTMLElement | undefined;
   if (!panel) return;
   const immediate =
@@ -110,13 +184,14 @@ function move(index: number) {
   });
   railIndex.value = target;
 }
+
 function railKey(event: KeyboardEvent) {
   if (event.target !== rail.value) return;
   const target =
     event.key === "Home"
       ? 0
       : event.key === "End"
-        ? directions.length - 1
+        ? directions.value.length - 1
         : event.key === "ArrowRight"
           ? railIndex.value + 1
           : event.key === "ArrowLeft"
@@ -127,24 +202,84 @@ function railKey(event: KeyboardEvent) {
     move(target);
   }
 }
-function steps(application: DirectionApplication) {
-  const stage =
-    application.status === "accepted"
-      ? 3
-      : application.status === "invited"
-        ? 2
-        : 1;
-  return ["提交申请", "初步审核", "邀请交流"].map((title, i) => ({
-    title,
-    complete: i < stage,
-    current: i === stage,
-    note:
-      i < stage
-        ? "已完成 · 演示记录"
-        : i === stage
-          ? `${labels[application.status]} · 演示状态`
-          : "后续阶段 · 演示流程",
-  }));
+
+/** 打开报名弹窗：清上一次的提交痕迹 */
+function openDirection(direction: RecruitmentDirection): void {
+  selectedDirection.value = direction;
+  submitError.value = "";
+  submitNotice.value = "";
+}
+
+/**
+ * 真实报名（issue #89）。成功后刷新本人申请——记录以服务端为准，
+ * 不在前端乐观插入；失败原地提示，可安全重试（后端唯一约束兜底重复）。
+ */
+async function handleApply(): Promise<void> {
+  const direction = selectedDirection.value;
+  if (direction === null || submitting.value) return;
+  submitError.value = "";
+  submitNotice.value = "";
+  submitting.value = true;
+  try {
+    await submitApplication(direction.code);
+    submitNotice.value = "报名成功，可在「我的进度」查看审核进展。";
+    await loadApplications();
+  } catch (error) {
+    submitError.value = describeError(error, "报名失败，请稍后重试");
+  } finally {
+    submitting.value = false;
+  }
+}
+
+/** 打开详情弹窗并拉取时间线 */
+async function openDetail(application: RecruitmentApplication): Promise<void> {
+  selectedApplication.value = application;
+  detailTimeline.value = [];
+  detailError.value = "";
+  detailLoading.value = true;
+  try {
+    const detail = await fetchMyApplication(application.id);
+    detailTimeline.value = detail.timeline;
+  } catch (error) {
+    detailError.value = describeError(error, "暂时无法加载时间线，请稍后重试");
+  } finally {
+    detailLoading.value = false;
+  }
+}
+
+/** 首页进度三步：按真实状态机（applied→reviewing→accepted/rejected）推导 */
+function steps(application: RecruitmentApplication) {
+  const status = application.status;
+  return [
+    {
+      title: "提交申请",
+      complete: true,
+      current: false,
+      note: formatISODate(application.created_at),
+    },
+    {
+      title: "初步审核",
+      complete: status === "accepted" || status === "rejected",
+      current: status === "applied" || status === "reviewing",
+      note:
+        status === "applied"
+          ? "已提交，等待工作室处理"
+          : status === "reviewing"
+            ? "工作室正在审核"
+            : "审核已完成",
+    },
+    {
+      title: "结果",
+      complete: status === "accepted",
+      current: status === "rejected",
+      note:
+        status === "accepted"
+          ? "已通过，留意后续通知"
+          : status === "rejected"
+            ? "本次未通过，感谢你的关注"
+            : "结果待公布",
+    },
+  ];
 }
 </script>
 <template>
@@ -195,10 +330,10 @@ function steps(application: DirectionApplication) {
       <div>
         <span class="mono">OPEN DIRECTIONS</span
         ><strong
-          ><span :data-count="directions.filter((d) => d.isOpen).length">{{
-            String(directions.filter((d) => d.isOpen).length).padStart(2, "0")
+          ><span :data-count="openDirectionCount">{{
+            String(openDirectionCount).padStart(2, "0")
           }}</span
-          ><small>个演示方向</small></strong
+          ><small>个开放方向</small></strong
         >
       </div>
       <div>
@@ -207,7 +342,7 @@ function steps(application: DirectionApplication) {
           ><span :data-count="applications.length">{{
             String(applications.length).padStart(2, "0")
           }}</span
-          ><small>条演示记录</small></strong
+          ><small>条报名记录</small></strong
         >
       </div>
       <div class="stat-statement profile-readout" aria-label="本人资料">
@@ -215,7 +350,7 @@ function steps(application: DirectionApplication) {
         <p v-if="loading" role="status">正在加载用户信息…</p>
         <div v-else-if="userError" role="alert">
           {{ userError }}
-          <button class="plain-link" @click="load">重试 ↗</button>
+          <button class="plain-link" @click="loadProfile">重试 ↗</button>
         </div>
         <strong v-else-if="user"
           ><span class="profile-summary"
@@ -248,14 +383,21 @@ function steps(application: DirectionApplication) {
             ←</button
           ><button
             aria-label="下一个方向"
-            :disabled="railIndex === directions.length - 1"
+            :disabled="railIndex >= directions.length - 1"
             @click="move(railIndex + 1)"
           >
             →
           </button>
         </div>
       </div>
+      <p v-if="directionsLoading" role="status">正在加载方向…</p>
+      <div v-else-if="directionsError" role="alert">
+        {{ directionsError }}
+        <button class="plain-link" @click="loadDirections">重试 ↗</button>
+      </div>
+      <p v-else-if="!directions.length">本轮暂无可报名的方向。</p>
       <div
+        v-else
         ref="rail"
         class="direction-rail"
         tabindex="0"
@@ -272,29 +414,37 @@ function steps(application: DirectionApplication) {
             String(index + 1).padStart(2, "0")
           }}</span>
           <div class="mono panel-top">
-            <span>{{ headlines[index] }}</span
-            ><span>探索方向 · 演示</span>
+            <span>{{ presentationOf(direction.code).headline }}</span
+            ><span>{{ direction.open ? "开放报名" : "暂未开放" }}</span>
           </div>
           <div class="direction-heading">
-            <h3>{{ direction.title.replace("开发", "") }}<br />开发。</h3>
+            <h3>{{ direction.name }}<br />。</h3>
             <span
               class="direction-symbol"
-              :class="{ 'backend-symbol': index === 1 }"
+              :class="{ 'backend-symbol': direction.code === 'back-end' }"
               aria-hidden="true"
-              >{{ symbols[index] }}</span
+              >{{ presentationOf(direction.code).symbol }}</span
             >
           </div>
           <div class="panel-bottom">
             <div>
-              <p>{{ direction.summary }}</p>
-              <span class="mono">{{ tags[index] }}</span>
+              <p>{{ presentationOf(direction.code).summary }}</p>
+              <span class="mono">{{
+                presentationOf(direction.code).tag
+              }}</span>
             </div>
             <button
               class="panel-button"
-              :disabled="!direction.isOpen"
-              @click="selectedDirection = direction"
+              :disabled="!direction.open || appliedCodes.has(direction.code)"
+              @click="openDirection(direction)"
             >
-              {{ direction.isOpen ? "了解并体验报名" : "暂未开放" }}
+              {{
+                !direction.open
+                  ? "暂未开放"
+                  : appliedCodes.has(direction.code)
+                    ? "已报名"
+                    : "了解并报名"
+              }}
               <span>↗</span>
             </button>
           </div>
@@ -308,18 +458,22 @@ function steps(application: DirectionApplication) {
           <h2>每一步，都算数。</h2>
         </div>
         <button
+          v-if="applications.length"
           class="plain-link journey-label"
           @click="showApplications = true"
         >
-          查看全部 {{ applications.length }} 条演示记录 ↗
+          查看全部 {{ applications.length }} 条报名记录 ↗
         </button>
       </div>
-      <p v-if="!applications.length">暂无演示申请记录。</p>
-      <div
-        v-for="application in activeApplications"
-        :key="application.id"
-        class="journey-sheet"
-      >
+      <p v-if="applicationsLoading" role="status">正在加载报名记录…</p>
+      <div v-else-if="applicationsError" role="alert">
+        {{ applicationsError }}
+        <button class="plain-link" @click="loadApplications">重试 ↗</button>
+      </div>
+      <p v-else-if="!applications.length">
+        还没有报名记录 —— 从上方的方向卡开始你的第一站。
+      </p>
+      <div v-else class="journey-sheet">
         <div class="journey-summary">
           <div>
             <span class="mono"
@@ -328,28 +482,27 @@ function steps(application: DirectionApplication) {
             >
             <h3>
               {{
-                findDirection(application.directionId)?.title || "方向已下线"
+                directions.find((d) => d.code === activeApplication?.direction_code)
+                  ?.name || "方向已下线"
               }}
             </h3>
-            <p>{{ formatISODate(application.appliedAt) }} · 演示申请</p>
+            <p>{{ formatISODate(activeApplication!.created_at) }} 提交</p>
           </div>
           <button
             class="status-tag"
-            aria-label="切换演示申请记录"
-            title="切换演示申请记录"
+            aria-label="切换报名记录"
+            title="切换报名记录"
             @click="showApplications = true"
           >
-            <i class="status-dot"></i>{{ labels[application.status] }} · 演示</button
-          ><button
-            class="plain-link"
-            @click="selectedApplication = application"
-          >
+            <i class="status-dot"></i
+            >{{ STATUS_LABELS[activeApplication!.status] }}</button
+          ><button class="plain-link" @click="openDetail(activeApplication!)">
             查看详情 ↗
           </button>
         </div>
         <ol class="journey-steps">
           <li
-            v-for="(step, i) in steps(application)"
+            v-for="(step, i) in steps(activeApplication!)"
             :key="step.title"
             :class="{ complete: step.complete, current: step.current }"
           >
@@ -362,9 +515,6 @@ function steps(application: DirectionApplication) {
           </li>
         </ol>
       </div>
-      <p v-if="intent" class="new-intents" role="status">
-        本次体验选择：{{ intent.title }}（演示，未提交到后端，刷新后重置）
-      </p>
     </section>
     <section class="closing-note">
       <span class="mono">ONE MORE THING.</span>
@@ -375,14 +525,16 @@ function steps(application: DirectionApplication) {
     </section>
     <SignalDialog
       v-if="selectedDirection"
-      :title="selectedDirection.title"
+      :title="selectedDirection.name"
       @close="selectedDirection = null"
-      ><p class="dialog-description">{{ selectedDirection.summary }}</p>
+      ><p class="dialog-description">
+        {{ presentationOf(selectedDirection.code).summary }}
+      </p>
       <div class="direction-facts">
         <div>
           <span>状态</span
           ><strong>{{
-            selectedDirection.isOpen ? "开放体验" : "暂未开放"
+            selectedDirection.open ? "开放报名" : "暂未开放"
           }}</strong>
         </div>
         <div>
@@ -393,46 +545,62 @@ function steps(application: DirectionApplication) {
         </div>
       </div>
       <p class="dialog-note">
-        这是报名交互演示，不会提交真实申请或保存报名数据。
+        报名将提交真实申请，可在首页「我的进度」查看审核进展。
       </p>
       <button
         class="action-button"
-        :disabled="!selectedDirection.isOpen"
-        @click="intent = selectedDirection"
+        :disabled="
+          !selectedDirection.open ||
+          submitting ||
+          appliedCodes.has(selectedDirection.code)
+        "
+        :aria-busy="submitting"
+        @click="handleApply"
       >
-        <span>体验报名意向</span><b>↗</b>
+        <span>{{
+          submitting
+            ? "提交中…"
+            : appliedCodes.has(selectedDirection.code)
+              ? "已报名"
+              : "确认报名"
+        }}</span
+        ><b aria-hidden="true">↗</b>
       </button>
-      <p v-if="intent?.id === selectedDirection.id" role="status">
-        已选择本次体验方向，未提交到后端。
-      </p></SignalDialog
+      <p v-if="submitError" class="dialog-error" role="alert">
+        {{ submitError }}
+      </p>
+      <p v-if="submitNotice" role="status">{{ submitNotice }}</p></SignalDialog
     >
     <SignalDialog
       v-if="selectedApplication"
       :title="
-        findDirection(selectedApplication.directionId)?.title || '申请详情'
+        directions.find((d) => d.code === selectedApplication?.direction_code)
+          ?.name || '申请详情'
       "
       @close="selectedApplication = null"
       ><p class="dialog-description">
-        {{ formatISODate(selectedApplication.appliedAt) }} ·
-        {{ labels[selectedApplication.status] }}
+        {{ formatISODate(selectedApplication.created_at) }} 提交 ·
+        {{ STATUS_LABELS[selectedApplication.status] }}
       </p>
-      <p class="dialog-note">
-        演示申请记录与示例进度，不代表真实报名或审核结果。
+      <p v-if="detailLoading" role="status">正在加载时间线…</p>
+      <p v-else-if="detailError" class="dialog-error" role="alert">
+        {{ detailError }}
       </p>
-      <ol class="detail-steps">
-        <li v-for="step in steps(selectedApplication)" :key="step.title">
-          <strong>{{ step.title }}</strong>
-          <p>{{ step.note }}</p>
+      <ol v-else class="detail-steps">
+        <li
+          v-for="entry in detailTimeline"
+          :key="entry.id"
+        >
+          <strong>{{ STATUS_LABELS[entry.to_status] ?? entry.to_status }}</strong>
+          <p>{{ formatISODate(entry.created_at) }}</p>
         </li>
       </ol></SignalDialog
     >
     <SignalDialog
       v-if="showApplications"
-      title="全部演示申请"
+      title="全部报名"
       @close="showApplications = false"
-      ><p class="dialog-note">
-        以下记录均为演示，不代表真实报名或审核结果。选择一条查看首页进度。
-      </p>
+      ><p class="dialog-note">选择一条查看首页进度。</p>
       <div class="application-picker">
         <button
           v-for="(application, index) in applications"
@@ -445,9 +613,10 @@ function steps(application: DirectionApplication) {
         >
           <span
             >{{
-              findDirection(application.directionId)?.title || "方向已下线"
+              directions.find((d) => d.code === application.direction_code)
+                ?.name || "方向已下线"
             }}
-            · {{ labels[application.status] }}</span
+            · {{ STATUS_LABELS[application.status] }}</span
           ><span>↗</span>
         </button>
       </div></SignalDialog

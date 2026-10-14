@@ -30,8 +30,12 @@ const navGroups: AdminNavGroup[] = [
       {
         label: "意向成员",
         to: "/recruitment/prospects",
-        match: "/recruitment",
         icon: "M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20 M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z M17 4.5a3.5 3.5 0 0 1 0 6.8 M21 20v-1.5a4 4 0 0 0-3-3.87",
+      },
+      {
+        label: "申请审核",
+        to: "/recruitment/applications",
+        icon: "M9 4.75h6l4 4V19.25H9z M14 4.75v4.5h4.5 M5.5 7.75v11.5h9",
       },
       {
         label: "表单管理",

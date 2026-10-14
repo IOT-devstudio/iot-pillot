@@ -130,8 +130,8 @@ iot-pillot/
 | 管理员用户列表 | `GET /api/v1/admin/users` | 前端已对接 | 管理员控制台分页读取用户 ID、用户名和注册时间 |
 | 管理员名单管理 | `GET/POST/DELETE /api/v1/admin/admins*` | 前端已对接 | 用户与权限页展示、授予与撤销管理员 |
 | 邮件模板 CRUD、发送与记录 | `/api/v1/admin/mail-templates*`、`/api/v1/admin/mails*` | 前端已对接 | 邮件中心页面；招新流程内的邮件动作前端待 #91 接入 |
-| 招新方向 / 报名 / 我的申请（用户端，需登录） | `/api/v1/recruitment/directions` 等 | 后端已落地，前端未接入 | 前端接入见 #89；报名必须登录，无匿名提交 |
-| 招新轮次 / 方向开关 / 申请审核（管理端） | `/api/v1/admin/recruitment/*` | 后端已落地，前端未接入 | 前端接入见 #93 |
+| 招新方向 / 报名 / 我的申请（用户端，需登录） | `/api/v1/recruitment/directions` 等 | 前端已对接 | 首页读真实方向与开放状态、报名与进度（#89）；报名必须登录，无匿名提交 |
+| 招新轮次 / 方向开关 / 申请审核（管理端） | `/api/v1/admin/recruitment/*` | 前端已对接 | 申请审核页 `/recruitment/applications`（#89）；轮次/方向开关与基础审核 |
 | 招新邀请与候选人流程（BE-04） | `POST /api/v1/admin/invitations/send`、`GET /api/v1/admin/invitations`、`POST /api/v1/admin/invitations/:id/revoke`、`GET /api/v1/admin/candidates`、`GET /api/v1/admin/candidates/:id`、`POST /api/v1/admin/candidates/:id/advance`、`GET /api/v1/me/invitations`、`POST /api/v1/me/invitations/accept`、`GET /api/v1/me/candidates` | 后端已交付，前端未接入 | `packages/shared-types` 的 BE-04 段是真实契约（number ID）；邀请邮件复用 MailModule 模板发送 |
 | 表单、模板、用户权限、SMTP 设置 | 部分尚无路由 | 阻塞 | 共享 TS 类型中未标 BE-04 的招新类型与表单类型仍是领域草案，不能直接当作已交付 API |
 

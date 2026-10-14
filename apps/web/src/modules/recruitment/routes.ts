@@ -10,11 +10,19 @@
 import type { RouteRecordRaw } from "vue-router";
 
 import { MEMBER_ONLY } from "@/router/route-specs";
+import ApplicationsView from "./views/ApplicationsView.vue";
 import ProspectDetailView from "./views/ProspectDetailView.vue";
 import ProspectsView from "./views/ProspectsView.vue";
 
 export const recruitmentRoutes: RouteRecordRaw[] = [
-  { path: "/recruitment", redirect: "/recruitment/prospects" },
+  { path: "/recruitment", redirect: "/recruitment/applications" },
+  {
+    // 真实报名的审核入口（issue #89）；意向成员页仍是旧演示流程
+    path: "/recruitment/applications",
+    name: "recruitment-applications",
+    component: ApplicationsView,
+    meta: { title: "申请审核", allowRoles: MEMBER_ONLY, adminShell: true },
+  },
   {
     path: "/recruitment/prospects",
     name: "recruitment-prospects",
