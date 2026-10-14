@@ -10,7 +10,14 @@ import {
   validateRegisterForm,
 } from "@/auth/form";
 
-export type AuthMode = "login" | "register";
+export type AuthMode = "login" | "register" | "reset";
+
+/**
+ * 会直接产生登录会话的两种模式。
+ * reset（找回密码，issue #85）成功后不发令牌，走独立提交路径，
+ * submitAuth 只接受这两种——把 reset 传进来会误走注册分支。
+ */
+export type CredentialMode = Extract<AuthMode, "login" | "register">;
 export type AuthForm = LoginForm | RegisterForm;
 
 export interface AuthSubmitDeps {
@@ -49,7 +56,7 @@ export function defaultNavigateTarget(redirect?: string): string {
 }
 
 export async function submitAuth(
-  mode: AuthMode,
+  mode: CredentialMode,
   form: AuthForm,
   deps: AuthSubmitDeps,
   redirect?: string,

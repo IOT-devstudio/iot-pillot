@@ -17,12 +17,14 @@ import {
   validateRegisterForm,
 } from "@/auth/form";
 import { saveAuthSession } from "@/auth/session";
-import { submitAuth, type AuthMode } from "@/auth/submit";
+import { submitAuth, type CredentialMode } from "@/auth/submit";
 
 import { CONFIG } from "../config";
 
 export interface UseAuthPanelResult {
-  mode: Ref<AuthMode>;
+  // 旧开屏兼容面板只有登录/注册两种模式；找回密码（reset）是
+  // 二维认证页（AuthView）独有的第三面板，不进这个 fallback
+  mode: Ref<CredentialMode>;
   loginForm: Ref<LoginForm>;
   registerForm: Ref<RegisterForm>;
   errors: Ref<Record<string, string>>;
@@ -33,7 +35,7 @@ export interface UseAuthPanelResult {
   codeCooldown: Ref<number>;
   submitLabel: ComputedRef<string>;
   codeButtonLabel: ComputedRef<string>;
-  setMode: (mode: AuthMode) => void;
+  setMode: (mode: CredentialMode) => void;
   clearFieldError: (field: string) => void;
   submit: () => Promise<void>;
   sendCode: () => Promise<void>;
@@ -47,7 +49,7 @@ export function useAuthPanel(
 ): UseAuthPanelResult {
   const router = useRouter();
 
-  const mode = ref<AuthMode>("login");
+  const mode = ref<CredentialMode>("login");
   const submitting = ref(false);
   const sendingCode = ref(false);
   const errors = ref<Record<string, string>>({});
@@ -80,7 +82,7 @@ export function useAuthPanel(
     return sendingCode.value ? "发送中…" : "获取验证码";
   });
 
-  function setMode(next: AuthMode): void {
+  function setMode(next: CredentialMode): void {
     if (submitting.value || mode.value === next) {
       return;
     }

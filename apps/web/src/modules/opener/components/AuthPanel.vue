@@ -10,12 +10,13 @@
  * 常规做法，父级始终是这两个对象的唯一所有者。
  */
 import type { LoginForm, RegisterForm } from "@/auth/form";
-import type { AuthMode } from "@/auth/submit";
+import type { CredentialMode } from "@/auth/submit";
 
 import AuthField from "./AuthField.vue";
 
 defineProps<{
-  mode: AuthMode;
+  // 旧开屏兼容面板只有登录/注册；找回密码是二维认证页独有的第三面板
+  mode: CredentialMode;
   loginForm: LoginForm;
   registerForm: RegisterForm;
   /** 字段级错误，键为字段名 */
@@ -36,7 +37,7 @@ defineProps<{
 }>();
 
 defineEmits<{
-  (event: "update:mode", mode: AuthMode): void;
+  (event: "update:mode", mode: CredentialMode): void;
   (event: "submit"): void;
   (event: "send-code"): void;
 }>();

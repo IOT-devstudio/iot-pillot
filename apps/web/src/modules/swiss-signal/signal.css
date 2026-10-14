@@ -314,14 +314,18 @@
 }
 .swiss-signal .form-slider {
   display: flex;
-  width: 200%;
+  width: 300%;
   transition: transform 0.65s cubic-bezier(0.22, 0.8, 0.16, 1);
 }
+/* 三面板：login → register → reset（找回密码，issue #85），每格 1/3 宽 */
 .swiss-signal[data-view="register"] .form-slider {
-  transform: translateX(-50%);
+  transform: translateX(-33.3333%);
+}
+.swiss-signal[data-view="reset"] .form-slider {
+  transform: translateX(-66.6666%);
 }
 .swiss-signal .auth-pane {
-  width: 50%;
+  width: 33.3333%;
   flex-shrink: 0;
   padding: 0 2px;
 }
@@ -2175,6 +2179,15 @@
   margin: 0 0 18px;
   padding: 12px;
   border: 1px solid currentColor;
+}
+/* 会话失效 / 密码已重置的提示条（issue #85）：黄底区别于错误红 */
+.swiss-signal .session-notice {
+  font-size: 11px;
+  line-height: 1.8;
+  margin: 0 0 18px;
+  padding: 12px;
+  border: 1px solid var(--ink);
+  background: var(--yellow);
 }
 .swiss-signal .submit-error {
   color: #ba291b;
