@@ -30,10 +30,6 @@ const {
   usersError,
   usersUnauthorized,
   filteredUsers,
-  admins,
-  adminsLoading,
-  adminsError,
-  adminsUnauthorized,
   currentUserId,
   actionFor,
   isBusy,
@@ -42,7 +38,6 @@ const {
   resetFilters,
   loadAll,
   loadUsers,
-  loadAdmins,
   changePage,
   changePageSize,
   grant,
@@ -199,60 +194,8 @@ onMounted(loadAll);
         </template>
       </section>
 
-      <!-- 管理员名单 -->
-      <section class="panel panel--pad admins-panel">
-        <header class="panel-head">
-          <h2 class="panel-head__title">管理员名单</h2>
-          <span class="panel-head__meta">
-            {{ adminsLoading || adminsError ? "" : `共 ${admins.length} 人` }}
-          </span>
-        </header>
-
-        <div v-if="adminsLoading" role="status" aria-label="正在加载管理员名单">
-          <el-skeleton :rows="3" animated />
-        </div>
-        <div v-else-if="adminsError" class="state state--error" role="alert">
-          <span>{{ adminsError }}</span>
-          <el-button
-            v-if="!adminsUnauthorized"
-            link
-            type="primary"
-            @click="loadAdmins"
-          >
-            重试
-          </el-button>
-        </div>
-        <p v-else-if="admins.length === 0" class="state" role="status">
-          暂无管理员
-        </p>
-        <el-table v-else :data="admins">
-          <el-table-column prop="user_id" label="用户 ID" width="110" />
-          <el-table-column prop="name" label="姓名" min-width="160" />
-          <el-table-column prop="created_at" label="注册时间" min-width="200" />
-          <el-table-column label="操作" width="260" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openDetail(row)">
-                详情
-              </el-button>
-              <el-button
-                v-if="actionFor(row).kind === 'revoke'"
-                link
-                type="danger"
-                :loading="isBusy(row.user_id)"
-                @click="revoke(row)"
-              >
-                撤销管理员
-              </el-button>
-              <span v-else-if="actionFor(row).kind === 'self'" class="self-note">
-                当前登录账号，不可撤销
-              </span>
-              <span v-else class="self-note">
-                {{ UNKNOWN_IDENTITY_NOTE }}
-              </span>
-            </template>
-          </el-table-column>
-        </el-table>
-      </section>
+      <!-- 管理员名单区块已删除（review 裁决）：提升/撤销在用户列表行内
+           已有，角色筛选也能定位管理员，这块是纯重复 -->
 
       <UserDetailDialog
         v-model:visible="detailVisible"
