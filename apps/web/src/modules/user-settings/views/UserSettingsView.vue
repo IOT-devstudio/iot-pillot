@@ -95,8 +95,9 @@ onMounted(load);
           @retry="retryDirection"
         />
 
-        <!-- 修改密码（issue #85）：成功后清会话跳登录页，失败原地重试 -->
-        <ChangePasswordCard />
+        <!-- 修改密码入口（issue #85 重构）：一行字样 + 液态玻璃弹窗，
+             弹窗内走邮箱验证码流程（复用忘记密码后端契约） -->
+        <ChangePasswordCard :email="profile.detail?.email ?? ''" />
       </template>
 
       <!-- 保存失败的局部提示：toast 容易被错过，把这条放在表单下面兜底 -->
