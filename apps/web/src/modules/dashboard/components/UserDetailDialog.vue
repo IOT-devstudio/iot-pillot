@@ -8,7 +8,8 @@
  * 数据来源：列表里已扩的 detail 字段（#57 后端契约）。打开弹窗不发起第二
  * 个请求；想看最新就刷新页面（验收项的「实时更新」口径）。
  */
-import { computed, onBeforeUnmount, watch } from "vue";
+import { computed } from "vue";
+import { useDialogLock } from "@/composables/useDialogLock";
 import type { Direction } from "@iot-pillot/shared-types";
 
 import type { AdminUser } from "@/api/admin";
@@ -30,41 +31,8 @@ function close(): void {
   emit("update:visible", false);
 }
 
-/**
- * 手动锁整页滚动（review 二轮反馈：页面够高时仍能滑动）。
- *
- * 只锁 body 不够：本项目 html 被显式设了 overflow: auto，此时 body 的
- * overflow 不会传导到视口，视口照样滚。必须 html + body 一起锁。
- * Element 自带 lock-scroll 同样只动 body，所以不可靠。
- * 关闭或组件卸载时必须归还，否则整页永久锁死。
- */
-watch(
-  () => props.visible,
-  (visible) => {
-    if (visible) {
-      // 滚动条消失会让视口瞬间变宽、关闭时又缩回去——「抽动一下再恢复」
-      // 的根源。用 body 的 padding-right 补偿滚动条宽度，宽度全程不变
-      const scrollbarGap =
-        window.innerWidth - document.documentElement.clientWidth;
-      document.documentElement.style.overflow = "hidden";
-      document.body.style.overflow = "hidden";
-      if (scrollbarGap > 0) {
-        document.body.style.paddingRight = `${scrollbarGap}px`;
-      }
-    } else {
-      document.documentElement.style.overflow = "";
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-    }
-  },
-  { immediate: true },
-);
-
-onBeforeUnmount(() => {
-  document.documentElement.style.overflow = "";
-  document.body.style.overflow = "";
-  document.body.style.paddingRight = "";
-});
+// 整页滚动锁 + 滚动条宽度补偿（公共 composable，见 useDialogLock）
+useDialogLock(() => props.visible);
 
 const DIRECTION_LABELS: Record<Direction, string> = {
   "front-end": "前端",
@@ -115,7 +83,7 @@ const isSelf = computed(
   <el-dialog
     :model-value="visible"
     append-to-body
-    modal-class="user-detail-modal"
+    modal-class="centered-dialog"
     title="用户详情"
     width="560"
     :close-on-click-modal="true"

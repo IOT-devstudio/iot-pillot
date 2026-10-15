@@ -43,7 +43,14 @@ function confirm() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" :title="title" width="560px">
+  <el-dialog
+    v-model="visible"
+    :title="title"
+    width="560px"
+    append-to-body
+    :lock-scroll="false"
+    modal-class="centered-dialog"
+  >
     <el-form label-position="top">
       <el-form-item label="主题">
         <el-input v-model="subject" />
