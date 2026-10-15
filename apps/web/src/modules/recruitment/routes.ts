@@ -1,38 +1,42 @@
-/**
- * recruitment 模块的路由。
- *
- * 由 router/routes.ts 汇总，模块自身不直接改全局路由表。
- * 招新档案属于管理侧功能区，与 /user/* 用户侧对称。
- *
- * meta.allowRoles 由 router/guards.ts 把关；守卫把「没写 allowRoles」当成
- * 公开路由放行，所以这里每一条真实页面都必须显式锁上成员角色。
- */
 import type { RouteRecordRaw } from "vue-router";
-
-import { MEMBER_ONLY } from "@/router/route-specs";
+import { MEMBER_ONLY, ANY_SIGNED_IN } from "@/router/route-specs";
 import ApplicationsView from "./views/ApplicationsView.vue";
-import ProspectDetailView from "./views/ProspectDetailView.vue";
-import ProspectsView from "./views/ProspectsView.vue";
-
+import InvitationsView from "./views/InvitationsView.vue";
+import CandidatesView from "./views/CandidatesView.vue";
+import CandidateDetailView from "./views/CandidateDetailView.vue";
+import MyInvitationsView from "./views/MyInvitationsView.vue";
 export const recruitmentRoutes: RouteRecordRaw[] = [
   { path: "/recruitment", redirect: "/recruitment/applications" },
+  { path: "/recruitment/prospects", redirect: "/recruitment/applications" },
+  { path: "/recruitment/prospects/:id", redirect: "/recruitment/applications" },
   {
-    // 真实报名的审核入口（issue #89）；意向成员页仍是旧演示流程
     path: "/recruitment/applications",
     name: "recruitment-applications",
     component: ApplicationsView,
     meta: { title: "申请审核", allowRoles: MEMBER_ONLY, adminShell: true },
   },
   {
-    path: "/recruitment/prospects",
-    name: "recruitment-prospects",
-    component: ProspectsView,
-    meta: { title: "意向成员", allowRoles: MEMBER_ONLY, adminShell: true },
+    path: "/recruitment/invitations",
+    name: "recruitment-invitations",
+    component: InvitationsView,
+    meta: { title: "邀请管理", allowRoles: MEMBER_ONLY, adminShell: true },
   },
   {
-    path: "/recruitment/prospects/:id",
-    name: "recruitment-prospect-detail",
-    component: ProspectDetailView,
-    meta: { title: "意向成员详情", allowRoles: MEMBER_ONLY, adminShell: true },
+    path: "/recruitment/candidates",
+    name: "recruitment-candidates",
+    component: CandidatesView,
+    meta: { title: "候选人处理", allowRoles: MEMBER_ONLY, adminShell: true },
+  },
+  {
+    path: "/recruitment/candidates/:id",
+    name: "recruitment-candidate-detail",
+    component: CandidateDetailView,
+    meta: { title: "候选人详情", allowRoles: MEMBER_ONLY, adminShell: true },
+  },
+  {
+    path: "/user/invitations",
+    name: "user-invitations",
+    component: MyInvitationsView,
+    meta: { title: "邀请与招新结果", allowRoles: ANY_SIGNED_IN },
   },
 ];

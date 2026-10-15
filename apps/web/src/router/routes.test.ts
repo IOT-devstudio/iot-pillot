@@ -1,4 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
+vi.mock("@/modules/recruitment/views/InvitationsView.vue", () => ({
+  default: { name: "InvitationsView" },
+}));
+vi.mock("@/modules/recruitment/views/CandidatesView.vue", () => ({
+  default: { name: "CandidatesView" },
+}));
+vi.mock("@/modules/recruitment/views/CandidateDetailView.vue", () => ({
+  default: { name: "CandidateDetailView" },
+}));
+vi.mock("@/modules/recruitment/views/MyInvitationsView.vue", () => ({
+  default: { name: "MyInvitationsView" },
+}));
 
 vi.mock("@/modules/dashboard/views/DashboardView.vue", () => ({
   default: { name: "DashboardView" },
@@ -50,22 +62,30 @@ describe("application routes", () => {
     expect(rootRoutes).toHaveLength(1);
     expect(rootRoutes[0]?.name).toBe("opener");
     expect(rootRoutes[0]?.component).toMatchObject({ name: "AuthView" });
-    expect(rootRoutes[0]?.component).toBe(routes.find(route => route.path === "/login")?.component);
+    expect(rootRoutes[0]?.component).toBe(
+      routes.find((route) => route.path === "/login")?.component,
+    );
     // 开屏对所有人开放，不能挂上任何角色限制
     expect(rootRoutes[0]?.meta?.allowRoles).toBeUndefined();
   });
 
   it("marks the buildings editor as member-only", () => {
-    const adminRoutes = routes.filter((route) => route.path === "/admin/buildings");
+    const adminRoutes = routes.filter(
+      (route) => route.path === "/admin/buildings",
+    );
 
     expect(adminRoutes).toHaveLength(1);
-    expect(adminRoutes[0]?.component).toMatchObject({ name: "BuildingsEditor" });
+    expect(adminRoutes[0]?.component).toMatchObject({
+      name: "BuildingsEditor",
+    });
     // 丢了 allowRoles 就等于门禁静默失效（guard 只认这个 meta），必须锁住
     expect(adminRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
   });
 
   it("mounts the admin dashboard separately from placeholder pages", () => {
-    const dashboardRoutes = routes.filter((route) => route.path === "/dashboard");
+    const dashboardRoutes = routes.filter(
+      (route) => route.path === "/dashboard",
+    );
 
     expect(dashboardRoutes).toHaveLength(1);
     expect(dashboardRoutes[0]?.component).toMatchObject({
@@ -109,6 +129,7 @@ describe("application routes", () => {
       { path: "/user/home", name: "user-home" },
       { path: "/user/about", name: "about" },
       { path: "/user/settings", name: "user-settings" },
+      { path: "/user/invitations", name: "user-invitations" },
     ]);
     // 用户侧页面必须挂守卫：未登录不能看，成员则照常放行（单向规则）
     for (const page of userPages) {
@@ -140,6 +161,10 @@ describe("application routes", () => {
       "/user/home",
       "/user/about",
       "/user/settings",
+      "/user/invitations",
+      "/recruitment/invitations",
+      "/recruitment/candidates",
+      "/recruitment/candidates/:id",
       "/recruitment",
       "/recruitment/applications",
       "/recruitment/prospects",
@@ -154,14 +179,18 @@ describe("application routes", () => {
       (route) => !reservedPaths.includes(route.path),
     );
 
-    expect(placeholderRoutes.map(({ path, name, meta }) => ({
-      path,
-      name,
-      title: meta?.title,
-    }))).toEqual([
+    expect(
+      placeholderRoutes.map(({ path, name, meta }) => ({
+        path,
+        name,
+        title: meta?.title,
+      })),
+    ).toEqual([
       { path: "/settings", name: "settings", title: "系统设置" },
     ]);
-    expect(new Set(placeholderRoutes.map(({ component }) => component)).size).toBe(1);
+    expect(
+      new Set(placeholderRoutes.map(({ component }) => component)).size,
+    ).toBe(1);
     // 后台占位页全部只对成员开放，任何一页漏标都会让普通用户直接走进去
     expect(
       placeholderRoutes.every(
@@ -190,9 +219,12 @@ describe("application routes", () => {
 
     expect(recruitmentPaths).toEqual([
       "/recruitment",
-      "/recruitment/applications",
       "/recruitment/prospects",
       "/recruitment/prospects/:id",
+      "/recruitment/applications",
+      "/recruitment/invitations",
+      "/recruitment/candidates",
+      "/recruitment/candidates/:id",
     ]);
   });
 
@@ -201,7 +233,7 @@ describe("application routes", () => {
       (route) => route.path.startsWith("/recruitment") && route.component,
     );
 
-    expect(recruitmentPages).toHaveLength(3);
+    expect(recruitmentPages).toHaveLength(4);
     for (const page of recruitmentPages) {
       // 漏标 allowRoles 的页面会被守卫当成公开路由，这里锁死
       expect(page.meta?.allowRoles).toEqual(["admin"]);

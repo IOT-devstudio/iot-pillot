@@ -10,9 +10,15 @@ const route = useRoute();
 const signalTransitioning = ref(false);
 const usesAdminLayout = computed(() => route.meta.adminShell === true);
 const usesSignal = computed(() =>
-  route.meta.signalShell === true || ["/", "/login", "/user/home", "/user/settings", "/user/about"].includes(
-    route.path,
-  ),
+  route.meta.signalShell === true ||
+  [
+    "/",
+    "/login",
+    "/user/home",
+    "/user/settings",
+    "/user/about",
+    "/user/invitations",
+  ].includes(route.path),
 );
 </script>
 
@@ -26,7 +32,8 @@ const usesSignal = computed(() =>
       v-if="usesSignal || signalTransitioning"
       :transition-only="!usesSignal"
       @transition-active="signalTransitioning = $event"
-    ><router-view v-if="usesSignal" /></SignalShell>
+      ><router-view v-if="usesSignal"
+    /></SignalShell>
     <router-view v-if="!usesAdminLayout && !usesSignal" />
   </el-config-provider>
 </template>
