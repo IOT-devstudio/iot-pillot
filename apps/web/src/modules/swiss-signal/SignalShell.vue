@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onUnmounted, provide, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, provide, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import UserMenu from "@/components/common/UserMenu.vue";
 import type { AuthMode } from "@/auth/submit";
+import { currentProfile } from "@/modules/user-settings/profileIdentity";
 import { SIGNAL_BUSY, SIGNAL_MODE, SIGNAL_TRANSITION } from "./context";
 import { useSignalMotion } from "./motion";
 import "./signal.css";
@@ -15,8 +16,8 @@ const router = useRouter();
  * masthead 的导航（issue #94）：
  *   - 认证页（/、/login）：不放导航——表单自带登录/注册切换，顶栏再来一份
  *     完全重复
- *   - 用户侧（/user/*）：用户名菜单（UserMenu）常驻；「返回用户首页」只出现
- *     在非首页的用户页面（首页本身就是落点，再放一个自己链自己没有意义）；
+ *   - 用户侧（/user/*）：用户名菜单（UserMenu）常驻；「返回」按钮只出现在
+ *     非首页的用户页面，目标按角色分流（管理员→控制台，成员→个人首页）；
  *     个人设置页不放用户名菜单——页面本身就是「个人设置」，入口重复（issue #94 review）
  */
 const isUserPage = () => route.path.startsWith("/user/");
@@ -83,9 +84,22 @@ async function withWipe(change: () => unknown) {
 }
 provide(SIGNAL_TRANSITION, withWipe);
 
-/** 「返回用户首页」：与登录转场同款的擦除动画 */
-function goHome(): void {
-  void withWipe(() => router.push("/user/home"));
+/**
+ * 返回按钮按角色分流（#94 原始裁决的回归修复）：
+ *   管理员 → 控制台；普通成员 → 个人首页。
+ * 角色来自 profileIdentity（UserMenu 挂载时就会加载 /me）；加载完成前
+ * 按成员默认展示——/user/home 管理员也进得去，不会把人引进死路。
+ */
+const backTarget = computed(() =>
+  currentProfile.value?.role === "admin" ? "/dashboard" : "/user/home",
+);
+const backLabel = computed(() =>
+  currentProfile.value?.role === "admin" ? "返回控制台" : "返回用户首页",
+);
+
+/** 「返回」：与登录转场同款的擦除动画 */
+function goBack(): void {
+  void withWipe(() => router.push(backTarget.value));
 }
 
 watch(mode, async () => {
@@ -123,8 +137,8 @@ watch(
         class="view-nav"
         aria-label="页面导航"
       >
-        <button aria-pressed="true" :disabled="busy" @click="goHome">
-          返回用户首页 <span>↗</span>
+        <button aria-pressed="true" :disabled="busy" @click="goBack">
+          {{ backLabel }} <span>↗</span>
         </button>
       </nav>
       <span v-if="isUserPage() && !isUserSettings()" class="masthead__user">
