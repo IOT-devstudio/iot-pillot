@@ -17,7 +17,7 @@ defineProps<{
 </script>
 
 <template>
-  <section class="focus" aria-labelledby="about-focus-title">
+  <section class="focus liquid-glass" aria-labelledby="about-focus-title">
     <h2 id="about-focus-title" class="focus__title">方向 / 定位</h2>
 
     <ul class="focus__list">
@@ -36,11 +36,10 @@ defineProps<{
 </template>
 
 <style scoped>
+/* 玻璃质感来自全局 .liquid-glass（issue #85 改造）；
+   卡内小卡（方向/成果/成员项）保持实底描边，保证内容可读 */
 .focus {
   padding: 18px 20px;
-  border: 1px solid var(--about-border);
-  border-radius: 10px;
-  background: #fff;
 }
 
 .focus__title {

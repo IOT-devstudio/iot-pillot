@@ -13,7 +13,7 @@ defineProps<{
 </script>
 
 <template>
-  <section class="works" aria-labelledby="about-works-title">
+  <section class="works liquid-glass" aria-labelledby="about-works-title">
     <h2 id="about-works-title" class="works__title">成果</h2>
 
     <p v-if="!works.length" class="works__empty">
@@ -33,11 +33,10 @@ defineProps<{
 </template>
 
 <style scoped>
+/* 玻璃质感来自全局 .liquid-glass（issue #85 改造）；
+   卡内小卡（方向/成果/成员项）保持实底描边，保证内容可读 */
 .works {
   padding: 18px 20px;
-  border: 1px solid var(--about-border);
-  border-radius: 10px;
-  background: #fff;
 }
 
 .works__title {

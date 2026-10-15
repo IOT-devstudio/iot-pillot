@@ -1,0 +1,138 @@
+/**
+ * 液态玻璃设计系统（iOS 26 liquid glass 风格，issue #85 设置页改造）。
+ *
+ * 三块全局能力，供设置页 / 关于页 / 修改密码弹窗复用：
+ *   .liquid-glass        —— 玻璃卡：高通透底 + blur/saturate 透光 + 流光边缘
+ *   .glass-backdrop      —— 页面级装饰背景：品牌色柔光晕，给玻璃「可透之物」
+ *   reduced-motion       —— 流光停转、光斑静止
+ *
+ * 色调基调（review 裁决）：通透白玻璃 + 品牌蓝 #1739f5 冷调流光。
+ * 卡片内部的输入框/按钮保持实底，保证表单可读性。
+ */
+
+@property --beam-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  /* 必须继承：跟随时角度写在卡片元素上，靠继承传给 ::after 流光层；
+     自动循环时动画值直接打在伪元素上，优先级天然高于继承值 */
+  inherits: true;
+}
+
+.liquid-glass {
+  position: relative;
+  border: 0;
+  border-radius: 24px;
+  /* 通透感 = 低不透明度底 + 高饱和透光；底色几乎透明，背景被 blur 揉成柔光 */
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.42),
+    rgba(243, 244, 237, 0.2)
+  );
+  backdrop-filter: blur(14px) saturate(1.9) brightness(1.05);
+  -webkit-backdrop-filter: blur(14px) saturate(1.9) brightness(1.05);
+  box-shadow:
+    0 18px 48px -22px rgba(10, 16, 40, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* 顶部受光：给玻璃「厚度」 */
+.liquid-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 42%;
+  border-radius: 24px 24px 0 0;
+  background: linear-gradient(
+    170deg,
+    rgba(255, 255, 255, 0.38),
+    rgba(255, 255, 255, 0) 70%
+  );
+  pointer-events: none;
+}
+
+/* 流光边缘：一束白光 + 一束品牌蓝光沿 1px 边环循环流动 */
+.liquid-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--beam-angle),
+    rgba(255, 255, 255, 0) 0deg,
+    rgba(255, 255, 255, 0.25) 18deg,
+    rgba(255, 255, 255, 1) 40deg,
+    rgba(255, 255, 255, 0.25) 62deg,
+    rgba(255, 255, 255, 0) 80deg,
+    rgba(140, 165, 255, 0) 180deg,
+    rgba(140, 165, 255, 0.3) 198deg,
+    rgba(120, 150, 255, 0.95) 220deg,
+    rgba(140, 165, 255, 0.3) 242deg,
+    rgba(140, 165, 255, 0) 260deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  /* 轻微模糊：高光沿边缘「发光」而不是一条实线 */
+  filter: blur(0.6px);
+  pointer-events: none;
+  animation: glass-beam-flow 3s linear infinite;
+}
+
+@keyframes glass-beam-flow {
+  to {
+    --beam-angle: 360deg;
+  }
+}
+
+/* —— 页面级装饰背景：两团品牌色柔光晕，给玻璃「可透之物」 ——
+   position: fixed 铺满视口，pointer-events 关掉点击；放在页面根元素内，
+   内容层需要自带 z-index ≥ 1 压在光斑之上 */
+.glass-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.glass-backdrop::before,
+.glass-backdrop::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(110px);
+}
+
+/* 左上：品牌蓝光晕 */
+.glass-backdrop::before {
+  top: -12%;
+  left: -8%;
+  width: 46vw;
+  height: 46vw;
+  min-width: 380px;
+  min-height: 380px;
+  background: rgba(23, 57, 245, 0.18);
+}
+
+/* 右下：品牌黄光晕（点缀不抢戏——浓度过高会把玻璃卡片染黄） */
+.glass-backdrop::after {
+  right: -14%;
+  bottom: -18%;
+  width: 38vw;
+  height: 38vw;
+  min-width: 320px;
+  min-height: 320px;
+  background: rgba(233, 255, 108, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass::after {
+    animation: none;
+  }
+}

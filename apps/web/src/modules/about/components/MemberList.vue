@@ -16,7 +16,7 @@ defineProps<{
 </script>
 
 <template>
-  <section class="members" aria-labelledby="about-members-title">
+  <section class="members liquid-glass" aria-labelledby="about-members-title">
     <h2 id="about-members-title" class="members__title">成员</h2>
 
     <p v-if="!members.length" class="members__empty">
@@ -40,11 +40,10 @@ defineProps<{
 </template>
 
 <style scoped>
+/* 玻璃质感来自全局 .liquid-glass（issue #85 改造）；
+   卡内小卡（方向/成果/成员项）保持实底描边，保证内容可读 */
 .members {
   padding: 18px 20px;
-  border: 1px solid var(--about-border);
-  border-radius: 10px;
-  background: #fff;
 }
 
 .members__title {

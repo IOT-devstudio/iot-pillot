@@ -141,13 +141,9 @@ watch(
       </div>
     </div>
     <footer class="footer">
+      <!-- 关于我们的入口收敛到首页顶栏（review：页脚重复就删） -->
       <span class="mono">IoT STUDIO / SWISS SIGNAL / 2026</span
-      ><RouterLink
-        v-if="route.path.startsWith('/user/')"
-        class="plain-link"
-        to="/user/about"
-        >关于我们 ↗</RouterLink
-      ><span v-else>保持好奇，把想法做成作品。</span
+      ><span>保持好奇，把想法做成作品。</span
       ><button class="plain-link" :aria-pressed="paused" @click="motion.toggle">
         {{ paused ? "恢复动效 ▶" : "暂停动效 ⏸" }}
       </button>

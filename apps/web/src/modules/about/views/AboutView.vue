@@ -46,6 +46,8 @@ const members = STUDIO_MEMBERS;
 
 <template>
   <div class="about">
+    <!-- 品牌色柔光晕背景（issue #85 改造）：给液态玻璃卡「可透之物」 -->
+    <div class="glass-backdrop" aria-hidden="true"></div>
     <!-- 唯一的宽度容器：标题区和四块卡片都跟着它走，宽度天然一致 -->
     <div class="about__inner">
       <header class="about__header">
@@ -93,6 +95,8 @@ const members = STUDIO_MEMBERS;
  * 所以窄屏也不会贴边。
  */
 .about__inner {
+  position: relative;
+  z-index: 1;
   max-width: var(--about-content-width);
   margin: 0 auto;
 }

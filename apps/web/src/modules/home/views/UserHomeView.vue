@@ -12,10 +12,12 @@
  *
  * 三块数据彼此独立加载：方向挂了不该拖垮进度区，反之亦然。
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, inject, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile } from "@/api/profile";
 import { beginProfileLoad, currentProfile as user, profileDisplayName } from "@/modules/user-settings/profileIdentity";
+import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import {
   fetchDirections,
   fetchMyApplication,
@@ -37,6 +39,29 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
   accepted: "已通过",
   rejected: "未通过",
 };
+
+const router = useRouter();
+/**
+ * 去关于我们：走壳层的擦除过渡（与「返回用户首页」「进入个人设置」
+ * 同款动画），裸 RouterLink 会没有转场直接硬切。
+ */
+const transition = inject(
+  SIGNAL_TRANSITION,
+  async (change: () => unknown) => {
+    await change();
+  },
+);
+
+function goAbout(event: MouseEvent): void {
+  event.preventDefault();
+  void transition(() => router.push("/user/about"));
+}
+
+/** 首页所有跨页跳转统一走擦除过渡（review：硬切没质感） */
+function goSettings(event: MouseEvent): void {
+  event.preventDefault();
+  void transition(() => router.push("/user/settings"));
+}
 
 const userError = ref("");
 const loading = ref(true);
@@ -296,7 +321,7 @@ function steps(application: RecruitmentApplication) {
           >探索方向</a
         ><a href="#journey" @click="scrollToSection($event, 'journey')"
           >我的进度</a
-        >
+        ><RouterLink to="/user/about" @click="goAbout($event)">关于我们</RouterLink>
       </div>
     </nav>
     <section class="home-poster">
@@ -361,6 +386,7 @@ function steps(application: RecruitmentApplication) {
             class="profile-jump"
             to="/user/settings"
             aria-label="完善我的资料"
+            @click="goSettings($event)"
             >↗</RouterLink
           ></strong
         >
@@ -520,7 +546,10 @@ function steps(application: RecruitmentApplication) {
     <section class="closing-note">
       <span class="mono">ONE MORE THING.</span>
       <p>不必什么都会。<br /><span>愿意动手，就有可能。</span></p>
-      <RouterLink class="panel-button" to="/user/settings"
+      <RouterLink
+        class="panel-button"
+        to="/user/settings"
+        @click="goSettings($event)"
         >完善我的资料 <span>↗</span></RouterLink
       >
     </section>
@@ -540,7 +569,10 @@ function steps(application: RecruitmentApplication) {
         </div>
         <div>
           <span>资料</span
-          ><RouterLink class="plain-link" to="/user/settings"
+          ><RouterLink
+            class="plain-link"
+            to="/user/settings"
+            @click="goSettings($event)"
             >完善个人资料 ↗</RouterLink
           >
         </div>

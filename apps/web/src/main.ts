@@ -14,6 +14,8 @@ import router from "./router";
 import "element-plus/theme-chalk/base.css";
 import "element-plus/theme-chalk/el-message-box.css";
 import "element-plus/theme-chalk/el-message.css";
+// 液态玻璃设计系统（.liquid-glass / .glass-backdrop，issue #85 设置页改造）
+import "./styles/liquid-glass.css";
 // 主题覆盖必须排在最后，否则会被 Element 的默认值盖回去。
 import "./styles/theme.css";
 
