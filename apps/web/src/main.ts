@@ -1,6 +1,7 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import router from "./router";
+import { installGlassBeam } from "./styles/glassBeam";
 // Element Plus 的样式引入。按需方案（unplugin-vue-components 的
 // ElementPlusResolver）只会为**模板里出现的组件**注入样式，所以这里要手动补两部分：
 //
@@ -22,3 +23,5 @@ import "./styles/theme.css";
 const app = createApp(App);
 app.use(router);
 app.mount("#app");
+// 液态玻璃流光的鼠标跟随（触屏与 reduced-motion 自动降级为循环流光）
+installGlassBeam();

@@ -134,3 +134,8 @@
     animation: none;
   }
 }
+
+/* 鼠标跟随时停掉自动动画，让 inline --beam-angle 生效（见 glassBeam.ts） */
+.liquid-glass.glass-beam-follow::after {
+  animation: none;
+}
