@@ -22,6 +22,7 @@ const props = defineProps<{
   template: MailTemplate | null;
 }>();
 
+
 const emit = defineEmits<{
   "update:visible": [value: boolean];
   save: [input: MailTemplateInput];
@@ -128,6 +129,9 @@ const BODY_PLACEHOLDER = "Dear {{name}}，…";
     :title="template ? '编辑模板' : '新建模板'"
     :width="'min(720px, calc(100vw - 32px))'"
     :close-on-click-modal="false"
+    append-to-body
+    :lock-scroll="false"
+    modal-class="centered-dialog"
     @update:model-value="close"
   >
     <div class="editor">

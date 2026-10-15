@@ -19,7 +19,10 @@ export function validateRequiredProfile(form: Pick<FormShape, "class" | "student
   return errors;
 }
 
-export function missingRequiredProfile(detail: UserDetail = {}): string[] {
-  const errors = validateRequiredProfile({ class: detail.class ?? "", studentId: detail.student_id ?? "" });
+export function missingRequiredProfile(detail?: UserDetail | null): string[] {
+  // detail 可能是 null（如创始管理员没有资料行）：默认值只兜 undefined，
+  // null 会把 .class 读崩——这里显式兜底
+  const safeDetail = detail ?? {};
+  const errors = validateRequiredProfile({ class: safeDetail.class ?? "", studentId: safeDetail.student_id ?? "" });
   return [errors.class ? "班级" : "", errors.studentId ? "学号" : ""].filter(Boolean);
 }

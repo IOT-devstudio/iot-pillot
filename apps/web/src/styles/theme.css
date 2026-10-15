@@ -181,17 +181,17 @@ body {
   padding: 24px 26px;
 }
 
-/* 用户详情弹窗双轴居中（modal-class，见 UserDetailDialog）：
-   Element 默认 margin-top 15vh 顶部偏移，review 反馈不居中；
-   且 dialog 外还有一层 .el-overlay-dialog，flex 要加在那一层 */
-.user-detail-modal .el-overlay-dialog {
+/* 弹窗双轴居中（通用 modal-class，配合 useDialogLock）：
+   Element 默认 margin-top 15vh 顶部偏移；且 dialog 外还有一层
+   .el-overlay-dialog，flex 要加在那一层 */
+.centered-dialog .el-overlay-dialog {
   position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.user-detail-modal .el-dialog {
+.centered-dialog .el-dialog {
   margin: 0;
   max-height: 85vh;
   overflow-y: auto;
