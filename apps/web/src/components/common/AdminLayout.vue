@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useRoute } from "vue-router";
 
 import UserMenu from "@/components/common/UserMenu.vue";
@@ -28,13 +35,18 @@ const navGroups: AdminNavGroup[] = [
         icon: "M3.75 4.75h6.5v6.5h-6.5z M13.75 4.75h6.5v4h-6.5z M13.75 11.75h6.5v8h-6.5z M3.75 14.25h6.5v5.5h-6.5z",
       },
       {
-        label: "意向成员",
-        to: "/recruitment/prospects",
+        label: "邀请管理",
+        to: "/recruitment/invitations",
         icon: "M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20 M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z M17 4.5a3.5 3.5 0 0 1 0 6.8 M21 20v-1.5a4 4 0 0 0-3-3.87",
       },
       {
         label: "申请审核",
         to: "/recruitment/applications",
+        icon: "M9 4.75h6l4 4V19.25H9z M14 4.75v4.5h4.5 M5.5 7.75v11.5h9",
+      },
+      {
+        label: "候选人处理",
+        to: "/recruitment/candidates",
         icon: "M9 4.75h6l4 4V19.25H9z M14 4.75v4.5h4.5 M5.5 7.75v11.5h9",
       },
       {
@@ -75,7 +87,7 @@ const mobileMenuButton = ref<HTMLButtonElement | null>(null);
 const mobileCloseButton = ref<HTMLButtonElement | null>(null);
 const currentTitle = computed(() => String(route.meta.title ?? "控制台"));
 const isProspectDetail = computed(
-  () => route.name === "recruitment-prospect-detail",
+  () => route.name === "recruitment-candidate-detail",
 );
 
 function isActive(item: AdminNavItem): boolean {
@@ -85,7 +97,9 @@ function isActive(item: AdminNavItem): boolean {
 
 function closeMobileMenu(restoreFocus = false): void {
   const shouldRestoreFocus =
-    restoreFocus && mobileOpen.value && window.matchMedia("(max-width: 680px)").matches;
+    restoreFocus &&
+    mobileOpen.value &&
+    window.matchMedia("(max-width: 680px)").matches;
   mobileOpen.value = false;
   if (shouldRestoreFocus) {
     void nextTick(() => mobileMenuButton.value?.focus());
@@ -107,8 +121,11 @@ watch(
 );
 
 let mobileMediaQuery: MediaQueryList | null = null;
-function updateMobileViewport(event?: MediaQueryList | MediaQueryListEvent): void {
-  isMobile.value = event?.matches ?? window.matchMedia("(max-width: 680px)").matches;
+function updateMobileViewport(
+  event?: MediaQueryList | MediaQueryListEvent,
+): void {
+  isMobile.value =
+    event?.matches ?? window.matchMedia("(max-width: 680px)").matches;
   if (!isMobile.value) mobileOpen.value = false;
 }
 
@@ -142,7 +159,11 @@ onBeforeUnmount(() => {
       aria-label="管理端侧边栏"
     >
       <div class="admin-sidebar__head">
-        <router-link to="/dashboard" class="admin-brand" aria-label="iot-pillot 控制台">
+        <router-link
+          to="/dashboard"
+          class="admin-brand"
+          aria-label="iot-pillot 控制台"
+        >
           <span class="admin-brand__mark" aria-hidden="true">i/o</span>
           <span class="admin-brand__name">iot-pillot</span>
         </router-link>
@@ -174,7 +195,11 @@ onBeforeUnmount(() => {
       <div class="admin-sidebar__rule" />
 
       <nav class="admin-navigation" aria-label="后台导航">
-        <div v-for="(group, index) in navGroups" :key="group.label" class="admin-navigation__group">
+        <div
+          v-for="(group, index) in navGroups"
+          :key="group.label"
+          class="admin-navigation__group"
+        >
           <p class="admin-navigation__heading">{{ group.label }}</p>
           <div class="admin-navigation__items">
             <router-link
@@ -187,13 +212,20 @@ onBeforeUnmount(() => {
               :aria-label="collapsed ? item.label : undefined"
               :title="collapsed ? item.label : undefined"
             >
-              <svg class="admin-navigation__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <svg
+                class="admin-navigation__icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
                 <path :d="item.icon" />
               </svg>
               <span class="admin-navigation__label">{{ item.label }}</span>
             </router-link>
           </div>
-          <div v-if="index < navGroups.length - 1" class="admin-navigation__separator" />
+          <div
+            v-if="index < navGroups.length - 1"
+            class="admin-navigation__separator"
+          />
         </div>
       </nav>
 
@@ -229,7 +261,9 @@ onBeforeUnmount(() => {
           <div class="admin-utility__crumb" aria-label="当前位置">
             <span>招新管理</span>
             <span aria-hidden="true">/</span>
-            <strong>{{ isProspectDetail ? "意向成员" : currentTitle }}</strong>
+            <strong>{{
+              isProspectDetail ? "候选人处理" : currentTitle
+            }}</strong>
             <template v-if="isProspectDetail">
               <span aria-hidden="true">/</span>
               <span>详情</span>
@@ -268,7 +302,9 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border-right: 1px solid var(--line);
   background: #faf8f1;
-  transition: width 200ms ease, padding 200ms ease;
+  transition:
+    width 200ms ease,
+    padding 200ms ease;
 }
 
 .admin-sidebar__head {
@@ -328,7 +364,10 @@ onBeforeUnmount(() => {
   border-radius: 3px;
   background: transparent;
   cursor: pointer;
-  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
 }
 
 .admin-sidebar__collapse svg,
@@ -406,7 +445,10 @@ onBeforeUnmount(() => {
   color: var(--ink-soft);
   border-left: 2px solid transparent;
   text-decoration: none;
-  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
 }
 
 .admin-navigation__link:hover {
@@ -437,7 +479,9 @@ onBeforeUnmount(() => {
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: opacity 120ms ease, max-width 200ms ease;
+  transition:
+    opacity 120ms ease,
+    max-width 200ms ease;
 }
 
 .admin-navigation__separator {
@@ -487,7 +531,10 @@ onBeforeUnmount(() => {
     radial-gradient(circle at 88% 2%, rgb(22 77 128 / 7%), transparent 34%),
     linear-gradient(rgb(16 43 78 / 3%) 1px, transparent 1px),
     linear-gradient(90deg, rgb(16 43 78 / 3%) 1px, transparent 1px);
-  background-size: 100% 100%, 40px 40px, 40px 40px;
+  background-size:
+    100% 100%,
+    40px 40px,
+    40px 40px;
   content: "";
   pointer-events: none;
 }
@@ -501,7 +548,9 @@ onBeforeUnmount(() => {
   aspect-ratio: 1;
   border: 1px solid rgb(22 77 128 / 5%);
   border-radius: 50%;
-  box-shadow: 0 0 0 80px rgb(22 77 128 / 2%), 0 0 0 160px rgb(22 77 128 / 1%);
+  box-shadow:
+    0 0 0 80px rgb(22 77 128 / 2%),
+    0 0 0 160px rgb(22 77 128 / 1%);
   content: "";
   pointer-events: none;
 }

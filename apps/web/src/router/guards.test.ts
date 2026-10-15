@@ -27,6 +27,13 @@ function makeDeps(overrides: Partial<RouteGateDeps> = {}): RouteGateDeps & {
 }
 
 describe("resolveRouteAccess", () => {
+  it("preserves an invitation link through anonymous login", async () => {
+    const deps = makeDeps({ readToken: () => null });
+    const target = "/user/invitations?token=test-invitation-token";
+    await expect(
+      resolveRouteAccess(PERSONAL_PAGES, target, deps),
+    ).resolves.toEqual({ path: "/", query: { redirect: target } });
+  });
   it("lets public routes through without asking the server", async () => {
     const deps = makeDeps();
 

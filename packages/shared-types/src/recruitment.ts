@@ -3,7 +3,8 @@
 //
 // 注意：本文件同时承载两个层次：
 //   1. 后端 #88 已实现的报名申请模型（AppliedApplication/Direction/Round）——前端 #89 可对接
-//   2. 下游 #90 邀请流转模型（Prospect/Candidate）——尚未实现
+//   2. 后端 #90 已实现的邀请与候选人 DTO（number ID）——前端 #91 对接
+//   3. 文件末尾保留的旧 Prospect/Candidate 草案（string ID）——不用于实际接口
 
 import type { ID, ISODateTime } from "./common";
 
@@ -12,7 +13,8 @@ import type { ID, ISODateTime } from "./common";
  * ------------------------------------------------------------------ */
 
 /** 报名申请状态机：applied → reviewing → accepted | rejected */
-export type AppliedApplicationStatus = "applied" | "reviewing" | "accepted" | "rejected";
+export type AppliedApplicationStatus =
+  "applied" | "reviewing" | "accepted" | "rejected";
 
 /** 招新方向（可报名白名单：front-end / back-end / agent） */
 export interface RecruitmentDirection {
