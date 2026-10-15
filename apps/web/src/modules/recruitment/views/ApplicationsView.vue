@@ -12,7 +12,7 @@
  * 只做基础审核：邀请与候选人流转属于 #91 的范围，这里不发邮件不动邀请。
  */
 import { computed, onMounted, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 import PageHeader from "@/components/common/PageHeader.vue";
 import { AuthRequestError } from "@/api/auth";
@@ -115,9 +115,29 @@ async function review(
   }
 }
 
+/**
+ * 方向/轮次开关直接写库并即时作用于用户端（首页方向卡立刻变「暂未开放」，
+ * 用户无法再报名）——review 反馈误触把所有方向都关了，所以必须二次确认。
+ */
 async function toggleDirection(direction: RecruitmentDirection): Promise<void> {
+  const next = !direction.open;
   try {
-    const message = await setDirectionOpen(direction.code, !direction.open);
+    await ElMessageBox.confirm(
+      next
+        ? `开启「${direction.name}」后，用户端首页会立即出现该方向并可报名。`
+        : `关闭「${direction.name}」后，用户端首页会立即把它变成「暂未开放」，用户无法报名；已提交的申请不受影响。`,
+      next ? "开启方向报名" : "关闭方向报名",
+      {
+        confirmButtonText: next ? "确认开启" : "确认关闭",
+        cancelButtonText: "取消",
+        type: next ? "info" : "warning",
+      },
+    );
+  } catch {
+    return; // 用户取消
+  }
+  try {
+    const message = await setDirectionOpen(direction.code, next);
     ElMessage.success(message);
     await loadAll();
   } catch (error) {
@@ -126,8 +146,24 @@ async function toggleDirection(direction: RecruitmentDirection): Promise<void> {
 }
 
 async function toggleRound(round: RecruitmentRound): Promise<void> {
+  const next = !round.accepting;
   try {
-    const message = await setRoundAccepting(round.id, !round.accepting);
+    await ElMessageBox.confirm(
+      next
+        ? `开启「${round.name}」后，该轮次立即接受新报名。`
+        : `关闭「${round.name}」后，该轮次立即停止接收新报名；已提交的申请不受影响。`,
+      next ? "开启招新轮次" : "关闭招新轮次",
+      {
+        confirmButtonText: next ? "确认开启" : "确认关闭",
+        cancelButtonText: "取消",
+        type: next ? "info" : "warning",
+      },
+    );
+  } catch {
+    return; // 用户取消
+  }
+  try {
+    const message = await setRoundAccepting(round.id, next);
     ElMessage.success(message);
     await loadAll();
   } catch (error) {
