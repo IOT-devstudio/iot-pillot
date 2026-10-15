@@ -46,10 +46,17 @@ export type SessionRequester = <T>(
 
 const SESSION_EXPIRED_MESSAGE = "登录状态已失效，请重新登录";
 
+export function sessionLoginPath(reason: SessionEndReason, target: string): string {
+  const query = new URLSearchParams({ reason });
+  const path = target.split(/[?#]/)[0];
+  if (target.startsWith("/") && !target.startsWith("//") && !target.includes("\\") && path !== "/" && path !== "/login") query.set("redirect", target);
+  return `/?${query.toString()}`;
+}
+
 function defaultSessionExpired(reason: SessionEndReason): void {
   if (typeof window !== "undefined") {
     // 带 reason 回登录页：登录面板按 ?reason= 出对应提示条（AuthView）
-    window.location.assign(`/?reason=${reason}`);
+    window.location.assign(sessionLoginPath(reason, window.location.pathname + window.location.search + window.location.hash));
   }
 }
 

@@ -7,9 +7,11 @@
  *
  * 字段契约来自已合并的 #57 / #86，姓名编辑对应 #87。
  */
-import { onMounted } from "vue";
+import { inject, onBeforeUnmount, onMounted } from "vue";
+import { onBeforeRouteLeave, useRouter } from "vue-router";
 
 import PageHeader from "@/components/common/PageHeader.vue";
+import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import { useUserSettings } from "../composables/useUserSettings";
 import ChangePasswordCard from "../components/ChangePasswordCard.vue";
 import UserSettingsForm from "../components/UserSettingsForm.vue";
@@ -34,9 +36,50 @@ const {
   retryDirection,
   load,
   save,
+  autoSave,
+  persistOnUnload,
 } = useUserSettings();
 
-onMounted(load);
+/**
+ * 离开页面时静默自动保存（review 反馈：改了没存就走应自动保存）。
+ * - SPA 内导航（顶栏返回/去选择/UserMenu 等）走路由离开钩子；
+ * - 标签页关闭/刷新在 beforeunload 里用 keepalive fetch 兜底
+ *   （beforeunload 无法 await，两路都会触发，但 isDirty 在第一次
+ *   autoSave 成功后即为 false，第二次自动空转，不会重复写库）。
+ */
+onBeforeRouteLeave(() => {
+  void autoSave();
+});
+
+onMounted(() => {
+  void load();
+  window.addEventListener("beforeunload", handleBeforeUnload);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("beforeunload", handleBeforeUnload);
+  void autoSave();
+});
+
+function handleBeforeUnload(): void {
+  persistOnUnload();
+}
+
+const router = useRouter();
+/**
+ * 成员方向未定时「去选择」：走擦除转场跳首页方向版块（review 反馈）。
+ * 首页 UserHomeView 处理外链 hash，挂载后平滑滚到 #directions。
+ */
+const transition = inject(
+  SIGNAL_TRANSITION,
+  async (change: () => unknown) => {
+    await change();
+  },
+);
+
+function pickDirection(): void {
+  void transition(() => router.push("/user/home#directions"));
+}
 
 </script>
 
@@ -95,6 +138,7 @@ onMounted(load);
           @reset="reset"
           @cancel="cancel"
           @retry="retryDirection"
+          @pick-direction="pickDirection"
         />
 
         <!-- 修改密码入口（issue #85 重构）：一行字样 + 液态玻璃弹窗，

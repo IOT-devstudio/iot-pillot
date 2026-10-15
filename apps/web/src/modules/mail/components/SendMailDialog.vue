@@ -27,6 +27,7 @@ const props = defineProps<{
   defaultEmail?: string;
 }>();
 
+
 const emit = defineEmits<{ "update:visible": [value: boolean] }>();
 
 const {
@@ -119,6 +120,9 @@ watch(() => props.template, ensureVarSlots);
     :title="template ? `发送：${template.name}` : '发送'"
     :width="'min(860px, calc(100vw - 32px))'"
     :close-on-click-modal="false"
+    append-to-body
+    :lock-scroll="false"
+    modal-class="centered-dialog"
     @update:model-value="close"
   >
     <div v-if="template" class="send">

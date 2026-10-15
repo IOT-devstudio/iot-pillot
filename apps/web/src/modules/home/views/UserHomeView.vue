@@ -12,8 +12,8 @@
  *
  * 三块数据彼此独立加载：方向挂了不该拖垮进度区，反之亦然。
  */
-import { computed, inject, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, inject, nextTick, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile } from "@/api/profile";
 import {
@@ -45,6 +45,7 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
 };
 
 const router = useRouter();
+const route = useRoute();
 /**
  * 去关于我们：走壳层的擦除过渡（与「返回用户首页」「进入个人设置」
  * 同款动画），裸 RouterLink 会没有转场直接硬切。
@@ -165,7 +166,42 @@ onMounted(() => {
   void loadProfile();
   void loadDirections();
   void loadApplications();
+  void scrollToHashSection();
 });
+
+/**
+ * 外链 hash 滚动（个人设置「去选择方向」→ /user/home#directions）。
+ *
+ * Vue Router 不会为 SPA 内跳转自动滚到锚点；且方向/进度区的骨架在接口
+ * 数据回来前就有高度，先滚再撑高会把版块顶下去（review 实测差了 200px）。
+ * 所以先等三块数据加载完再滚，目标找不到时轮询最多 1.5s 兜底。
+ * 系统开了「减少动态效果」时退回瞬时跳转，与 scrollToSection 口径一致。
+ */
+async function scrollToHashSection(): Promise<void> {
+  const id = route.hash.replace(/^#/, "");
+  if (!id) return;
+  await nextTick();
+  // 等数据加载完：骨架→内容的切换会改变版块高度，早滚会偏
+  const dataDeadline = Date.now() + 3000;
+  while (
+    (directionsLoading.value || applicationsLoading.value) &&
+    Date.now() < dataDeadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const deadline = Date.now() + 1500;
+  let target = document.getElementById(id);
+  while (!target && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    target = document.getElementById(id);
+  }
+  if (!target) return;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  target.scrollIntoView({
+    behavior: reduced ? "auto" : "smooth",
+    block: "start",
+  });
+}
 
 /**
  * 页内锚点的平滑滚动（issue #94）。

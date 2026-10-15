@@ -180,3 +180,19 @@ body {
 .panel--pad {
   padding: 24px 26px;
 }
+
+/* 弹窗双轴居中（通用 modal-class，配合 useDialogLock）：
+   Element 默认 margin-top 15vh 顶部偏移；且 dialog 外还有一层
+   .el-overlay-dialog，flex 要加在那一层 */
+.centered-dialog .el-overlay-dialog {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.centered-dialog .el-dialog {
+  margin: 0;
+  max-height: 85vh;
+  overflow-y: auto;
+}

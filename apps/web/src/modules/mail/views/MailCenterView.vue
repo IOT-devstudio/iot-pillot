@@ -443,8 +443,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 高度交给内容与外层 .admin-main（min-height:100dvh）兜底——
+   此处再叠一层 min-height 会把页面凭空拉长（review 反馈） */
 .page {
-  min-height: calc(100dvh - 60px);
+  min-height: auto;
 }
 
 .page__body {

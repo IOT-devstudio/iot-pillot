@@ -10,6 +10,7 @@ const route = useRoute();
 const signalTransitioning = ref(false);
 const usesAdminLayout = computed(() => route.meta.adminShell === true);
 const usesSignal = computed(() =>
+  route.meta.signalShell === true ||
   [
     "/",
     "/login",

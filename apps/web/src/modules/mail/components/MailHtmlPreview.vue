@@ -74,7 +74,9 @@ function srcdocOf(html: string): string {
     </div>
 
     <!-- 放大版：同一份内容，大画布看完整排版。
-         append-to-body 必须开：嵌在外层编辑弹窗的 DOM 里时，
+         append-to-body
+      :lock-scroll="false"
+      modal-class="centered-dialog" 必须开：嵌在外层编辑弹窗的 DOM 里时，
          两层 overlay 的层叠合成会让内层弹窗几何存在却画不出来 -->
     <el-dialog
       v-model="enlarged"

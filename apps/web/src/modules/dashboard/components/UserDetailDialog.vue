@@ -9,6 +9,7 @@
  * 个请求；想看最新就刷新页面（验收项的「实时更新」口径）。
  */
 import { computed } from "vue";
+import { useDialogLock } from "@/composables/useDialogLock";
 import type { Direction } from "@iot-pillot/shared-types";
 
 import type { AdminUser } from "@/api/admin";
@@ -29,6 +30,9 @@ const emit = defineEmits<{
 function close(): void {
   emit("update:visible", false);
 }
+
+// 整页滚动锁 + 滚动条宽度补偿（公共 composable，见 useDialogLock）
+useDialogLock(() => props.visible);
 
 const DIRECTION_LABELS: Record<Direction, string> = {
   "front-end": "前端",
@@ -71,12 +75,20 @@ const isSelf = computed(
 </script>
 
 <template>
+  <!-- append-to-body：挂到 body 上，遮罩才能盖住整页（侧边栏 z-20、
+       完善资料提示 z-80 都在其下）——此前弹窗困在内容区的层叠上下文里，
+       侧边栏和提示条浮在遮罩之上（review 反馈的显示问题） -->
+  <!-- modal-class 让弹窗在遮罩层里 flex 双轴居中（Element 默认顶部 15vh
+       偏移，review 反馈不居中）；样式在 theme.css -->
   <el-dialog
     :model-value="visible"
+    append-to-body
+    modal-class="centered-dialog"
     title="用户详情"
     width="560"
     :close-on-click-modal="true"
     :close-on-press-escape="true"
+    :lock-scroll="false"
     @update:model-value="emit('update:visible', $event)"
   >
     <!-- 没有 user（点开瞬间）时不渲染任何字段，避免把上一位用户的信息闪一下 -->
