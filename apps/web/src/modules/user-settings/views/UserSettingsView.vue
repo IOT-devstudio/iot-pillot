@@ -7,8 +7,8 @@
  *
  * 字段契约来自已合并的 #57 / #86，姓名编辑对应 #87。
  */
-import { inject, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { inject, onBeforeUnmount, onMounted } from "vue";
+import { onBeforeRouteLeave, useRouter } from "vue-router";
 
 import PageHeader from "@/components/common/PageHeader.vue";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
@@ -36,9 +36,34 @@ const {
   retryDirection,
   load,
   save,
+  autoSave,
+  persistOnUnload,
 } = useUserSettings();
 
-onMounted(load);
+/**
+ * 离开页面时静默自动保存（review 反馈：改了没存就走应自动保存）。
+ * - SPA 内导航（顶栏返回/去选择/UserMenu 等）走路由离开钩子；
+ * - 标签页关闭/刷新在 beforeunload 里用 keepalive fetch 兜底
+ *   （beforeunload 无法 await，两路都会触发，但 isDirty 在第一次
+ *   autoSave 成功后即为 false，第二次自动空转，不会重复写库）。
+ */
+onBeforeRouteLeave(() => {
+  void autoSave();
+});
+
+onMounted(() => {
+  void load();
+  window.addEventListener("beforeunload", handleBeforeUnload);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("beforeunload", handleBeforeUnload);
+  void autoSave();
+});
+
+function handleBeforeUnload(): void {
+  persistOnUnload();
+}
 
 const router = useRouter();
 /**
