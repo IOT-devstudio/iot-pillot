@@ -1,12 +1,11 @@
 <script setup lang="ts">
 /**
- * 个人设置表单（姓名/用户名/邮箱只读；班级/学号/QQ/方向可编辑）。
+ * 个人设置表单（姓名及资料可编辑，绑定邮箱只读，issue #87）。
  *
  * 父组件 useUserSettings 提供响应式 form 与 profile，本组件只做接线。
  *
- * 字段顺序与文案与 issue #58 对齐：
- *   - 姓名、用户名、邮箱：只读展示，写明原因（登录凭据，本期不改）
- *   - 班级、学号、QQ、方向：可编辑，全部选填
+ * 姓名非空时为 3–20 个 Unicode 字符，留空发送 null 清除。
+ * 班级、学号、QQ、方向仍为选填；不提供独立用户名编辑。
  *
  * 方向选项的中文标签与后端枚举一一对应（见 packages/shared-types 的 Direction）。
  */
@@ -22,6 +21,7 @@ const props = defineProps<{
   /** 全空表单时展示「建议补全」——父组件持有 needsCompletion 是单一真相 */
   needsCompletion: boolean;
   saving: boolean;
+  nameError: string;
 }>();
 
 const emit = defineEmits<{
@@ -45,11 +45,8 @@ const DIRECTION_OPTIONS: Array<{ value: Direction; label: string }> = [
 
 /** 后端还没把邮箱挂到 detail 里时，给一句「未提供」比留空白更诚实。 */
 const emailDisplay = computed(
-  () => props.profile.detail?.email ?? "后端未提供（可在注册流程维护）",
+  () => props.profile.detail?.email || "未提供",
 );
-
-const usernameDisplay = computed(() => props.profile.username);
-const nameDisplay = computed(() => props.profile.name || "未提供");
 
 function handleSubmit(event: Event): void {
   event.preventDefault();
@@ -60,28 +57,36 @@ function handleSubmit(event: Event): void {
 <template>
   <form class="settings" novalidate @submit="handleSubmit">
     <section class="settings__readonly">
-      <h2 class="settings__section-title">登录凭据（本期不可更改）</h2>
+      <h2 class="settings__section-title">账号邮箱</h2>
       <dl class="settings__readout">
-        <div class="settings__row">
-          <dt class="settings__term">姓名</dt>
-          <dd class="settings__value">{{ nameDisplay }}</dd>
-        </div>
-        <div class="settings__row">
-          <dt class="settings__term">用户名</dt>
-          <dd class="settings__value">{{ usernameDisplay }}</dd>
-        </div>
         <div class="settings__row">
           <dt class="settings__term">邮箱</dt>
           <dd class="settings__value">{{ emailDisplay }}</dd>
         </div>
       </dl>
       <p class="settings__hint">
-        改名 / 改邮箱需要验证码流程，本期未做；如需修改请联系管理员。
+        绑定邮箱不可修改。修改姓名不影响邮箱登录，也不会退出当前会话；建议使用邮箱登录。
       </p>
     </section>
 
     <section class="settings__editable">
-      <h2 class="settings__section-title">资料字段（全部选填）</h2>
+      <h2 class="settings__section-title">个人资料</h2>
+
+      <label class="settings__field">
+        <span id="settings-name-label" class="settings__label">姓名</span>
+        <input
+          v-model="form.name"
+          class="settings__input"
+          type="text"
+          autocomplete="name"
+          aria-labelledby="settings-name-label"
+          :disabled="saving"
+          :aria-invalid="Boolean(nameError)"
+          aria-describedby="settings-name-hint settings-name-error"
+        />
+        <span id="settings-name-hint" class="settings__hint">3–20 个字符；留空并保存可清除姓名。</span>
+        <span id="settings-name-error" class="settings__field-error" role="alert">{{ nameError }}</span>
+      </label>
 
       <p
         v-if="needsCompletion"
@@ -89,7 +94,7 @@ function handleSubmit(event: Event): void {
         role="status"
         aria-live="polite"
       >
-        建议补全你的资料 —— 但不强制，空值也能保存。
+        建议补全班级、学号、QQ 和方向；这些资料均为选填。
       </p>
 
       <label class="settings__field">
@@ -207,6 +212,12 @@ function handleSubmit(event: Event): void {
   margin: 0;
   color: var(--ink);
   font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.settings__field-error {
+  color: #a33d32;
+  font-size: 12px;
 }
 
 .settings__hint {

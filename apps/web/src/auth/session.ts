@@ -3,6 +3,7 @@ import {
   type AuthSession,
   type RefreshAuthSession,
 } from "@/api/auth";
+import { setCurrentProfile } from "@/modules/user-settings/profileIdentity";
 
 export const AUTH_STORAGE_KEY = "iot-pillot.auth";
 
@@ -46,6 +47,7 @@ export function readAuthSession(storage?: Storage): AuthSession | null {
 
 export function clearAuthSession(storage?: Storage): void {
   getStorage(storage).removeItem(AUTH_STORAGE_KEY);
+  setCurrentProfile(null);
 }
 
 /**

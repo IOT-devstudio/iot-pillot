@@ -40,6 +40,10 @@ describe("detailToForm", () => {
 });
 
 describe("formToUpdate", () => {
+  it("accepts the numeric value emitted by a number input without losing other fields", () => {
+    expect(formToUpdate({ name: "新的姓名", class: "物联2402", studentId: 456, qq: "99999", direction: "back-end" }))
+      .toEqual({ name: "新的姓名", class: "物联2402", student_id: 456, qq: "99999", direction: "back-end" });
+  });
   it("converts empty strings to null so the backend clears the field", () => {
     expect(
       formToUpdate({ class: "  ", studentId: "", qq: "", direction: "" }),

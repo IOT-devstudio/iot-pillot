@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "test": "vitest run",
-    "preview": "vite preview",
+    "dev": "vite --config vite.config.ts",
+    "build": "vue-tsc -b && vite build --config vite.config.ts",
+    "test": "vitest run --config vite.config.ts",
+    "preview": "vite preview --config vite.config.ts",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
