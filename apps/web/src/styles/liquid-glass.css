@@ -106,10 +106,11 @@
   content: "";
   position: absolute;
   border-radius: 50%;
-  filter: blur(110px);
 }
 
-/* 左上：品牌蓝光晕 */
+/* 左上：品牌蓝光晕。
+   用径向渐变的自然衰减模拟柔光，不用 filter: blur——超大半径模糊是
+   页面滚动卡顿的主因（每帧重算两张 46vw 的模糊层） */
 .glass-backdrop::before {
   top: -12%;
   left: -8%;
@@ -117,10 +118,15 @@
   height: 46vw;
   min-width: 380px;
   min-height: 380px;
-  background: rgba(23, 57, 245, 0.18);
+  background: radial-gradient(
+    closest-side,
+    rgba(23, 57, 245, 0.2),
+    rgba(23, 57, 245, 0.08) 55%,
+    rgba(23, 57, 245, 0) 78%
+  );
 }
 
-/* 右下：品牌黄光晕（点缀不抢戏——浓度过高会把玻璃卡片染黄） */
+/* 右下：品牌黄光晕（低透明度，点缀不抢戏） */
 .glass-backdrop::after {
   right: -14%;
   bottom: -18%;
@@ -128,7 +134,12 @@
   height: 38vw;
   min-width: 320px;
   min-height: 320px;
-  background: rgba(233, 255, 108, 0.1);
+  background: radial-gradient(
+    closest-side,
+    rgba(233, 255, 108, 0.14),
+    rgba(233, 255, 108, 0.05) 55%,
+    rgba(233, 255, 108, 0) 78%
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {
