@@ -42,6 +42,36 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
 const applications = ref<RecruitmentApplication[]>([]);
 const directions = ref<RecruitmentDirection[]>([]);
 const rounds = ref<RecruitmentRound[]>([]);
+
+/**
+ * 种子方向的兜底清单（review 反馈的自锁 bug）。
+ *
+ * 此前方向开关条直接渲染用户端接口的结果，而该接口只返回**开放中**的
+ * 方向（ListActiveDirections）——管理员把三个方向全关后接口返回空，
+ * 整个开关区块消失，页面上再也无处开启（把自己锁在门外）。
+ *
+ * 现改为：三条种子方向永远渲染开关条，接口没返回的即为「关闭」
+ * （接口语义：不返回 = 未开放）。PATCH 的合法性由后端白名单兜底。
+ * 方向支持动态新增（#128）后，此处应换成管理端全量接口。
+ */
+const SEED_DIRECTION_NAMES: Record<string, string> = {
+  "front-end": "前端开发",
+  "back-end": "后端开发",
+  agent: "智能体",
+};
+
+/** 展示用方向列表 = 接口结果 ∪ 种子兜底（缺失即关闭，按 sort_order 排序） */
+const displayDirections = computed(() => {
+  const byCode = new Map(
+    directions.value.map((direction) => [direction.code, direction]),
+  );
+  for (const [code, name] of Object.entries(SEED_DIRECTION_NAMES)) {
+    if (!byCode.has(code)) {
+      byCode.set(code, { id: 0, code, name, open: false, sort_order: 0 });
+    }
+  }
+  return [...byCode.values()].sort((a, b) => a.sort_order - b.sort_order);
+});
 const loading = ref(true);
 const loadError = ref("");
 const statusFilter = ref<ApplicationStatus | "">("");
@@ -67,8 +97,8 @@ const statusCounts = computed(() => {
 
 function directionName(code: string): string {
   return (
-    directions.value.find((direction) => direction.code === code)?.name ??
-    presentationOf(code).headline
+    displayDirections.value.find((direction) => direction.code === code)
+      ?.name ?? presentationOf(code).headline
   );
 }
 
@@ -202,15 +232,11 @@ function toggleStatusFilter(status: ApplicationStatus): void {
         </button>
       </section>
 
-      <section
-        v-if="directions.length"
-        class="config-strip"
-        aria-label="方向开关"
-      >
+      <section class="config-strip" aria-label="方向开关">
         <span class="config-strip__label">方向开放</span>
         <button
-          v-for="direction in directions"
-          :key="direction.id"
+          v-for="direction in displayDirections"
+          :key="direction.code"
           type="button"
           class="config-chip"
           :class="{ 'is-on': direction.open }"
