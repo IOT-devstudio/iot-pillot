@@ -296,7 +296,7 @@ function steps(application: RecruitmentApplication) {
           >探索方向</a
         ><a href="#journey" @click="scrollToSection($event, 'journey')"
           >我的进度</a
-        >
+        ><RouterLink to="/user/about">关于我们</RouterLink>
       </div>
     </nav>
     <section class="home-poster">
