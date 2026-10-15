@@ -144,6 +144,11 @@ describe("application routes", () => {
       "/recruitment/applications",
       "/recruitment/prospects",
       "/recruitment/prospects/:id",
+      "/forms",
+      "/forms/new",
+      "/forms/:id/edit",
+      "/forms/:id/submissions",
+      "/f/:shareToken",
     ];
     const placeholderRoutes = routes.filter(
       (route) => !reservedPaths.includes(route.path),
@@ -154,7 +159,6 @@ describe("application routes", () => {
       name,
       title: meta?.title,
     }))).toEqual([
-      { path: "/forms", name: "forms", title: "表单管理" },
       { path: "/settings", name: "settings", title: "系统设置" },
     ]);
     expect(new Set(placeholderRoutes.map(({ component }) => component)).size).toBe(1);
@@ -164,6 +168,19 @@ describe("application routes", () => {
         ({ meta }) => JSON.stringify(meta?.allowRoles) === '["admin"]',
       ),
     ).toBe(true);
+  });
+
+  it("mounts real forms pages with admin permissions and authenticated share access", () => {
+    for (const path of ["/forms", "/forms/new", "/forms/:id/edit", "/forms/:id/submissions"]) {
+      const matches = routes.filter(route => route.path === path);
+      expect(matches).toHaveLength(1);
+      expect(matches[0]?.meta?.allowRoles).toEqual(["admin"]);
+      expect(matches[0]?.meta?.adminShell).toBe(true);
+      expect(matches[0]?.component).not.toMatchObject({ name: "PlaceholderView" });
+    }
+    const share = routes.find(route => route.path === "/f/:shareToken");
+    expect(share?.meta?.allowRoles).toEqual(["admin", "member"]);
+    expect(share?.meta?.signalShell).toBe(true);
   });
 
   it("registers the recruitment flow routes", () => {
