@@ -9,7 +9,8 @@ vi.mock("element-plus", () => ({
 
 import { ElMessage } from "element-plus";
 
-import type { MyProfile } from "@/api/profile";
+import type { MyProfileUpdate, MyProfile } from "@/api/profile";
+import { currentProfile, profileDisplayName } from "../profileIdentity";
 
 import {
   nextFormFromProfile,
@@ -22,12 +23,14 @@ const ERROR = vi.mocked(ElMessage.error);
 
 afterEach(() => {
   vi.clearAllMocks();
+  currentProfile.value = null;
 });
 
 function profile(overrides: Partial<MyProfile> = {}): MyProfile {
   return {
     user_id: 1,
     username: "ada",
+    name: "Ada",
     role: "member",
     detail: {
       class: "iot 2301",
@@ -43,12 +46,55 @@ function profile(overrides: Partial<MyProfile> = {}): MyProfile {
 function makeDeps(overrides: Partial<UserSettingsDeps> = {}): UserSettingsDeps {
   return {
     fetchMyProfile: async () => profile(),
-    updateMyProfile: async (input) => profile({ detail: { ...profile().detail, ...input } }),
+    updateMyProfile: async (input) => profile({ name: input.name ?? "", detail: { ...profile().detail, ...input } }),
     ...overrides,
   };
 }
 
 describe("useUserSettings", () => {
+  it("saves the name, publishes the server identity and reloads it", async () => {
+    let stored = profile();
+    const state = useUserSettings(makeDeps({
+      fetchMyProfile: async () => stored,
+      updateMyProfile: async (input) => {
+        stored = profile({ name: input.name ?? "" });
+        return stored;
+      },
+    }));
+    await state.load();
+    state.form.name = " 新的姓名 ";
+    expect(await state.save()).toBe(true);
+    expect(state.form.name).toBe("新的姓名");
+    expect(profileDisplayName(currentProfile.value)).toBe("新的姓名");
+    await state.load();
+    expect(state.form.name).toBe("新的姓名");
+  });
+
+  it("rejects invalid names before making a request, counting Unicode code points", async () => {
+    const update = vi.fn(async () => profile());
+    const state = useUserSettings(makeDeps({ updateMyProfile: update }));
+    await state.load();
+    for (const name of ["张三", "a".repeat(21), "𠮷".repeat(21)]) {
+      state.form.name = name;
+      expect(await state.save()).toBe(false);
+      expect(state.nameError.value).toContain("3–20");
+    }
+    expect(update).not.toHaveBeenCalled();
+    state.form.name = "𠮷".repeat(20);
+    expect(await state.save()).toBe(true);
+  });
+
+  it("clears the name with null and never falls back to the old JWT name", async () => {
+    const update = vi.fn(async (_input: MyProfileUpdate) => profile({ name: "" }));
+    const state = useUserSettings(makeDeps({ updateMyProfile: update }));
+    await state.load();
+    state.form.name = "  ";
+    expect(await state.save()).toBe(true);
+    expect(update.mock.calls[0]?.[0]).toMatchObject({ name: null });
+    expect(profileDisplayName(currentProfile.value)).toBe("ada@example.edu.cn");
+    expect(state.form.name).toBe("");
+  });
+
   it("loads profile on first call and hydrates the form", async () => {
     const state = useUserSettings(makeDeps());
 
@@ -62,6 +108,7 @@ describe("useUserSettings", () => {
     expect(state.loadError.value).toBe("");
     expect(state.profile.value).not.toBeNull();
     expect(state.form).toEqual({
+      name: "Ada",
       class: "iot 2301",
       studentId: "2023114514",
       qq: "1044696157",
@@ -101,7 +148,7 @@ describe("useUserSettings", () => {
     expect(state.loading.value).toBe(false);
     expect(state.loadError.value).toBe("");
     expect(state.profile.value).not.toBeNull();
-    expect(state.form).toEqual({ class: "", studentId: "", qq: "", direction: "" });
+    expect(state.form).toEqual({ name: "Ada", class: "", studentId: "", qq: "", direction: "" });
     expect(state.needsCompletion.value).toBe(true);
   });
 
@@ -150,6 +197,7 @@ describe("useUserSettings", () => {
     const ok = await state.save();
     expect(ok).toBe(true);
     expect(update).toHaveBeenCalledWith({
+      name: "Ada",
       class: "iot 2301",
       student_id: 2023114514,
       qq: "99999",
@@ -171,11 +219,14 @@ describe("useUserSettings", () => {
     await state.load();
 
     state.form.class = "iot 2402";
+    state.form.name = "未保存姓名";
 
     const ok = await state.save();
     expect(ok).toBe(false);
     expect(state.saveError.value).toContain("网络异常");
     expect(state.form.class).toBe("iot 2402");
+    expect(state.form.name).toBe("未保存姓名");
+    expect(currentProfile.value?.name).toBe("Ada");
     expect(ERROR).toHaveBeenCalledTimes(1);
   });
 
@@ -204,6 +255,7 @@ describe("nextFormFromProfile", () => {
     expect(
       nextFormFromProfile(profile()),
     ).toEqual({
+      name: "Ada",
       class: "iot 2301",
       studentId: "2023114514",
       qq: "1044696157",
@@ -216,6 +268,7 @@ describe("nextFormFromProfile", () => {
     expect(
       nextFormFromProfile({ ...profile(), detail: undefined }),
     ).toEqual({
+      name: "Ada",
       class: "",
       studentId: "",
       qq: "",

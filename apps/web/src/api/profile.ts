@@ -72,8 +72,9 @@ export function updateMyProfile(input: MyProfileUpdate): Promise<MyProfile> {
  * 空串变 null，让后端知道「用户清掉了这个字段」而不是「存了一个空串」。
  */
 export interface FormShape {
+  name?: string;
   class: string;
-  studentId: string;
+  studentId: string | number;
   qq: string;
   direction: Direction | "";
 }
@@ -101,7 +102,8 @@ export function detailToForm(detail: UserDetail = {}): FormShape {
  * 后看自己资料发现值被悄悄改了，反而更难排查。
  */
 export function formToUpdate(form: FormShape): MyProfileUpdate {
-  const studentIdRaw = form.studentId.trim();
+  // Vue 的 type=number 输入会自动产生 number，不能直接调用 trim。
+  const studentIdRaw = String(form.studentId).trim();
   let studentId: number | null = null;
   if (studentIdRaw !== "") {
     const parsed = Number(studentIdRaw);
@@ -111,6 +113,7 @@ export function formToUpdate(form: FormShape): MyProfileUpdate {
   }
 
   return {
+    ...(form.name === undefined ? {} : { name: form.name.trim() || null }),
     class: form.class.trim() === "" ? null : form.class.trim(),
     student_id: studentId,
     qq: form.qq.trim() === "" ? null : form.qq.trim(),
@@ -125,7 +128,7 @@ export function formToUpdate(form: FormShape): MyProfileUpdate {
 export function isProfileEmpty(form: FormShape): boolean {
   return (
     form.class.trim() === "" &&
-    form.studentId.trim() === "" &&
+    String(form.studentId).trim() === "" &&
     form.qq.trim() === "" &&
     form.direction === ""
   );

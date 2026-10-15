@@ -1,21 +1,22 @@
 <script setup lang="ts">
 /**
- * 顶栏右上角「用户名 + 下拉」菜单（issue #58 验收项）。
+ * 顶栏右上角「姓名 + 下拉」菜单（issue #87 统一资料展示）。
  *
  * 把散在各页 PageHeader#actions 里的 SignOutButton 收进同一个入口：
  *   - 个人设置（/user/settings）
  *   - 退出登录
  *
- * 用户名从 GET /me 拿，失败时降级显示「未登录」并禁用操作——和 useAdminPermissions
+ * 姓名从 GET /me 拿，失败时降级显示「未登录」并禁用操作——和 useAdminPermissions
  * 挡「撤销自己」的保守策略同思路：拿不到身份时不假装能操作。
  *
  * el-popover trigger="click"：hover 在 sticky header 上容易误触，且要支持触屏。
  */
-import { inject, onMounted, ref } from "vue";
+import { computed, inject, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { AuthRequestError } from "@/api/auth";
-import { fetchCurrentUser, type CurrentUser } from "@/api/admin";
+import { fetchMyProfile } from "@/api/profile";
+import { currentProfile as user, profileDisplayName } from "@/modules/user-settings/profileIdentity";
 import { signOut } from "@/auth/session";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 
@@ -30,14 +31,14 @@ const transition = inject(
     await change();
   },
 );
-const user = ref<CurrentUser | null>(null);
+const displayName = computed(() => profileDisplayName(user.value));
 const loadError = ref("");
 const signingOut = ref(false);
 const popoverVisible = ref(false);
 
 async function loadUser(): Promise<void> {
   try {
-    user.value = await fetchCurrentUser();
+    user.value = await fetchMyProfile();
     loadError.value = "";
   } catch (error: unknown) {
     loadError.value =
@@ -69,12 +70,13 @@ async function handleSignOut(): Promise<void> {
   } catch {
     // signOut 已在 finally 中清掉本地会话；网络失败也不应让用户继续留在此页面
   } finally {
+    user.value = null;
     signingOut.value = false;
     await router.replace("/");
   }
 }
 
-/** 角色徽章的中文标签：和 UserProfileCard.vue 用同一套口径 */
+/** 角色徽章的中文标签。 */
 const ROLE_LABELS: Record<string, string> = {
   admin: "管理员",
   member: "成员",
@@ -97,14 +99,14 @@ function roleLabel(): string {
       <button
         type="button"
         class="user-menu"
-        :aria-label="user === null ? '未登录' : `${user.username} 的菜单`"
+        :aria-label="user === null ? '未登录' : `${displayName} 的菜单`"
       >
         <span class="user-menu__avatar" aria-hidden="true">
-          {{ user === null ? "?" : user.username.slice(0, 1).toUpperCase() }}
+          {{ user === null ? "?" : Array.from(displayName)[0]?.toUpperCase() }}
         </span>
         <span class="user-menu__meta">
           <span class="user-menu__name">
-            {{ user === null ? "未登录" : user.username }}
+            {{ user === null ? "未登录" : displayName }}
           </span>
           <span v-if="user !== null" class="user-menu__role">{{ roleLabel() }}</span>
           <span v-else-if="loadError" class="user-menu__role user-menu__role--err">

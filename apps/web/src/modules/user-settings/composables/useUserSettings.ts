@@ -5,8 +5,7 @@
  * 不必起网络、不必起 Vue 组件。受保护请求全部走 apps/web/src/api/session-request.ts，
  * 这里不重复读 token，也不重复翻译 401/403。
  *
- * #57 后端 PUT /me 落地后，本 composable 的契约自然成立；接口形状以最终合并版为准，
- * 当前按提案实现（嵌套 detail + 禁止 user_id）。
+ * 契约来自已合并的 #57 / #86：name 可改，邮箱只读，身份取自令牌。
  */
 import { reactive, ref, type Ref } from "vue";
 import { ElMessage } from "element-plus";
@@ -22,6 +21,7 @@ import {
   type MyProfileUpdate,
 } from "@/api/profile";
 import { describeAuthError } from "@/modules/dashboard/composables/useAdminPermissions";
+import { currentProfile } from "../profileIdentity";
 
 export interface UserSettingsDeps {
   fetchMyProfile: () => Promise<MyProfile>;
@@ -42,6 +42,7 @@ export interface UseUserSettings {
   loadUnauthorized: Ref<boolean>;
   saving: Ref<boolean>;
   saveError: Ref<string>;
+  nameError: Ref<string>;
   needsCompletion: Ref<boolean>;
   load: () => Promise<void>;
   save: () => Promise<boolean>;
@@ -55,7 +56,7 @@ export interface UseUserSettings {
  * 也写进 form（form 用的是 camelCase studentId），并且不会触发响应式刷新。
  */
 export function nextFormFromProfile(profile: MyProfile): FormShape {
-  return detailToForm(profile.detail);
+  return { ...detailToForm(profile.detail), name: profile.name ?? "" };
 }
 
 export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSettings {
@@ -68,10 +69,12 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
   const saving = ref(false);
   /** 保存失败的提示：保存按钮还要露出来，所以单独持有一份 */
   const saveError = ref("");
+  const nameError = ref("");
   /** 「建议补全」提示：进入页面时表单全空则展示，不阻塞保存 */
   const needsCompletion = ref(false);
 
   const form = reactive<FormShape>({
+    name: "",
     class: "",
     studentId: "",
     qq: "",
@@ -80,7 +83,10 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
 
   function hydrate(next: MyProfile): void {
     profile.value = next;
+    currentProfile.value = next;
     const nextForm = nextFormFromProfile(next);
+    form.name = nextForm.name;
+    nameError.value = "";
     form.class = nextForm.class;
     form.studentId = nextForm.studentId;
     form.qq = nextForm.qq;
@@ -108,8 +114,13 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     if (saving.value) {
       return false;
     }
-    saving.value = true;
     saveError.value = "";
+    const nameLength = Array.from((form.name ?? "").trim()).length;
+    nameError.value = nameLength !== 0 && (nameLength < 3 || nameLength > 20)
+      ? "姓名需为 3–20 个字符，也可留空清除"
+      : "";
+    if (nameError.value) return false;
+    saving.value = true;
     try {
       const next = await deps.updateMyProfile(formToUpdate(form));
       hydrate(next);
@@ -135,6 +146,7 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     loadUnauthorized,
     saving,
     saveError,
+    nameError,
     needsCompletion,
     load,
     save,

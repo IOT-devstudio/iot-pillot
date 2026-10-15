@@ -5,7 +5,7 @@
  * 接线 useUserSettings（拉取 / 保存）与 UserSettingsForm（只读字段 + 表单 + 按钮）。
  * 视图层只负责：骨架屏、错误态、空态、保存结果反馈。
  *
- * 字段契约来自 issue #58，最终字段形状以 #57 后端 PR 落地为准。
+ * 字段契约来自已合并的 #57 / #86，姓名编辑对应 #87。
  */
 import { onMounted } from "vue";
 
@@ -22,6 +22,7 @@ const {
   loadUnauthorized,
   saving,
   saveError,
+  nameError,
   needsCompletion,
   load,
   save,
@@ -33,6 +34,9 @@ onMounted(load);
 function resetForm(): void {
   if (profile.value !== null) {
     const next = nextFormFromProfile(profile.value);
+    form.name = next.name;
+    nameError.value = "";
+    saveError.value = "";
     form.class = next.class;
     form.studentId = next.studentId;
     form.qq = next.qq;
@@ -47,7 +51,7 @@ function resetForm(): void {
       <PageHeader
         eyebrow="iot-pillot · 用户侧"
         title="个人设置"
-        description="补全与维护你自己的资料。姓名、邮箱为登录凭据，本期不在此处变更。"
+        description="维护你的姓名与个人资料。账号绑定邮箱不可修改。"
       />
 
       <!-- 加载中：用骨架屏而非「正在加载…」单行，避开从 50px 跳到 220px 的重排 -->
@@ -84,6 +88,7 @@ function resetForm(): void {
           :form="form"
           :needs-completion="needsCompletion"
           :saving="saving"
+          :name-error="nameError"
           @submit="save"
           @cancel="resetForm"
         />
