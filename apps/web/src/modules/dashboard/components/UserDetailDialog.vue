@@ -31,21 +31,39 @@ function close(): void {
 }
 
 /**
- * 手动锁 body 滚动（review 反馈：弹窗打开后整页还能上下滑动）。
- * el-dialog 自带的 lock-scroll 在这里不可靠（append-to-body 场景下
- * 遮罩出现与 overflow 锁定存在时序差，滚轮事件仍能漏进文档）。
+ * 手动锁整页滚动（review 二轮反馈：页面够高时仍能滑动）。
+ *
+ * 只锁 body 不够：本项目 html 被显式设了 overflow: auto，此时 body 的
+ * overflow 不会传导到视口，视口照样滚。必须 html + body 一起锁。
+ * Element 自带 lock-scroll 同样只动 body，所以不可靠。
  * 关闭或组件卸载时必须归还，否则整页永久锁死。
  */
 watch(
   () => props.visible,
   (visible) => {
-    document.body.style.overflow = visible ? "hidden" : "";
+    if (visible) {
+      // 滚动条消失会让视口瞬间变宽、关闭时又缩回去——「抽动一下再恢复」
+      // 的根源。用 body 的 padding-right 补偿滚动条宽度，宽度全程不变
+      const scrollbarGap =
+        window.innerWidth - document.documentElement.clientWidth;
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+      if (scrollbarGap > 0) {
+        document.body.style.paddingRight = `${scrollbarGap}px`;
+      }
+    } else {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+      document.body.style.paddingRight = "";
+    }
   },
   { immediate: true },
 );
 
 onBeforeUnmount(() => {
+  document.documentElement.style.overflow = "";
   document.body.style.overflow = "";
+  document.body.style.paddingRight = "";
 });
 
 const DIRECTION_LABELS: Record<Direction, string> = {
@@ -92,13 +110,17 @@ const isSelf = computed(
   <!-- append-to-body：挂到 body 上，遮罩才能盖住整页（侧边栏 z-20、
        完善资料提示 z-80 都在其下）——此前弹窗困在内容区的层叠上下文里，
        侧边栏和提示条浮在遮罩之上（review 反馈的显示问题） -->
+  <!-- modal-class 让弹窗在遮罩层里 flex 双轴居中（Element 默认顶部 15vh
+       偏移，review 反馈不居中）；样式在 theme.css -->
   <el-dialog
     :model-value="visible"
     append-to-body
+    modal-class="user-detail-modal"
     title="用户详情"
     width="560"
     :close-on-click-modal="true"
     :close-on-press-escape="true"
+    :lock-scroll="false"
     @update:model-value="emit('update:visible', $event)"
   >
     <!-- 没有 user（点开瞬间）时不渲染任何字段，避免把上一位用户的信息闪一下 -->
