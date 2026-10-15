@@ -16,7 +16,7 @@ import { useRouter } from "vue-router";
 
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile } from "@/api/profile";
-import { currentProfile as user, profileDisplayName } from "@/modules/user-settings/profileIdentity";
+import { beginProfileLoad, currentProfile as user, profileDisplayName } from "@/modules/user-settings/profileIdentity";
 import { signOut } from "@/auth/session";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 
@@ -37,13 +37,14 @@ const signingOut = ref(false);
 const popoverVisible = ref(false);
 
 async function loadUser(): Promise<void> {
+  const publish = beginProfileLoad();
   try {
-    user.value = await fetchMyProfile();
+    publish(await fetchMyProfile());
     loadError.value = "";
   } catch (error: unknown) {
     loadError.value =
       error instanceof AuthRequestError ? error.message : "暂时无法加载用户信息";
-    user.value = null;
+    publish(null);
   }
 }
 
@@ -70,7 +71,6 @@ async function handleSignOut(): Promise<void> {
   } catch {
     // signOut 已在 finally 中清掉本地会话；网络失败也不应让用户继续留在此页面
   } finally {
-    user.value = null;
     signingOut.value = false;
     await router.replace("/");
   }

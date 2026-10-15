@@ -15,7 +15,7 @@
 import { computed, onMounted, ref } from "vue";
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile } from "@/api/profile";
-import { currentProfile as user, profileDisplayName } from "@/modules/user-settings/profileIdentity";
+import { beginProfileLoad, currentProfile as user, profileDisplayName } from "@/modules/user-settings/profileIdentity";
 import {
   fetchDirections,
   fetchMyApplication,
@@ -84,12 +84,13 @@ function describeError(error: unknown, fallback: string): string {
 }
 
 async function loadProfile(): Promise<void> {
+  const publish = beginProfileLoad();
   loading.value = true;
   userError.value = "";
   try {
-    user.value = await fetchMyProfile();
+    publish(await fetchMyProfile());
   } catch (error) {
-    user.value = null;
+    publish(null);
     userError.value = describeError(error, "暂时无法加载用户信息，请稍后重试");
   } finally {
     loading.value = false;

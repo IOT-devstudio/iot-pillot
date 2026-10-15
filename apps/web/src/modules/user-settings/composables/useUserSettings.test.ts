@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthRequestError } from "@/api/auth";
+import { clearAuthSession } from "@/auth/session";
 
 // ElMessage 用作保存成功 / 失败的 toast；纯副作用，桩掉即可。
 vi.mock("element-plus", () => ({
@@ -10,7 +11,7 @@ vi.mock("element-plus", () => ({
 import { ElMessage } from "element-plus";
 
 import type { MyProfileUpdate, MyProfile } from "@/api/profile";
-import { currentProfile, profileDisplayName } from "../profileIdentity";
+import { currentProfile, profileDisplayName, setCurrentProfile } from "../profileIdentity";
 
 import {
   nextFormFromProfile,
@@ -23,7 +24,7 @@ const ERROR = vi.mocked(ElMessage.error);
 
 afterEach(() => {
   vi.clearAllMocks();
-  currentProfile.value = null;
+  setCurrentProfile(null);
 });
 
 function profile(overrides: Partial<MyProfile> = {}): MyProfile {
@@ -52,6 +53,18 @@ function makeDeps(overrides: Partial<UserSettingsDeps> = {}): UserSettingsDeps {
 }
 
 describe("useUserSettings", () => {
+  it("does not republish an account after logout while its save is pending", async () => {
+    let resolveSave!: (value: MyProfile) => void;
+    const state = useUserSettings(makeDeps({
+      updateMyProfile: () => new Promise(resolve => { resolveSave = resolve; }),
+    }));
+    await state.load();
+    const saving = state.save();
+    clearAuthSession({ length: 0, clear() {}, getItem() { return null; }, key() { return null; }, setItem() {}, removeItem() {} });
+    resolveSave(profile({ name: "退出前的姓名" }));
+    await saving;
+    expect(currentProfile.value).toBeNull();
+  });
   it("saves the name, publishes the server identity and reloads it", async () => {
     let stored = profile();
     const state = useUserSettings(makeDeps({

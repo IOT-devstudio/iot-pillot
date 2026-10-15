@@ -21,7 +21,7 @@ import {
   type MyProfileUpdate,
 } from "@/api/profile";
 import { describeAuthError } from "@/modules/dashboard/composables/useAdminPermissions";
-import { currentProfile } from "../profileIdentity";
+import { beginProfileLoad, beginProfileSave, setCurrentProfile } from "../profileIdentity";
 
 export interface UserSettingsDeps {
   fetchMyProfile: () => Promise<MyProfile>;
@@ -81,9 +81,9 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     direction: "",
   });
 
-  function hydrate(next: MyProfile): void {
+  function hydrate(next: MyProfile, publish: (profile: MyProfile) => void = setCurrentProfile): void {
     profile.value = next;
-    currentProfile.value = next;
+    publish(next);
     const nextForm = nextFormFromProfile(next);
     form.name = nextForm.name;
     nameError.value = "";
@@ -95,11 +95,12 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
   }
 
   async function load(): Promise<void> {
+    const publish = beginProfileLoad();
     loading.value = true;
     loadError.value = "";
     loadUnauthorized.value = false;
     try {
-      hydrate(await deps.fetchMyProfile());
+      hydrate(await deps.fetchMyProfile(), publish);
     } catch (error: unknown) {
       const info = describeAuthError(error, "暂时无法加载个人资料，请稍后重试");
       loadError.value = info.message;
@@ -121,9 +122,10 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       : "";
     if (nameError.value) return false;
     saving.value = true;
+    const publish = beginProfileSave();
     try {
       const next = await deps.updateMyProfile(formToUpdate(form));
-      hydrate(next);
+      hydrate(next, publish);
       ElMessage.success("资料已保存");
       return true;
     } catch (error: unknown) {
