@@ -80,6 +80,7 @@ async function run() {
         const denied = (message) =>
           route.fulfill({ status: 400, json: { code: 4000, message } });
         if (req.method() === "POST") {
+          if (path === '/api/v1/login') return ok({user_id:7,access_token:'test-only',refresh_token:'test-only-refresh'});
           writes++;
           await new Promise((resolve) => setTimeout(resolve, 200));
           if (fail) return denied("测试邮件投递失败，请重试");
@@ -308,6 +309,13 @@ async function run() {
         new URL(page.url()).searchParams.get("redirect"),
         "/user/invitations?token=" + token,
       );
+      const writesBeforeLogin = writes;
+      await page.locator('#username').fill('tester');
+      await page.locator('#login-password').fill('TestOnly123');
+      await page.locator('#login-pane button[type="submit"]').click();
+      await page.waitForURL('**/user/invitations?token=' + token);
+      await text('已接受');
+      assert.equal(writes, writesBeforeLogin, 'Login return must not auto-accept an invitation');
       assert.deepEqual(errors, []);
       reports.push({
         width,
