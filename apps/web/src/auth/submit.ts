@@ -24,6 +24,7 @@ export interface AuthSubmitDeps {
   login: (payload: LoginPayload) => Promise<AuthSession>;
   register: (payload: RegisterPayload) => Promise<AuthSession>;
   saveSession: (session: AuthSession) => void;
+  checkProfile?: () => Promise<void>;
   navigate: (path: string) => Promise<unknown> | unknown;
 }
 
@@ -76,6 +77,7 @@ export async function submitAuth(
       : await deps.register(toRegisterPayload(form as RegisterForm));
 
   deps.saveSession(session);
+  await deps.checkProfile?.();
   await deps.navigate(defaultNavigateTarget(redirect));
 
   return { ok: true, session };

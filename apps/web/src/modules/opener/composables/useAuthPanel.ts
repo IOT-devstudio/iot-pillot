@@ -17,6 +17,7 @@ import {
   validateRegisterForm,
 } from "@/auth/form";
 import { saveAuthSession } from "@/auth/session";
+import { checkProfileAfterLogin } from "@/auth/check-profile";
 import { submitAuth, type CredentialMode } from "@/auth/submit";
 
 import { CONFIG } from "../config";
@@ -117,6 +118,7 @@ export function useAuthPanel(
           login,
           register,
           saveSession: saveAuthSession,
+          checkProfile: checkProfileAfterLogin,
           navigate: (path) => router.push(path),
         },
         redirect?.value,

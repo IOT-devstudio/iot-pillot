@@ -7,30 +7,34 @@
  *
  * 契约来自已合并的 #57 / #86：name 可改，邮箱只读，身份取自令牌。
  */
-import { reactive, ref, type Ref } from "vue";
+import { computed, reactive, ref, type Ref } from "vue";
+import type { Direction } from "@iot-pillot/shared-types";
+import { fetchMyApplications, type RecruitmentApplication } from "@/api/recruitment";
 import { ElMessage } from "element-plus";
 
 import {
   detailToForm,
   fetchMyProfile,
   formToUpdate,
-  isProfileEmpty,
   updateMyProfile,
   type FormShape,
   type MyProfile,
   type MyProfileUpdate,
 } from "@/api/profile";
 import { describeAuthError } from "@/modules/dashboard/composables/useAdminPermissions";
-import { beginProfileLoad, beginProfileSave, setCurrentProfile } from "../profileIdentity";
+import { beginProfileLoad, beginProfileSave, beginProfileSessionCheck, setCurrentProfile } from "../profileIdentity";
+import { missingRequiredProfile, validateRequiredProfile, type RequiredProfileErrors } from "../profileCompletion";
 
 export interface UserSettingsDeps {
   fetchMyProfile: () => Promise<MyProfile>;
-  updateMyProfile: (input: MyProfileUpdate) => Promise<MyProfile>;
+  updateMyProfile: (input: MyProfileUpdate, expectedUserId: number) => Promise<MyProfile>;
+  fetchMyApplications: () => Promise<{ items: Pick<RecruitmentApplication, "direction_code">[] }>;
 }
 
 const defaultDeps: UserSettingsDeps = {
   fetchMyProfile: () => fetchMyProfile(),
-  updateMyProfile: (input) => updateMyProfile(input),
+  updateMyProfile: (input, expectedUserId) => updateMyProfile(input, expectedUserId),
+  fetchMyApplications,
 };
 
 /** 表单形状 + 响应式状态 + 保存动作。 */
@@ -43,6 +47,14 @@ export interface UseUserSettings {
   saving: Ref<boolean>;
   saveError: Ref<string>;
   nameError: Ref<string>;
+  editing: Ref<boolean>;
+  fieldErrors: Ref<RequiredProfileErrors>;
+  latestDirection: Ref<Direction | "">;
+  directionError: Readonly<Ref<string>>;
+  edit: () => void;
+  reset: () => void;
+  cancel: () => void;
+  retryDirection: () => Promise<void>;
   needsCompletion: Ref<boolean>;
   load: () => Promise<void>;
   save: () => Promise<boolean>;
@@ -70,7 +82,16 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
   /** 保存失败的提示：保存按钮还要露出来，所以单独持有一份 */
   const saveError = ref("");
   const nameError = ref("");
-  /** 「建议补全」提示：进入页面时表单全空则展示，不阻塞保存 */
+  const editing = ref(false);
+  const fieldErrors = ref<RequiredProfileErrors>({});
+  const latestDirection = ref<Direction | "">("");
+  const directionLoadError = ref("");
+  const directionError = computed(() => directionLoadError.value || (
+    latestDirection.value && form.direction !== latestDirection.value
+      ? "个人资料方向与最新报名方向不一致，请联系管理员处理后再保存。"
+      : ""
+  ));
+  /** 服务端资料缺少任一必填字段时显示，保存成功后重算。 */
   const needsCompletion = ref(false);
 
   const form = reactive<FormShape>({
@@ -91,7 +112,53 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     form.studentId = nextForm.studentId;
     form.qq = nextForm.qq;
     form.direction = nextForm.direction;
-    needsCompletion.value = isProfileEmpty(nextForm);
+    if (!form.direction && latestDirection.value) form.direction = latestDirection.value;
+    needsCompletion.value = missingRequiredProfile(next.detail).length > 0;
+  }
+
+  function reset(): void {
+    if (saving.value || !profile.value) return;
+    hydrate(profile.value, () => {});
+    fieldErrors.value = {};
+    saveError.value = "";
+  }
+
+  function edit(): void {
+    if (loading.value || !profile.value || saving.value) return;
+    reset();
+    editing.value = true;
+  }
+
+  function cancel(): void {
+    if (saving.value) return;
+    reset();
+    editing.value = false;
+  }
+
+  async function checkDirection(): Promise<void> {
+    directionLoadError.value = "";
+    try {
+      // API 明确按 id DESC 返回：第一条为最新报名，不使用首页的临时点选状态。
+      const { items } = await deps.fetchMyApplications();
+      const code = items[0]?.direction_code ?? "";
+      if (!["", "front-end", "back-end", "agent", "all", "game", "other"].includes(code)) {
+        throw new Error("未知报名方向");
+      }
+      latestDirection.value = code as Direction | "";
+    } catch {
+      directionLoadError.value = "暂时无法核对最新报名方向，请重试；核对成功前无法保存。";
+    }
+  }
+
+  async function retryDirection(): Promise<void> {
+    if (saving.value) return;
+    saving.value = true;
+    try {
+      await checkDirection();
+      if (!form.direction && !directionLoadError.value) form.direction = latestDirection.value;
+    } finally {
+      saving.value = false;
+    }
   }
 
   async function load(): Promise<void> {
@@ -99,8 +166,14 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     loading.value = true;
     loadError.value = "";
     loadUnauthorized.value = false;
+    editing.value = false;
+    fieldErrors.value = {};
+    saveError.value = "";
+    nameError.value = "";
+    latestDirection.value = "";
     try {
-      hydrate(await deps.fetchMyProfile(), publish);
+      const [next] = await Promise.all([deps.fetchMyProfile(), checkDirection()]);
+      hydrate(next, publish);
     } catch (error: unknown) {
       const info = describeAuthError(error, "暂时无法加载个人资料，请稍后重试");
       loadError.value = info.message;
@@ -112,20 +185,27 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
   }
 
   async function save(): Promise<boolean> {
-    if (saving.value) {
+    if (saving.value || !editing.value || !profile.value) {
       return false;
     }
     saveError.value = "";
+    fieldErrors.value = validateRequiredProfile(form);
     const nameLength = Array.from((form.name ?? "").trim()).length;
     nameError.value = nameLength !== 0 && (nameLength < 3 || nameLength > 20)
       ? "姓名需为 3–20 个字符，也可留空清除"
       : "";
-    if (nameError.value) return false;
+    if (nameError.value || Object.keys(fieldErrors.value).length) return false;
     saving.value = true;
     const publish = beginProfileSave();
+    const sessionIsCurrent = beginProfileSessionCheck();
     try {
-      const next = await deps.updateMyProfile(formToUpdate(form));
+      // 保存前再次获取，防止另一标签页新报名后继续使用旧方向。
+      await checkDirection();
+      if (!sessionIsCurrent()) return false;
+      if (directionError.value) return false;
+      const next = await deps.updateMyProfile(formToUpdate(form), profile.value.user_id);
       hydrate(next, publish);
+      editing.value = false;
       ElMessage.success("资料已保存");
       return true;
     } catch (error: unknown) {
@@ -149,6 +229,14 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     saving,
     saveError,
     nameError,
+    editing,
+    fieldErrors,
+    latestDirection,
+    directionError,
+    edit,
+    reset,
+    cancel,
+    retryDirection,
     needsCompletion,
     load,
     save,

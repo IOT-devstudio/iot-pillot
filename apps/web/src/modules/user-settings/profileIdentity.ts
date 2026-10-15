@@ -7,6 +7,12 @@ export const currentProfile = shallowReadonly(profileState);
 let revision = 0;
 let sessionRevision = 0;
 
+/** 异步检查完成后仍须属于发起时的会话，才可继续写入。 */
+export function beginProfileSessionCheck(): () => boolean {
+  const startedSession = sessionRevision;
+  return () => startedSession === sessionRevision;
+}
+
 export function setCurrentProfile(profile: MyProfile | null): void {
   revision += 1;
   if (profile === null) sessionRevision += 1;

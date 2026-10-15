@@ -41,6 +41,7 @@ export interface SessionRequestDeps {
 export type SessionRequester = <T>(
   path: string,
   init?: RequestInit,
+  expectedUserId?: number,
 ) => Promise<T>;
 
 const SESSION_EXPIRED_MESSAGE = "登录状态已失效，请重新登录";
@@ -134,6 +135,15 @@ function createSessionRunner(
   let refreshInFlight: Promise<AuthSession> | null = null;
   let expirationKey: string | null = null;
 
+  function assertExpectedAccount(expectedUserId?: number, session?: AuthSession | null): void {
+    if (expectedUserId === undefined) return;
+    const current = session === undefined ? deps.readSession() : session;
+    if (current?.user_id !== expectedUserId) {
+      // localStorage 在标签页间共享；旧表单不能使用另一账号的新令牌写入。
+      throw new AuthRequestError("登录账号已变更，请刷新页面后重新编辑资料。", 409);
+    }
+  }
+
   function expireSession(
     session: AuthSession | null = null,
     reason: SessionEndReason = "expired",
@@ -160,8 +170,9 @@ function createSessionRunner(
     );
   }
 
-  function refreshFor(attemptedAccessToken: string): Promise<AuthSession> {
+  function refreshFor(attemptedAccessToken: string, expectedUserId?: number): Promise<AuthSession> {
     const latestSession = deps.readSession();
+    assertExpectedAccount(expectedUserId, latestSession);
     if (latestSession === null) {
       const error = new AuthRequestError(SESSION_EXPIRED_MESSAGE, 401);
       expireSession();
@@ -179,11 +190,16 @@ function createSessionRunner(
       refreshInFlight = Promise.resolve()
         .then(() => deps.refreshSession(latestSession.refresh_token))
         .then((refreshed) => {
+          const current = deps.readSession();
+          assertExpectedAccount(latestSession.user_id, current);
+          // 刷新期间同账号也可能重新登录，不覆盖其较新的会话。
+          if (current && current.access_token !== latestSession.access_token) return current;
           const nextSession = mergeAuthSession(latestSession, refreshed);
           deps.saveSession(nextSession);
           return nextSession;
         })
         .catch((error: unknown) => {
+          assertExpectedAccount(latestSession.user_id);
           // 只有后端明确说令牌无效（401/4011）才认定会话结束；
           // 网络异常等其余失败保留本地会话——断网不该把人登出
           if (
@@ -205,8 +221,9 @@ function createSessionRunner(
     return refreshInFlight;
   }
 
-  return async <T>(path: string, init?: RequestInit): Promise<T> => {
+  return async <T>(path: string, init?: RequestInit, expectedUserId?: number): Promise<T> => {
     const session = deps.readSession();
+    assertExpectedAccount(expectedUserId, session);
     if (session === null) {
       const error = new AuthRequestError(SESSION_EXPIRED_MESSAGE, 401);
       expireSession();
@@ -219,26 +236,33 @@ function createSessionRunner(
 
     try {
       const result = await deps.request(path, withBearer(init, session.access_token));
+      assertExpectedAccount(expectedUserId);
       return unwrap<T>(result);
     } catch (error: unknown) {
       if (!(error instanceof AuthRequestError) || error.status !== 401) {
         throw error;
       }
 
+      assertExpectedAccount(expectedUserId);
+
       if (isSessionInvalidated(error)) {
         expireSession(session, "invalidated");
         throw error;
       }
 
-      const nextSession = await refreshFor(session.access_token);
+      const nextSession = await refreshFor(session.access_token, expectedUserId);
+      assertExpectedAccount(expectedUserId, nextSession);
+      assertExpectedAccount(expectedUserId);
 
       try {
         const retry = await deps.request(
           path,
           withBearer(init, nextSession.access_token),
         );
+        assertExpectedAccount(expectedUserId);
         return unwrap<T>(retry);
       } catch (retryError: unknown) {
+        assertExpectedAccount(expectedUserId);
         if (retryError instanceof AuthRequestError && retryError.status === 401) {
           expireSession(
             nextSession,

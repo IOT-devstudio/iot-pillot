@@ -26,6 +26,8 @@ vi.mock("@/auth/session", () => ({
   saveAuthSession: mocks.saveAuthSession,
 }));
 
+vi.mock("@/auth/check-profile", () => ({ checkProfileAfterLogin: vi.fn() }));
+
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push: mocks.push }),
   useRoute: () => ({ query: mocks.query }),

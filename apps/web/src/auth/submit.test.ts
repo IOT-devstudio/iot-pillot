@@ -4,6 +4,17 @@ import { defaultNavigateTarget, submitAuth } from "./submit";
 const session = { access_token: "a", refresh_token: "r", user_id: 9 };
 
 describe("submitAuth", () => {
+  it("checks the profile after storing each login session, including repeated logins", async () => {
+    const calls: string[] = [];
+    const deps = {
+      login: vi.fn().mockResolvedValue(session), register: vi.fn(),
+      saveSession: () => { calls.push("save"); },
+      checkProfile: async () => { calls.push("profile"); },
+      navigate: () => { calls.push("navigate"); },
+    };
+    for (let i = 0; i < 2; i++) await submitAuth("login", { username: "ada", password: "123456" }, deps);
+    expect(calls).toEqual(["save", "profile", "navigate", "save", "profile", "navigate"]);
+  });
   it("returns validation errors without calling an API", async () => {
     const deps = {
       login: vi.fn(),

@@ -41,6 +41,57 @@ function makeDeps(
 }
 
 describe("session requester", () => {
+  it("rejects a profile write bound to another account without sending or clearing its session", async () => {
+    const deps = makeDeps();
+    const request = createSessionRequester(deps);
+    await expect(request("/api/v1/me", { method: "PUT" }, 99)).rejects.toMatchObject({ status: 409 });
+    expect(deps.request).not.toHaveBeenCalled();
+    expect(deps.clearSession).not.toHaveBeenCalled();
+  });
+
+  it("does not retry an account-bound write after another tab switches account during the first request", async () => {
+    let session = originalSession;
+    const deps = makeDeps({
+      readSession: () => session,
+      request: vi.fn(async () => {
+        session = { user_id: 99, access_token: "other", refresh_token: "other-refresh" };
+        throw new AuthRequestError("expired", 401, 4002);
+      }),
+    });
+    await expect(createSessionRequester(deps)("/api/v1/me", { method: "PUT" }, 7)).rejects.toMatchObject({ status: 409 });
+    expect(deps.request).toHaveBeenCalledTimes(1);
+    expect(deps.refreshSession).not.toHaveBeenCalled();
+    expect(deps.clearSession).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite a new account when an old profile-write refresh finishes", async () => {
+    let session = originalSession;
+    const deps = makeDeps({
+      readSession: () => session,
+      request: vi.fn().mockRejectedValue(new AuthRequestError("expired", 401, 4002)),
+      refreshSession: vi.fn(async () => {
+        session = { user_id: 99, access_token: "other", refresh_token: "other-refresh" };
+        return { access_token: "old-rotated", refresh_token: "old-rotated-refresh" };
+      }),
+    });
+    await expect(createSessionRequester(deps)("/api/v1/me", { method: "PUT" }, 7)).rejects.toMatchObject({ status: 409 });
+    expect(deps.request).toHaveBeenCalledTimes(1);
+    expect(deps.saveSession).not.toHaveBeenCalled();
+    expect(deps.clearSession).not.toHaveBeenCalled();
+    expect(session.user_id).toBe(99);
+  });
+
+  it("rejects a late profile response after the account changes", async () => {
+    let session = originalSession;
+    const deps = makeDeps({
+      readSession: () => session,
+      request: vi.fn(async () => {
+        session = { user_id: 99, access_token: "other", refresh_token: "other-refresh" };
+        return ok({ user_id: 7 });
+      }),
+    });
+    await expect(createSessionRequester(deps)("/api/v1/me", { method: "PUT" }, 7)).rejects.toMatchObject({ status: 409 });
+  });
   it("adds the current bearer token and returns response data", async () => {
     let receivedPath = "";
     let receivedInit: RequestInit | undefined;
