@@ -2242,10 +2242,9 @@
   font-size: 48px;
   letter-spacing: -2px;
 }
+/* 卡片容器的玻璃质感/圆角/描边由全局 .liquid-glass 提供（issue #85 改造），
+   这里只保留文字色，避免旧规则把圆角压回 0 */
 .swiss-signal .settings-page .settings {
-  background: transparent;
-  border-radius: 0;
-  border: 1px solid var(--line);
   color: var(--ink);
 }
 .swiss-signal .settings-page .settings__section-title {

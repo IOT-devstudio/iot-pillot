@@ -19,7 +19,7 @@
 .liquid-glass {
   position: relative;
   border: 0;
-  border-radius: 18px;
+  border-radius: 24px;
   /* 通透感 = 低不透明度底 + 高饱和透光；底色几乎透明，背景被 blur 揉成柔光 */
   background: linear-gradient(
     155deg,
@@ -30,7 +30,7 @@
   -webkit-backdrop-filter: blur(14px) saturate(1.9) brightness(1.05);
   box-shadow:
     0 18px 48px -22px rgba(10, 16, 40, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 /* 顶部受光：给玻璃「厚度」 */
@@ -39,7 +39,7 @@
   position: absolute;
   inset: 0 0 auto 0;
   height: 42%;
-  border-radius: 18px 18px 0 0;
+  border-radius: 24px 24px 0 0;
   background: linear-gradient(
     170deg,
     rgba(255, 255, 255, 0.38),
@@ -54,15 +54,19 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1px;
+  padding: 1.5px;
   background: conic-gradient(
     from var(--beam-angle),
     rgba(255, 255, 255, 0) 0deg,
-    rgba(255, 255, 255, 0.95) 40deg,
+    rgba(255, 255, 255, 0.25) 18deg,
+    rgba(255, 255, 255, 1) 40deg,
+    rgba(255, 255, 255, 0.25) 62deg,
     rgba(255, 255, 255, 0) 80deg,
-    rgba(23, 57, 245, 0) 180deg,
-    rgba(120, 150, 255, 0.75) 220deg,
-    rgba(23, 57, 245, 0) 260deg
+    rgba(140, 165, 255, 0) 180deg,
+    rgba(140, 165, 255, 0.3) 198deg,
+    rgba(120, 150, 255, 0.95) 220deg,
+    rgba(140, 165, 255, 0.3) 242deg,
+    rgba(140, 165, 255, 0) 260deg
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -72,8 +76,10 @@
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
   mask-composite: exclude;
+  /* 轻微模糊：高光沿边缘「发光」而不是一条实线 */
+  filter: blur(0.6px);
   pointer-events: none;
-  animation: glass-beam-flow 5.5s linear infinite;
+  animation: glass-beam-flow 3s linear infinite;
 }
 
 @keyframes glass-beam-flow {

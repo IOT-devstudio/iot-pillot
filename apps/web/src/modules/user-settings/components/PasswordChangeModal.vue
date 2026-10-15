@@ -443,8 +443,11 @@ async function handleSubmit(): Promise<void> {
   position: absolute;
   inset: 0;
   background: rgba(16, 22, 44, 0.38);
-  backdrop-filter: blur(16px) saturate(1.1);
-  -webkit-backdrop-filter: blur(16px) saturate(1.1);
+  /* blur 不宜过大：全屏 backdrop-filter 是打开瞬间卡顿的主因，
+     10px + 图层提升已足够营造「背景失焦」感 */
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  transform: translateZ(0);
 }
 
 /* 卡片玻璃质感来自全局 .liquid-glass（通透底 + 流光边缘）；
@@ -739,12 +742,12 @@ async function handleSubmit(): Promise<void> {
 /* —— 进出场：遮罩淡入、卡片缩放浮出（ease-out-quint） —— */
 .pwd-modal-enter-active,
 .pwd-modal-leave-active {
-  transition: opacity 0.24s ease;
+  transition: opacity 0.18s ease;
 }
 
 .pwd-modal-enter-active .pwd-modal__card,
 .pwd-modal-leave-active .pwd-modal__card {
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease;
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
 
 .pwd-modal-enter-from,
