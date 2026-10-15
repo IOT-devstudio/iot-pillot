@@ -13,7 +13,7 @@ defineProps<{
 </script>
 
 <template>
-  <section class="intro" aria-labelledby="about-intro-title">
+  <section class="intro liquid-glass" aria-labelledby="about-intro-title">
     <h2 id="about-intro-title" class="intro__title">工作室简介</h2>
 
     <p class="intro__tagline">{{ profile.tagline }}</p>
@@ -29,11 +29,10 @@ defineProps<{
 </template>
 
 <style scoped>
+/* 玻璃质感来自全局 .liquid-glass（issue #85 改造）；
+   卡内小卡（方向/成果/成员项）保持实底描边，保证内容可读 */
 .intro {
   padding: 18px 20px;
-  border: 1px solid var(--about-border);
-  border-radius: 10px;
-  background: #fff;
 }
 
 .intro__title {

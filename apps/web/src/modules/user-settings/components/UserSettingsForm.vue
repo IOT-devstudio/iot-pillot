@@ -64,7 +64,7 @@ function handleSubmit(event: Event): void {
 </script>
 
 <template>
-  <form class="settings" novalidate @submit="handleSubmit">
+  <form class="settings liquid-glass" novalidate @submit="handleSubmit">
     <section class="settings__readonly">
       <h2 class="settings__section-title">账号邮箱</h2>
       <dl class="settings__readout">
@@ -196,14 +196,13 @@ function handleSubmit(event: Event): void {
 </template>
 
 <style scoped>
+/* 卡片玻璃质感来自全局 .liquid-glass（issue #85 改造）；
+   输入控件保持实底，保证表单可读性 */
 .settings {
   display: flex;
   flex-direction: column;
   gap: 24px;
   padding: 24px 26px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface, #fffdf7);
 }
 
 .settings__section-title {

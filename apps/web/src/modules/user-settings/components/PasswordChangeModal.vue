@@ -203,7 +203,7 @@ async function handleSubmit(): Promise<void> {
 
         <div
           ref="card"
-          class="pwd-modal__card"
+          class="pwd-modal__card liquid-glass"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pwd-modal-title"
@@ -447,84 +447,14 @@ async function handleSubmit(): Promise<void> {
   -webkit-backdrop-filter: blur(16px) saturate(1.1);
 }
 
-/* —— 液态玻璃卡（iOS 26 风）：高通透 + 流光边缘 —— */
+/* 卡片玻璃质感来自全局 .liquid-glass（通透底 + 流光边缘）；
+   这里只保留弹窗专属的尺寸、内边距与更圆的角 */
 .pwd-modal__card {
-  position: relative;
   width: min(420px, 100%);
   max-height: min(86vh, 720px);
   overflow-y: auto;
   padding: 24px 26px 22px;
-  border: 0;
   border-radius: 24px;
-  /* 通透感来自「低不透明度底 + 高饱和放大」：底色几乎透明，靠 blur 把
-     背景揉成柔光，saturate 提高透过来的颜色纯度 */
-  background: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.34),
-    rgba(243, 244, 237, 0.16)
-  );
-  backdrop-filter: blur(14px) saturate(1.9) brightness(1.06);
-  -webkit-backdrop-filter: blur(14px) saturate(1.9) brightness(1.06);
-  box-shadow:
-    0 28px 64px -24px rgba(10, 16, 40, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  color: #141a32;
-}
-
-/* 流光边缘：两束白色高光沿 1px 边环循环流动（mask 挖空只留描边），
-   模拟真实玻璃边缘对光的反射（iOS 26 liquid glass 的标志性效果） */
-@property --pwd-beam-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
-.pwd-modal__card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: conic-gradient(
-    from var(--pwd-beam-angle),
-    rgba(255, 255, 255, 0) 0deg,
-    rgba(255, 255, 255, 0.95) 40deg,
-    rgba(255, 255, 255, 0) 80deg,
-    rgba(255, 255, 255, 0) 180deg,
-    rgba(255, 255, 255, 0.7) 220deg,
-    rgba(255, 255, 255, 0) 260deg
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-  animation: pwd-beam-flow 5.5s linear infinite;
-}
-
-@keyframes pwd-beam-flow {
-  to {
-    --pwd-beam-angle: 360deg;
-  }
-}
-
-/* 顶部受光高光，让玻璃有「厚度」 */
-.pwd-modal__card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 46%;
-  border-radius: 24px 24px 0 0;
-  background: linear-gradient(
-    170deg,
-    rgba(255, 255, 255, 0.4),
-    rgba(255, 255, 255, 0) 70%
-  );
-  pointer-events: none;
 }
 
 .pwd-modal__head {

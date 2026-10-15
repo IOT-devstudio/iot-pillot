@@ -19,7 +19,7 @@ const open = ref(false);
 </script>
 
 <template>
-  <div class="pwd-entry">
+  <div class="pwd-entry liquid-glass">
     <button type="button" class="pwd-entry__link" @click="open = true">
       修改密码 <span aria-hidden="true">↗</span>
     </button>
@@ -29,11 +29,9 @@ const open = ref(false);
 </template>
 
 <style scoped>
+/* 玻璃质感来自全局 .liquid-glass（issue #85 改造） */
 .pwd-entry {
   padding: 18px 26px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
 }
 
 .pwd-entry__link {

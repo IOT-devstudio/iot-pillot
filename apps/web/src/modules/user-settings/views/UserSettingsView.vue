@@ -42,6 +42,8 @@ onMounted(load);
 
 <template>
   <div class="page settings-page">
+    <!-- 品牌色柔光晕背景（issue #85 改造）：给液态玻璃卡「可透之物」 -->
+    <div class="glass-backdrop" aria-hidden="true"></div>
     <main class="page__body">
       <PageHeader
         eyebrow="iot-pillot · 用户侧"
@@ -114,6 +116,8 @@ onMounted(load);
 }
 
 .page__body {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 28px;
