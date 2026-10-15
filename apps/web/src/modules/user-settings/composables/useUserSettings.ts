@@ -21,6 +21,7 @@ import {
   type MyProfile,
   type MyProfileUpdate,
 } from "@/api/profile";
+import { readAuthSession } from "@/auth/session";
 import { describeAuthError } from "@/modules/dashboard/composables/useAdminPermissions";
 import { beginProfileLoad, beginProfileSave, beginProfileSessionCheck, setCurrentProfile } from "../profileIdentity";
 import { missingRequiredProfile, validateRequiredProfile, type RequiredProfileErrors } from "../profileCompletion";
@@ -56,8 +57,13 @@ export interface UseUserSettings {
   cancel: () => void;
   retryDirection: () => Promise<void>;
   needsCompletion: Ref<boolean>;
+  isDirty: Readonly<Ref<boolean>>;
   load: () => Promise<void>;
   save: () => Promise<boolean>;
+  /** SPA 内导航离开时的静默自动保存 */
+  autoSave: () => Promise<void>;
+  /** 标签页关闭/刷新时的 keepalive 兜底保存 */
+  persistOnUnload: () => void;
 }
 
 /**
@@ -100,6 +106,22 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     studentId: "",
     qq: "",
     direction: "",
+  });
+
+  /**
+   * 表单相对已保存资料是否有实质改动（review 反馈：改了没存就离开页面
+   * 应自动保存）。只在编辑态下有意义；非编辑态恒为 false。
+   */
+  const isDirty = computed(() => {
+    if (!editing.value || !profile.value) return false;
+    const baseline = nextFormFromProfile(profile.value);
+    return (
+      (form.name ?? "") !== baseline.name ||
+      form.class !== baseline.class ||
+      form.studentId !== baseline.studentId ||
+      form.qq !== baseline.qq ||
+      form.direction !== baseline.direction
+    );
   });
 
   function hydrate(next: MyProfile, publish: (profile: MyProfile) => void = setCurrentProfile): void {
@@ -220,6 +242,68 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     }
   }
 
+  /**
+   * 静默自动保存（review 反馈：改了没存就离开页面时系统自动保存）。
+   *
+   * SPA 内导航（路由离开 / 组件卸载）用它——不弹成功 toast、失败静默吞掉
+   * （页面正在离开，提示没有意义）。校验不过或方向冲突时不发请求，避免
+   * 一次注定 400 的写库。
+   */
+  async function autoSave(): Promise<void> {
+    if (!editing.value || !profile.value || saving.value || !isDirty.value) {
+      return;
+    }
+    const errors = validateRequiredProfile(form);
+    const nameLength = Array.from((form.name ?? "").trim()).length;
+    const nameInvalid = nameLength !== 0 && (nameLength < 3 || nameLength > 20);
+    if (nameInvalid || Object.keys(errors).length > 0) return;
+
+    saving.value = true;
+    const publish = beginProfileSave();
+    const sessionIsCurrent = beginProfileSessionCheck();
+    try {
+      await checkDirection();
+      if (!sessionIsCurrent()) return;
+      if (directionError.value) return;
+      const next = await deps.updateMyProfile(
+        formToUpdate(form),
+        profile.value.user_id,
+      );
+      hydrate(next, publish);
+      editing.value = false;
+    } catch {
+      // 静默失败：页面正在离开，弹提示没有意义
+    } finally {
+      saving.value = false;
+    }
+  }
+
+  /**
+   * 标签页关闭 / 刷新时的兜底保存（beforeunload 无法 await）。
+   *
+   * 用 keepalive fetch 让请求在文档销毁后继续送达；直连 Bearer 绕过
+   * session-requester 的刷新逻辑——令牌恰好过期时静默失败，可接受
+   * （自动保存是尽力而为，不值得为它做刷新队列）。
+   */
+  function persistOnUnload(): void {
+    if (!editing.value || !profile.value || !isDirty.value) return;
+    const errors = validateRequiredProfile(form);
+    if (Object.keys(errors).length > 0) return;
+    const nameLength = Array.from((form.name ?? "").trim()).length;
+    if (nameLength !== 0 && (nameLength < 3 || nameLength > 20)) return;
+    const session = readAuthSession();
+    if (!session) return;
+    void fetch("/api/v1/me", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(formToUpdate(form)),
+      keepalive: true,
+    }).catch(() => {});
+  }
+
   return {
     profile,
     form,
@@ -238,7 +322,10 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     cancel,
     retryDirection,
     needsCompletion,
+    isDirty,
     load,
     save,
+    autoSave,
+    persistOnUnload,
   };
 }
