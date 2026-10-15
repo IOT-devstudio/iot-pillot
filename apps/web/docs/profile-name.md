@@ -17,6 +17,11 @@
 
 ## 验证
 
+开发代理的 `/api` 和 `/health` 统一指向 `http://113.44.193.72` 的 nginx
+入口。服务器旧 :8080 实例对 `PUT /api/v1/me` 返回 404，不能作为本功能的
+联调目标。Vite / Vitest 脚本显式指定 `vite.config.ts`，避免 TypeScript 构建
+产出的旧 `vite.config.js` 优先加载而掩盖代理配置修改。
+
 单元测试覆盖保存与重新加载、姓名清除、3–20 个 Unicode 码点、失败保留草稿、
 重复提交及原有字段转换。`tests/profile-name.browser.cjs` 是 Playwright
 `browser_run_code` 脚本，使用 :5174 的 Vite 页面及拦截的接口响应，在桌面
