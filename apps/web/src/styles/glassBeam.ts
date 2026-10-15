@@ -21,7 +21,7 @@ export function installGlassBeam(): void {
   const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  let active: Element | null = null;
+  let active: HTMLElement | null = null;
   let frame = 0;
   let pointerX = 0;
   let pointerY = 0;
@@ -59,7 +59,9 @@ export function installGlassBeam(): void {
     "mouseover",
     (event) => {
       if (!finePointer.matches || reducedMotion.matches) return;
-      const card = (event.target as Element | null)?.closest?.(".liquid-glass");
+      const card = (event.target as Element | null)?.closest?.<HTMLElement>(
+        ".liquid-glass",
+      );
       if (card === null || card === undefined || card === active) return;
       active?.classList.remove("glass-beam-follow");
       active = card;
