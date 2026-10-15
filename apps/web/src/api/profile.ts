@@ -40,6 +40,12 @@ export interface MyProfile {
   role: UserRole | string;
   name?: string;
   detail?: UserDetail;
+  /**
+   * 是否创始管理员（ADMIN_USERS 启动种入的特权账号：无邮箱、不完善资料、
+   * 不走自助改密）。后端配套票 #120 落地前恒为 undefined——前端按 false
+   * 处理，一切照旧；字段就绪后前端逻辑自动生效。
+   */
+  is_founding?: boolean;
 }
 
 /** PUT /me 入参：只接受资料字段；空值表示「清空该字段」，未传表示「不动该字段」。 */

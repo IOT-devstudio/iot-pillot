@@ -32,6 +32,11 @@ const transition = inject(
   },
 );
 const displayName = computed(() => profileDisplayName(user.value));
+/**
+ * 创始管理员（#120）：无邮箱、不完善资料、不走自助改密——隐藏「个人设置」
+ * 入口。后端 is_founding 字段就绪前恒为 false，菜单行为不变。
+ */
+const isFounding = computed(() => user.value?.is_founding === true);
 const loadError = ref("");
 const signingOut = ref(false);
 const popoverVisible = ref(false);
@@ -118,17 +123,19 @@ function roleLabel(): string {
     </template>
 
     <div class="user-menu__panel" role="menu">
-      <button
-        type="button"
-        class="user-menu__item"
-        role="menuitem"
-        :disabled="user === null"
-        @click="openSettings"
-      >
-        <span class="user-menu__item-label">个人设置</span>
-        <span class="user-menu__item-hint">资料 · 方向</span>
-      </button>
-      <hr class="user-menu__sep" />
+      <template v-if="!isFounding">
+        <button
+          type="button"
+          class="user-menu__item"
+          role="menuitem"
+          :disabled="user === null"
+          @click="openSettings"
+        >
+          <span class="user-menu__item-label">个人设置</span>
+          <span class="user-menu__item-hint">资料 · 方向</span>
+        </button>
+        <hr class="user-menu__sep" />
+      </template>
       <button
         type="button"
         class="user-menu__item user-menu__item--danger"
