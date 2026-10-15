@@ -41,9 +41,21 @@ function close(): void {
 watch(
   () => props.visible,
   (visible) => {
-    const lock = visible ? "hidden" : "";
-    document.documentElement.style.overflow = lock;
-    document.body.style.overflow = lock;
+    if (visible) {
+      // 滚动条消失会让视口瞬间变宽、关闭时又缩回去——「抽动一下再恢复」
+      // 的根源。用 body 的 padding-right 补偿滚动条宽度，宽度全程不变
+      const scrollbarGap =
+        window.innerWidth - document.documentElement.clientWidth;
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+      if (scrollbarGap > 0) {
+        document.body.style.paddingRight = `${scrollbarGap}px`;
+      }
+    } else {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+      document.body.style.paddingRight = "";
+    }
   },
   { immediate: true },
 );
@@ -51,6 +63,7 @@ watch(
 onBeforeUnmount(() => {
   document.documentElement.style.overflow = "";
   document.body.style.overflow = "";
+  document.body.style.paddingRight = "";
 });
 
 const DIRECTION_LABELS: Record<Direction, string> = {
@@ -107,6 +120,7 @@ const isSelf = computed(
     width="560"
     :close-on-click-modal="true"
     :close-on-press-escape="true"
+    :lock-scroll="false"
     @update:model-value="emit('update:visible', $event)"
   >
     <!-- 没有 user（点开瞬间）时不渲染任何字段，避免把上一位用户的信息闪一下 -->
