@@ -10,7 +10,7 @@
 import { onMounted } from "vue";
 
 import PageHeader from "@/components/common/PageHeader.vue";
-import { nextFormFromProfile, useUserSettings } from "../composables/useUserSettings";
+import { useUserSettings } from "../composables/useUserSettings";
 import ChangePasswordCard from "../components/ChangePasswordCard.vue";
 import UserSettingsForm from "../components/UserSettingsForm.vue";
 
@@ -24,25 +24,20 @@ const {
   saveError,
   nameError,
   needsCompletion,
+  editing,
+  fieldErrors,
+  latestDirection,
+  directionError,
+  edit,
+  reset,
+  cancel,
+  retryDirection,
   load,
   save,
 } = useUserSettings();
 
 onMounted(load);
 
-/** 「重置」=把表单拉回 profile 当前值，放弃本地编辑 */
-function resetForm(): void {
-  if (profile.value !== null) {
-    const next = nextFormFromProfile(profile.value);
-    form.name = next.name;
-    nameError.value = "";
-    saveError.value = "";
-    form.class = next.class;
-    form.studentId = next.studentId;
-    form.qq = next.qq;
-    form.direction = next.direction;
-  }
-}
 </script>
 
 <template>
@@ -89,8 +84,15 @@ function resetForm(): void {
           :needs-completion="needsCompletion"
           :saving="saving"
           :name-error="nameError"
+          :editing="editing"
+          :field-errors="fieldErrors"
+          :latest-direction="latestDirection"
+          :direction-error="directionError"
           @submit="save"
-          @cancel="resetForm"
+          @edit="edit"
+          @reset="reset"
+          @cancel="cancel"
+          @retry="retryDirection"
         />
 
         <!-- 修改密码（issue #85）：成功后清会话跳登录页，失败原地重试 -->

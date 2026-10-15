@@ -18,6 +18,7 @@ import {
   validateResetForm,
 } from "@/auth/form";
 import { saveAuthSession } from "@/auth/session";
+import { checkProfileAfterLogin } from "@/auth/check-profile";
 import { submitAuth, type AuthMode } from "@/auth/submit";
 import { CONFIG } from "@/modules/opener/config";
 
@@ -236,6 +237,7 @@ async function handleSubmit(): Promise<void> {
         login,
         register,
         saveSession: saveAuthSession,
+        checkProfile: checkProfileAfterLogin,
         navigate: (path) => transition(() => router.push(path)),
       },
       redirect.value,

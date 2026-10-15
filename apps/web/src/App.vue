@@ -4,6 +4,7 @@ import { useRoute } from "vue-router";
 
 import AdminLayout from "@/components/common/AdminLayout.vue";
 import SignalShell from "@/modules/swiss-signal/SignalShell.vue";
+import ProfileCompletionNotice from "@/modules/user-settings/components/ProfileCompletionNotice.vue";
 
 const route = useRoute();
 const signalTransitioning = ref(false);
@@ -17,6 +18,7 @@ const usesSignal = computed(() =>
 
 <template>
   <el-config-provider>
+    <ProfileCompletionNotice v-if="Array.isArray(route.meta.allowRoles)" />
     <AdminLayout v-if="usesAdminLayout">
       <router-view />
     </AdminLayout>
