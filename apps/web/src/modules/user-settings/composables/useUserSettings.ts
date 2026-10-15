@@ -27,13 +27,13 @@ import { missingRequiredProfile, validateRequiredProfile, type RequiredProfileEr
 
 export interface UserSettingsDeps {
   fetchMyProfile: () => Promise<MyProfile>;
-  updateMyProfile: (input: MyProfileUpdate) => Promise<MyProfile>;
+  updateMyProfile: (input: MyProfileUpdate, expectedUserId: number) => Promise<MyProfile>;
   fetchMyApplications: () => Promise<{ items: Pick<RecruitmentApplication, "direction_code">[] }>;
 }
 
 const defaultDeps: UserSettingsDeps = {
   fetchMyProfile: () => fetchMyProfile(),
-  updateMyProfile: (input) => updateMyProfile(input),
+  updateMyProfile: (input, expectedUserId) => updateMyProfile(input, expectedUserId),
   fetchMyApplications,
 };
 
@@ -203,7 +203,7 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       await checkDirection();
       if (!sessionIsCurrent()) return false;
       if (directionError.value) return false;
-      const next = await deps.updateMyProfile(formToUpdate(form));
+      const next = await deps.updateMyProfile(formToUpdate(form), profile.value.user_id);
       hydrate(next, publish);
       editing.value = false;
       ElMessage.success("资料已保存");

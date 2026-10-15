@@ -310,7 +310,7 @@ describe("useUserSettings", () => {
       student_id: 2023114514,
       qq: "99999",
       direction: "front-end",
-    });
+    }, 1);
     // 保存成功后表单已被最新响应刷过
     expect(state.form.qq).toBe("99999");
     expect(SUCCESS).toHaveBeenCalledWith("资料已保存");

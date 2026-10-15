@@ -58,12 +58,12 @@ export function fetchMyProfile(): Promise<MyProfile> {
 }
 
 /** 更新自己的资料。body 不允许带 user_id，由后端从令牌取本人。 */
-export function updateMyProfile(input: MyProfileUpdate): Promise<MyProfile> {
+export function updateMyProfile(input: MyProfileUpdate, expectedUserId?: number): Promise<MyProfile> {
   return requestWithSession<MyProfile>("/api/v1/me", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
-  });
+  }, expectedUserId);
 }
 
 /**
