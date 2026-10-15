@@ -3,7 +3,17 @@ import { computed } from "vue";
 import { currentProfile } from "../profileIdentity";
 import { missingRequiredProfile } from "../profileCompletion";
 
-const missing = computed(() => currentProfile.value ? missingRequiredProfile(currentProfile.value.detail) : []);
+/**
+ * 创始管理员不出这条提示（review 裁决）：无邮箱、无资料可补。
+ * 普通晋升管理员照旧——他们可能也是报名上来的成员，需要核对资料。
+ */
+const missing = computed(() => {
+  const profile = currentProfile.value;
+  if (profile === null || profile.is_founding === true) {
+    return [];
+  }
+  return missingRequiredProfile(profile.detail);
+});
 </script>
 
 <template>

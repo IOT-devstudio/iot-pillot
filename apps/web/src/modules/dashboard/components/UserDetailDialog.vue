@@ -8,7 +8,7 @@
  * 数据来源：列表里已扩的 detail 字段（#57 后端契约）。打开弹窗不发起第二
  * 个请求；想看最新就刷新页面（验收项的「实时更新」口径）。
  */
-import { computed } from "vue";
+import { computed, onBeforeUnmount, watch } from "vue";
 import type { Direction } from "@iot-pillot/shared-types";
 
 import type { AdminUser } from "@/api/admin";
@@ -29,6 +29,24 @@ const emit = defineEmits<{
 function close(): void {
   emit("update:visible", false);
 }
+
+/**
+ * 手动锁 body 滚动（review 反馈：弹窗打开后整页还能上下滑动）。
+ * el-dialog 自带的 lock-scroll 在这里不可靠（append-to-body 场景下
+ * 遮罩出现与 overflow 锁定存在时序差，滚轮事件仍能漏进文档）。
+ * 关闭或组件卸载时必须归还，否则整页永久锁死。
+ */
+watch(
+  () => props.visible,
+  (visible) => {
+    document.body.style.overflow = visible ? "hidden" : "";
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = "";
+});
 
 const DIRECTION_LABELS: Record<Direction, string> = {
   "front-end": "前端",
@@ -71,8 +89,12 @@ const isSelf = computed(
 </script>
 
 <template>
+  <!-- append-to-body：挂到 body 上，遮罩才能盖住整页（侧边栏 z-20、
+       完善资料提示 z-80 都在其下）——此前弹窗困在内容区的层叠上下文里，
+       侧边栏和提示条浮在遮罩之上（review 反馈的显示问题） -->
   <el-dialog
     :model-value="visible"
+    append-to-body
     title="用户详情"
     width="560"
     :close-on-click-modal="true"
