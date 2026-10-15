@@ -48,7 +48,7 @@ beforeEach(() => {
   // 掩盖掉真正要断言的「未登录」错误。
   vi.stubGlobal("window", {
     localStorage: fakeStorage,
-    location: { assign: vi.fn() },
+    location: { assign: vi.fn(), pathname: "/forms", search: "", hash: "" },
   });
 });
 
@@ -241,6 +241,7 @@ describe("admin api", () => {
 
     await expect(listAdmins()).rejects.toThrow(/重新登录/);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(window.location.assign).toHaveBeenCalledWith("/?reason=expired&redirect=%2Fforms");
   });
 
   it("后端拒绝时把 message 透给调用方", async () => {

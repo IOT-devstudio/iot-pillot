@@ -20,7 +20,7 @@ const router = useRouter();
  *     非首页的用户页面，目标按角色分流（管理员→控制台，成员→个人首页）；
  *     个人设置页不放用户名菜单——页面本身就是「个人设置」，入口重复（issue #94 review）
  */
-const isUserPage = () => route.path.startsWith("/user/");
+const isUserPage = () => route.path.startsWith("/user/") || route.meta.signalShell === true;
 const isUserHome = () => route.path === "/user/home";
 const isUserSettings = () => route.path === "/user/settings";
 const root = ref<HTMLElement | null>(null);
@@ -124,7 +124,7 @@ watch(
       'motion-suspended': suspended || reduced,
       'transition-only': transitionOnly,
     }"
-    :data-view="route.path.startsWith('/user/') ? 'home' : mode"
+    :data-view="isUserPage() ? 'home' : mode"
   >
     <header class="masthead">
       <RouterLink class="wordmark" to="/" aria-label="IoT Studio 首页"
