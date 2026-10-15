@@ -35,7 +35,20 @@ const emit = defineEmits<{
   (event: "edit"): void;
   (event: "reset"): void;
   (event: "retry"): void;
+  /** 成员方向未选择时点「去选择」——由父组件跳首页方向版块走真实报名 */
+  (event: "pick-direction"): void;
 }>();
+
+/**
+ * 管理员不走报名链路（review 裁决）：编辑态直接给方向下拉，
+ * 走 PUT /me 保存；普通成员方向只读、由最新报名带出（#101）。
+ */
+const isAdmin = computed(() => props.profile.role === "admin");
+
+/** 方向是否完全未定（无报名带出、资料里也没有） */
+const directionUnset = computed(
+  () => !(props.latestDirection || props.form.direction),
+);
 
 /**
  * 方向枚举到中文标签。
@@ -161,10 +174,35 @@ function handleSubmit(event: Event): void {
         />
       </label>
 
-      <div class="settings__field">
+      <!-- 管理员：编辑态直接下拉选择方向（不走报名链路，保存走 PUT /me） -->
+      <label v-if="editing && isAdmin" class="settings__field">
         <span class="settings__label">方向</span>
-        <span class="settings__value">{{ directionLabel(latestDirection || form.direction) }}</span>
-        <span class="settings__hint">{{ latestDirection ? '根据最新一条报名记录自动带出，无需重复填写。' : '暂无报名记录，保留当前资料方向；请到首页选择方向并完成报名。' }}</span>
+        <select v-model="form.direction" class="settings__select" :disabled="saving">
+          <option value="">未选择</option>
+          <option v-for="option in DIRECTION_OPTIONS" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+        <span class="settings__hint">管理员不参与报名，方向在此直接选择并保存。</span>
+      </label>
+
+      <!-- 普通成员：方向只读（最新报名带出），未选择时值旁给蓝色「去选择」链接 -->
+      <div v-else class="settings__field">
+        <span class="settings__label">方向</span>
+        <span class="settings__value">
+          {{ directionLabel(latestDirection || form.direction) }}
+          <!-- 方向未定时的内联入口：跳首页方向版块走真实报名，选定后自动消失 -->
+          <button
+            v-if="!directionError && directionUnset"
+            type="button"
+            class="settings__pick-link"
+            :disabled="saving"
+            @click="emit('pick-direction')"
+          >
+            去选择
+          </button>
+        </span>
+        <span class="settings__hint">{{ latestDirection ? '根据最新一条报名记录自动带出，无需重复填写。' : '暂无报名记录，保留当前资料方向。' }}</span>
         <span v-if="latestDirection && profile.detail?.direction && profile.detail.direction !== latestDirection" class="settings__hint">当前资料方向：{{ directionLabel(profile.detail.direction) }}</span>
         <p v-if="directionError" class="settings__field-error" role="alert">{{ directionError }}</p>
         <button v-if="directionError" type="button" class="settings__btn settings__btn--ghost" :disabled="saving" @click="emit('retry')">重新核对方向</button>
@@ -242,6 +280,29 @@ function handleSubmit(event: Event): void {
 .settings__field-error {
   color: #a33d32;
   font-size: 12px;
+}
+
+/* 方向未定时的「去选择」链接：紧跟「未选择」值旁的蓝色文字链（review：简洁） */
+.settings__pick-link {
+  margin-left: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings__pick-link:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.settings__pick-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .settings__hint {

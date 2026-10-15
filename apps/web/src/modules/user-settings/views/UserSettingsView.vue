@@ -7,9 +7,11 @@
  *
  * 字段契约来自已合并的 #57 / #86，姓名编辑对应 #87。
  */
-import { onMounted } from "vue";
+import { inject, onMounted } from "vue";
+import { useRouter } from "vue-router";
 
 import PageHeader from "@/components/common/PageHeader.vue";
+import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import { useUserSettings } from "../composables/useUserSettings";
 import ChangePasswordCard from "../components/ChangePasswordCard.vue";
 import UserSettingsForm from "../components/UserSettingsForm.vue";
@@ -37,6 +39,22 @@ const {
 } = useUserSettings();
 
 onMounted(load);
+
+const router = useRouter();
+/**
+ * 成员方向未定时「去选择」：走擦除转场跳首页方向版块（review 反馈）。
+ * 首页 UserHomeView 处理外链 hash，挂载后平滑滚到 #directions。
+ */
+const transition = inject(
+  SIGNAL_TRANSITION,
+  async (change: () => unknown) => {
+    await change();
+  },
+);
+
+function pickDirection(): void {
+  void transition(() => router.push("/user/home#directions"));
+}
 
 </script>
 
@@ -95,6 +113,7 @@ onMounted(load);
           @reset="reset"
           @cancel="cancel"
           @retry="retryDirection"
+          @pick-direction="pickDirection"
         />
 
         <!-- 修改密码入口（issue #85 重构）：一行字样 + 液态玻璃弹窗，
