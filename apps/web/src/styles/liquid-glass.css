@@ -13,7 +13,9 @@
 @property --beam-angle {
   syntax: "<angle>";
   initial-value: 0deg;
-  inherits: false;
+  /* 必须继承：跟随时角度写在卡片元素上，靠继承传给 ::after 流光层；
+     自动循环时动画值直接打在伪元素上，优先级天然高于继承值 */
+  inherits: true;
 }
 
 .liquid-glass {
