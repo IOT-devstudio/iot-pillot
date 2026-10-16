@@ -331,6 +331,52 @@ func (a *MailUseCase) SendByTemplate(
 	return a.sendToUser(ctx, operatorID, user, templateID, vars)
 }
 
+// deletionMailType 注销通知邮件的模板类型（issue #159）。
+// type 有唯一索引——模板中心建一条 type=deletion 的模板即可覆盖内置文案。
+const deletionMailType = "deletion"
+
+// builtInDeletionMail 未配置 deletion 模板时的内置默认文案（不落库）。
+// 走与模板同一条 RenderTemplate 渲染路径，收件人资料变量照常可用。
+func builtInDeletionMail() *domain.MailModel {
+	return &domain.MailModel{
+		Name:  "内置注销通知",
+		Type:  deletionMailType,
+		Title: "你的账号已注销",
+		MailModel: `{{name}}，你好：
+
+你的工作室账号已于近日被管理员注销，将无法再登录系统。
+
+原报名与申请记录会保留作为历史存档。如有疑问，请联系工作室管理员。
+
+—— IoT Studio 工作室`,
+	}
+}
+
+// SendAccountDeletionNotice 发送注销通知邮件（issue #159，仅管理员发起注销时调用）。
+//
+// 满足 service.AccountMailer 窄接口（只要成功/失败，丢弃发送回执——
+// 调用方是注销编排，不需要收件人回显）。
+//
+// 模板选择：模板中心配置了 type=deletion 就用它（管理端可改文案），
+// 没配置就用内置默认——「没有模板」不是错误（GetByType 返回 nil,nil）。
+// 走 sendWithTemplate 同一条渲染/投递/落记录路径；无邮箱的账号返回错误，
+// 由调用方按「失败不阻断注销」的裁决（#159 Q4）记日志降级。
+func (a *MailUseCase) SendAccountDeletionNotice(
+	ctx context.Context,
+	operatorID int,
+	user *domain.User,
+) error {
+	model, err := a.templates.GetByType(ctx, deletionMailType)
+	if err != nil {
+		return err
+	}
+	if model == nil {
+		model = builtInDeletionMail()
+	}
+	_, err = a.sendWithTemplate(ctx, operatorID, model, user, nil)
+	return err
+}
+
 // sendWithTemplate 渲染 + 发送 + 落记录。单发与群发共用同一条路径，
 // 避免两条路径的校验与记录行为出现分歧；模板由调用方传入，群发时只查一次。
 func (a *MailUseCase) sendWithTemplate(

@@ -24,12 +24,26 @@ type SessionRevoker interface {
 	RevokeUserSessions(ctx context.Context, userID int) error
 }
 
+// AccountMailer 注销通知邮件的发送能力（issue #159）。
+//
+// 窄接口收窄到「给某用户发注销通知」一个方法：AdminUseCase 不该知道
+// 模板中心、发信记录这些 MailModule 内部细节（仓库约定：邮件统一走 MailModule）。
+type AccountMailer interface {
+	SendAccountDeletionNotice(ctx context.Context, operatorID int, user *domain.User) error
+}
+
 // NewSessionRevoker 把 *utils.TokenManager 作为 SessionRevoker 提供给装配层。
 //
 // 与 NewTokenIssuer 同理：wire 按类型连线，隐式接口满足对它无效；
 // 接口声明在本包，转换函数就写在本包（utils 反向 import service 会成环）。
 func NewSessionRevoker(manager *utils.TokenManager) SessionRevoker {
 	return manager
+}
+
+// NewAccountMailer 把 *MailUseCase 作为 AccountMailer 提供给装配层（issue #159）。
+// 同款接口转换，理由见 NewSessionRevoker。
+func NewAccountMailer(mailUseCase *MailUseCase) AccountMailer {
+	return mailUseCase
 }
 
 // AdminUseCase 管理端用例：用户列表、管理员名单、角色变更。
@@ -41,6 +55,7 @@ type AdminUseCase struct {
 	userRepo repository.UserRepo
 	admins   utils.AdminDirectory
 	sessions SessionRevoker
+	mailer   AccountMailer
 }
 
 // NewAdminUseCase 构造管理员用例，并执行一次启动期引导：把配置里的管理员补种进 Redis。
@@ -55,12 +70,14 @@ func NewAdminUseCase(
 	userRepo repository.UserRepo,
 	admins utils.AdminDirectory,
 	sessions SessionRevoker,
+	mailer AccountMailer,
 	cfg *config.Config,
 ) (*AdminUseCase, error) {
 	useCase := &AdminUseCase{
 		userRepo: userRepo,
 		admins:   admins,
 		sessions: sessions,
+		mailer:   mailer,
 	}
 
 	if err := useCase.SeedAdmins(context.Background(), cfg.AUTH.AdminUsers); err != nil {
@@ -362,6 +379,14 @@ func (a *AdminUseCase) DeleteUser(ctx context.Context, operatorID int, targetID 
 	// 但必须外传——与「注销成功」混在一起静默吞掉会让调用方误判。
 	if err := a.sessions.RevokeUserSessions(ctx, targetID); err != nil {
 		return fmt.Errorf("账号已注销，但清理会话失败（旧令牌将在过期后失效）: %w", err)
+	}
+
+	// 注销通知邮件（issue #159 Q3/Q4）：仅管理员发起时发；发送失败
+	// **不阻断注销**——账号已注销是既成事实，回滚没有意义（学踢会话
+	// 失败的降级先例），记日志供排查即可。自助注销不走这里。
+	if err := a.mailer.SendAccountDeletionNotice(ctx, operatorID, target); err != nil {
+		log.Printf("[admin] 注销通知邮件发送失败（userID=%d，注销已生效，不阻断）: %v",
+			targetID, err)
 	}
 
 	log.Printf("[admin] 账号已注销: userID=%d name=%q（操作者 userID=%d）",

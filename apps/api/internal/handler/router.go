@@ -120,6 +120,8 @@ func NewRouter(
 		// 目标身份由 authRequired 解出的 userID 决定，body 里塞目标参数无效。
 		apiV1.GET("/me", authRequired, authHandler.Me)
 		apiV1.PUT("/me", authRequired, authHandler.UpdateMe)
+		// 自助注销（issue #159）：个人设置页入口；创始管理员由服务层拒绝
+		apiV1.DELETE("/me", authRequired, authHandler.DeleteSelf)
 		// 修改密码（issue #84）：成功后撤销全部会话，当前令牌一并失效
 		apiV1.POST("/change-password", authRequired, authHandler.ChangePassword)
 

@@ -2392,6 +2392,28 @@ paths:
       tags:
       - 认证模块
   /api/v1/me:
+    delete:
+      description: 登录用户注销自己的账号（软删，个人设置页入口）。创始管理员不可自助注销
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 注销成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 创始管理员不可自助注销或账号已注销
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证、令牌失效或账号已不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 自助注销账号
+      tags:
+      - 认证模块
     get:
       description: 角色由服务端**现查 Redis 管理员名单**得到，而不是回显令牌里的快照，
       produces:

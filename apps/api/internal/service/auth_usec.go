@@ -514,3 +514,47 @@ func (auc *AuthUseCase) ChangePassword(ctx context.Context, userID int, req *req
 
 	return nil
 }
+
+
+/* ------------------------------------------------------------------ *
+ * 自助注销（issue #159）
+ * ------------------------------------------------------------------ */
+
+// DeleteSelf 自助注销自己的账号（个人设置页入口，issue #159）。
+//
+// 与管理端 DeleteUser（AdminUseCase）同用一套软删语义，差异只有三点：
+//   - 操作者即目标，无「不能注销自己」的守卫——但创始管理员仍然禁止
+//     （#159 Q1：与 #142 Q4「创始互不注销」同源，唯一出口是改配置重启）
+//   - 不发通知邮件（#159 Q3：给自己发没有意义）
+//   - 需要清理两个管理员集合（自助者可能是晋升管理员，幂等移出）
+//
+// 顺序同 DeleteUser：守卫在前、副作用在后；软删 → 清集合 → 踢全部会话
+//（含当前请求的令牌，前端拿到成功响应后清本地会话跳登录页）。
+func (auc *AuthUseCase) DeleteSelf(ctx context.Context, userID int) error {
+	// 创始判定失败外传（读不到名单时拒绝而不是放行，与 roleFor 同款取舍）
+	if found, err := auc.admins.IsFounding(ctx, userID); err != nil {
+		return fmt.Errorf("无法确认账号身份: %w", err)
+	} else if found {
+		return ErrFoundingProtected
+	}
+
+	if err := auc.userRepo.SoftDelete(ctx, userID); err != nil {
+		return err
+	}
+
+	if err := auc.admins.RemoveFounding(ctx, userID); err != nil {
+		return err
+	}
+	if err := auc.admins.RemoveAdmin(ctx, userID); err != nil {
+		return err
+	}
+
+	// 踢全部会话（含当前）。失败外传：与管理端口径一致——
+	// 「账号已注销但旧令牌还活着」不能静默，调用方要能看到。
+	if err := auc.tokenManager.RevokeUserSessions(ctx, userID); err != nil {
+		return fmt.Errorf("账号已注销，但清理会话失败（旧令牌将在过期后失效）: %w", err)
+	}
+
+	log.Printf("[auth] 用户 %d 自助注销", userID)
+	return nil
+}

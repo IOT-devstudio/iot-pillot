@@ -243,6 +243,11 @@ func (s *mailModelRepoStub) GetByID(ctx context.Context, id int) (*domain.MailMo
 	return model, nil
 }
 
+// GetByType 按类型查（issue #159 加接口方法）：邀请测试不涉及，恒未配置。
+func (s *mailModelRepoStub) GetByType(ctx context.Context, mailType string) (*domain.MailModel, error) {
+	return nil, nil
+}
+
 func (s *mailModelRepoStub) Create(ctx context.Context, model *domain.MailModel) error { return nil }
 func (s *mailModelRepoStub) Update(ctx context.Context, model *domain.MailModel) error { return nil }
 func (s *mailModelRepoStub) Delete(ctx context.Context, id int) error                  { return nil }

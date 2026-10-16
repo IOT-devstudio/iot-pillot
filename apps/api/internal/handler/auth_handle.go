@@ -281,6 +281,41 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	response.OKWithMsg(c, "密码修改成功，请重新登录", nil)
 }
 
+// DeleteSelf 自助注销账号（issue #159）。
+// @Summary 自助注销账号
+// @Description 登录用户注销自己的账号（软删，个人设置页入口）。创始管理员不可自助注销
+// （返回 400）；成功后软删 + 移出管理员/创始集合 + 撤销全部会话（含当前令牌），
+// 登录面立即失效；不发送通知邮件（仅管理员发起时发送）。
+// @Tags 认证模块
+// @Produce json
+// @Success 200 {object} response.Result "注销成功"
+// @Failure 400 {object} response.Result "创始管理员不可自助注销或账号已注销"
+// @Failure 401 {object} response.Result "未认证、令牌失效或账号已不存在"
+// @Security BearerAuth
+// @Router /api/v1/me [delete]
+func (h *AuthHandler) DeleteSelf(c *gin.Context) {
+	userID, _, _, ok := middleware.CurrentUser(c)
+	if !ok {
+		response.FailUnauthorized(c, "缺少认证信息")
+		return
+	}
+
+	if err := h.authService.DeleteSelf(c.Request.Context(), userID); err != nil {
+		// 业务守卫翻 400 可读中文；账号已不存在视为会话失效（401，同 /me 口径）
+		switch {
+		case errors.Is(err, service.ErrFoundingProtected),
+			errors.Is(err, repository.ErrUserAlreadyDeleted):
+			response.FailInvalidParam(c, err.Error())
+		case errors.Is(err, repository.ErrUserNotFound):
+			failMeLookup(c, err)
+		default:
+			failInternal(c, err)
+		}
+		return
+	}
+	response.OKWithMsg(c, "账号已注销", nil)
+}
+
 // Logout 用户退出登录接口
 // @Summary 用户退出登录接口
 // @Description 退出登录接口（需要 access token 和 refresh token）

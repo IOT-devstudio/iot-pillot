@@ -264,13 +264,28 @@ func (r *recordingRevoker) RevokeUserSessions(_ context.Context, userID int) err
 	return nil
 }
 
+// recordingMailer 记录注销通知邮件调用（issue #159 Q3/Q4）。
+type recordingMailer struct {
+	notices []int // 收到通知的 userID
+	err     error // 注入发送失败，验证「失败不阻断注销」
+}
+
+func (m *recordingMailer) SendAccountDeletionNotice(_ context.Context, _ int, user *domain.User) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.notices = append(m.notices, user.ID)
+	return nil
+}
+
 // 注销成功：软删落库 + 移出两个管理员集合 + 踢掉全部会话。
 func TestDeleteUser_Success(t *testing.T) {
 	repo := issue86UserRepoWith(&domain.User{ID: 7, Name: "victim"})
 	directory := newFoundingStubAdminDirectory()
 	directory.admins[7] = true // 目标是晋升管理员
 	revoker := &recordingRevoker{}
-	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker}
+	mailer := &recordingMailer{}
+	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker, mailer: mailer}
 
 	if err := useCase.DeleteUser(context.Background(), 1 /* operator 创始 */, 7); err != nil {
 		t.Fatalf("DeleteUser() error = %v", err)
@@ -295,7 +310,8 @@ func TestDeleteUser_RejectSelfDeletion(t *testing.T) {
 	repo := issue86UserRepoWith(&domain.User{ID: 1, Name: "founder"})
 	directory := newFoundingStubAdminDirectory()
 	revoker := &recordingRevoker{}
-	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker}
+	mailer := &recordingMailer{}
+	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker, mailer: mailer}
 
 	err := useCase.DeleteUser(context.Background(), 1, 1)
 	if !errors.Is(err, ErrSelfDeletion) {
@@ -315,7 +331,8 @@ func TestDeleteUser_RejectDeletingFoundingMember(t *testing.T) {
 	directory := newFoundingStubAdminDirectory()
 	directory.founding[2] = true
 	revoker := &recordingRevoker{}
-	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker}
+	mailer := &recordingMailer{}
+	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker, mailer: mailer}
 
 	err := useCase.DeleteUser(context.Background(), 1, 2)
 	if !errors.Is(err, ErrFoundingProtected) {
@@ -331,7 +348,8 @@ func TestDeleteUser_RejectDuplicateDeletion(t *testing.T) {
 	repo := issue86UserRepoWith(&domain.User{ID: 7, Name: "victim"})
 	directory := newFoundingStubAdminDirectory()
 	revoker := &recordingRevoker{}
-	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker}
+	mailer := &recordingMailer{}
+	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker, mailer: mailer}
 
 	if err := useCase.DeleteUser(context.Background(), 1, 7); err != nil {
 		t.Fatalf("首次注销应成功: %v", err)
@@ -351,6 +369,7 @@ func TestDeleteUser_TargetNotFound(t *testing.T) {
 		userRepo: issue86UserRepoWith(),
 		admins:   newFoundingStubAdminDirectory(),
 		sessions: &recordingRevoker{},
+		mailer:   &recordingMailer{},
 	}
 
 	if err := useCase.DeleteUser(context.Background(), 1, 999); !errors.Is(err, repository.ErrUserNotFound) {
@@ -363,7 +382,8 @@ func TestDeleteUser_PlainMember(t *testing.T) {
 	repo := issue86UserRepoWith(&domain.User{ID: 9, Name: "plain"})
 	directory := newFoundingStubAdminDirectory()
 	revoker := &recordingRevoker{}
-	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker}
+	mailer := &recordingMailer{}
+	useCase := &AdminUseCase{userRepo: repo, admins: directory, sessions: revoker, mailer: mailer}
 
 	if err := useCase.DeleteUser(context.Background(), 1, 9); err != nil {
 		t.Fatalf("注销普通成员应成功: %v", err)
@@ -373,5 +393,103 @@ func TestDeleteUser_PlainMember(t *testing.T) {
 	}
 	if len(revoker.revoked) != 1 || revoker.revoked[0] != 9 {
 		t.Errorf("应踢掉普通成员会话，实际 %v", revoker.revoked)
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 注销通知邮件（issue #159 Q3/Q4）
+ * ------------------------------------------------------------------ */
+
+// 管理员发起注销成功 → 给目标发通知邮件（收件人是被注销者，不是操作者）。
+func TestDeleteUser_SendsDeletionNotice(t *testing.T) {
+	repo := issue86UserRepoWith(&domain.User{ID: 7, Name: "victim"})
+	directory := newFoundingStubAdminDirectory()
+	mailer := &recordingMailer{}
+	useCase := &AdminUseCase{
+		userRepo: repo, admins: directory,
+		sessions: &recordingRevoker{}, mailer: mailer,
+	}
+
+	if err := useCase.DeleteUser(context.Background(), 1, 7); err != nil {
+		t.Fatalf("DeleteUser() error = %v", err)
+	}
+	if len(mailer.notices) != 1 || mailer.notices[0] != 7 {
+		t.Errorf("应给被注销者 userID=7 发通知，实际 %v", mailer.notices)
+	}
+}
+
+// Q4：邮件发送失败不阻断注销——注销已生效，错误仅记日志。
+func TestDeleteUser_MailFailureDoesNotBlockDeletion(t *testing.T) {
+	repo := issue86UserRepoWith(&domain.User{ID: 7, Name: "victim"})
+	directory := newFoundingStubAdminDirectory()
+	mailer := &recordingMailer{err: errors.New("smtp down")}
+	useCase := &AdminUseCase{
+		userRepo: repo, admins: directory,
+		sessions: &recordingRevoker{}, mailer: mailer,
+	}
+
+	if err := useCase.DeleteUser(context.Background(), 1, 7); err != nil {
+		t.Fatalf("邮件失败不应阻断注销，实际返回错误: %v", err)
+	}
+	if repo.byID[7].DeletedAt == nil {
+		t.Error("注销应已生效（软删落位）")
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 自助注销（issue #159）
+ * ------------------------------------------------------------------ */
+
+// 自助注销成功：软删 + 清两个集合 + 踢全部会话；不触发通知邮件（Q3）。
+func TestDeleteSelf_Success(t *testing.T) {
+	repo := issue86UserRepoWith(&domain.User{ID: 5, Name: "self"})
+	directory := newFoundingStubAdminDirectory()
+	directory.admins[5] = true // 自助者恰好是晋升管理员，集合要清
+	auc := newTestAuthUseCase(repo, issue86TokenManager{}, issue86CodeManager{}, directory)
+
+	// 踢会话走 tokenManager（issue86 空实现恒成功）；通知邮件只在管理端
+	// DeleteUser 路径（Q3），AuthUseCase 无 mailer 字段——此处只断言软删与集合。
+	if err := auc.DeleteSelf(context.Background(), 5); err != nil {
+		t.Fatalf("DeleteSelf() error = %v", err)
+	}
+	if repo.byID[5].DeletedAt == nil {
+		t.Error("应软删自己")
+	}
+	if directory.admins[5] {
+		t.Error("应移出 auth:admins（自助者可能是晋升管理员）")
+	}
+	if directory.founding[5] {
+		t.Error("应移出创始集合")
+	}
+}
+
+// Q1：创始管理员禁止自助注销，无任何副作用。
+func TestDeleteSelf_RejectFoundingAdmin(t *testing.T) {
+	repo := issue86UserRepoWith(&domain.User{ID: 1, Name: "founder"})
+	directory := newFoundingStubAdminDirectory()
+	directory.founding[1] = true
+	auc := newTestAuthUseCase(repo, issue86TokenManager{}, issue86CodeManager{}, directory)
+
+	err := auc.DeleteSelf(context.Background(), 1)
+	if !errors.Is(err, ErrFoundingProtected) {
+		t.Fatalf("创始管理员自助注销应返回 ErrFoundingProtected，实际: %v", err)
+	}
+	if repo.byID[1].DeletedAt != nil {
+		t.Error("守卫失败不应产生任何副作用")
+	}
+}
+
+// 重复自助注销（对已注销账号再调）→ 明确业务错误。
+func TestDeleteSelf_RejectDuplicate(t *testing.T) {
+	repo := issue86UserRepoWith(&domain.User{ID: 5, Name: "self"})
+	directory := newFoundingStubAdminDirectory()
+	auc := newTestAuthUseCase(repo, issue86TokenManager{}, issue86CodeManager{}, directory)
+
+	if err := auc.DeleteSelf(context.Background(), 5); err != nil {
+		t.Fatalf("首次注销应成功: %v", err)
+	}
+	err := auc.DeleteSelf(context.Background(), 5)
+	if !errors.Is(err, repository.ErrUserAlreadyDeleted) {
+		t.Fatalf("重复注销应返回 ErrUserAlreadyDeleted，实际: %v", err)
 	}
 }
