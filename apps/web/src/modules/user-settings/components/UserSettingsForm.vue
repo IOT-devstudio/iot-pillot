@@ -204,8 +204,7 @@ function handleSubmit(event: Event): void {
             去选择
           </button>
         </span>
-        <span v-if="isAdmin && directionUnset" class="settings__hint">管理员不参与报名；点击「更改」进入编辑态，可直接从下拉选择方向。</span>
-        <span v-else class="settings__hint">{{ latestDirection ? '根据最新一条报名记录自动带出，无需重复填写。' : '暂无报名记录，保留当前资料方向。' }}</span>
+        <span class="settings__hint">{{ isAdmin ? '管理员不参与报名，方向可在编辑态通过下拉更改。' : latestDirection ? '根据最新一条报名记录自动带出，无需重复填写。' : '暂无报名记录，保留当前资料方向。' }}</span>
         <span v-if="latestDirection && profile.detail?.direction && profile.detail.direction !== latestDirection" class="settings__hint">当前资料方向：{{ directionLabel(profile.detail.direction) }}</span>
         <p v-if="directionError" class="settings__field-error" role="alert">{{ directionError }}</p>
         <button v-if="directionError" type="button" class="settings__btn settings__btn--ghost" :disabled="saving" @click="emit('retry')">重新核对方向</button>
