@@ -110,7 +110,13 @@ func (a *AdminUseCase) SeedAdmins(ctx context.Context, entries []string) error {
 		return err
 	}
 
-	log.Printf("[admin] 已把 %d 个账号补种为管理员", len(ids))
+	// 同步写创始集合（issue #120）：两个集合分工——
+	// auth:admins 是鉴权真源（晋升也会写），创始集合只标记"种入来源"（仅此处写）。
+	if err := seedFoundingInto(ctx, a.admins, ids); err != nil {
+		return err
+	}
+
+	log.Printf("[admin] 已把 %d 个账号补种为管理员（含创始标记）", len(ids))
 	return nil
 }
 
@@ -150,6 +156,20 @@ func (a *AdminUseCase) resolveSeedEntry(ctx context.Context, entry string) (int,
 func seedInto(ctx context.Context, admins utils.AdminDirectory, ids []int) error {
 	for _, id := range ids {
 		if err := admins.AddAdmin(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// seedFoundingInto 把引导名单同步写进创始集合（issue #120）。
+//
+// 与 seedInto 同批次、同语义（只增不删、逐个写）：
+// 创始集合标记"这个账号来自 ADMIN_USERS 配置"，供 /me 的 is_founding 做前端分流；
+// 它不是第二套鉴权——中间件永远不读它，晋升管理员也不会写它。
+func seedFoundingInto(ctx context.Context, admins utils.AdminDirectory, ids []int) error {
+	for _, id := range ids {
+		if err := admins.AddFounding(ctx, id); err != nil {
 			return err
 		}
 	}
@@ -251,7 +271,17 @@ func (a *AdminUseCase) GrantAdmin(ctx context.Context, userID int) (*response.Ad
 // 同样强制重新登录：不踢下线的话，他手里的旧令牌仍带着 admin claim，
 // 前端会继续显示管理端入口（服务端因为读 Redis 已经拦住，所以只是体验不一致，
 // 但"看起来还能进"本身就会让人怀疑权限没有生效）。
+//
+// 创始标记一并移除（issue #120 Q1 裁决）：撤销即失去全部管理员身份，
+// 被撤销者重新晋升后 is_founding 必须回到 false，否则创始特权会复活残留。
+// 清理放在移出主名单**之前**且错误外传：先清创始标记失败时管理员身份还在，
+// 操作可安全重试；若先删主名单再清创始标记失败，就会留下"非管理员但带创始标记"
+// 的不一致状态。
 func (a *AdminUseCase) RevokeAdmin(ctx context.Context, userID int) (*response.AdminMutationResp, error) {
+	if err := a.admins.RemoveFounding(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	if err := a.admins.RemoveAdmin(ctx, userID); err != nil {
 		return nil, err
 	}

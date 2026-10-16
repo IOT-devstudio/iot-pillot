@@ -3407,11 +3407,6 @@ const docTemplate = `{
                     "type": "string",
                     "example": "物联网工程 2301"
                 },
-                "name": {
-                    "description": "姓名；null 清除，缺省不动（issue #86 新增可改字段）",
-                    "type": "string",
-                    "example": "张三"
-                },
                 "direction": {
                     "description": "方向；null/空串清除，缺省不动",
                     "type": "string",
@@ -3424,6 +3419,11 @@ const docTemplate = `{
                         "other"
                     ],
                     "example": "front-end"
+                },
+                "name": {
+                    "description": "姓名；null 清除，缺省不动（issue #86 新增可改字段）",
+                    "type": "string",
+                    "example": "张三"
                 },
                 "qq": {
                     "description": "QQ；null 清除，缺省不动",
@@ -3989,6 +3989,10 @@ const docTemplate = `{
             "properties": {
                 "detail": {
                     "$ref": "#/definitions/response.UserProfileDetail"
+                },
+                "is_founding": {
+                    "description": "IsFounding 创始管理员标记（issue #120）：ADMIN_USERS 启动种入的账号为 true，\n管理端晋升与普通成员为 false。仅作前端展示分流（隐藏个人设置入口、\n抑制补全提示），不参与权限判定；GET 与 PUT /me 都必须返回——\n前端保存资料后会用 PUT 响应覆盖本地 profile，缺字段会让补全提示复活。",
+                    "type": "boolean"
                 },
                 "name": {
                     "description": "Name 是姓名（domain.User.Name），与 username 同源但语义独立：\n前端个人设置页把它当只读展示项。",
