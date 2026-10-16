@@ -152,6 +152,8 @@ func NewRouter(
 		adminRecruit := admin.Group("/recruitment")
 		adminRecruit.GET("/rounds", recruitmentHandler.AdminListRounds)
 		adminRecruit.PATCH("/rounds/:id", recruitmentHandler.AdminSetRound)
+		adminRecruit.GET("/directions", recruitmentHandler.AdminListDirections)
+		adminRecruit.POST("/directions", recruitmentHandler.AdminCreateDirection)
 		adminRecruit.PATCH("/directions/:code", recruitmentHandler.AdminSetDirection)
 		adminRecruit.GET("/applications", recruitmentHandler.AdminListApplications)
 		adminRecruit.GET("/applications/:id", recruitmentHandler.AdminGetApplication)

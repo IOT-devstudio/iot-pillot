@@ -41,6 +41,12 @@ func failRecruitment(c *gin.Context, err error) {
 		response.FailInvalidParam(c, err.Error())
 	case service.ErrNotOwned:
 		response.FailForbidden(c, err.Error())
+	case service.ErrInvalidDirectionCode:
+		response.FailInvalidParam(c, err.Error())
+	case service.ErrInvalidDirectionName:
+		response.FailInvalidParam(c, err.Error())
+	case repository.ErrDirectionCodeExists:
+		response.FailInvalidParam(c, err.Error())
 	case repository.ErrDirectionNotFound:
 		response.FailInvalidParam(c, "招新方向不存在")
 	case repository.ErrRoundNotFound:
@@ -253,16 +259,73 @@ func (h *RecruitmentHandler) AdminSetRound(c *gin.Context) {
 	response.OKWithMsg(c, "轮次状态已更新", nil)
 }
 
+// AdminListDirections 管理端方向全量列表。
+// @Summary 管理端方向全量列表
+// @Description 返回全部招新方向（含关闭中的），按 sort_order 稳定排序。
+// 供管理端开关条与「新增方向」入口渲染；用户端可报名列表走 GET /recruitment/directions。
+// @Tags 管理端-招新
+// @Produce json
+// @Success 200 {object} response.Result{data=response.RecruitmentDirectionListResp} "成功"
+// @Failure 401 {object} response.Result "未认证"
+// @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
+// @Router /api/v1/admin/recruitment/directions [get]
+func (h *RecruitmentHandler) AdminListDirections(c *gin.Context) {
+	dirs, err := h.recruitmentService.ListDirections(c.Request.Context())
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+
+	items := make([]response.RecruitmentDirectionResp, 0, len(dirs))
+	for _, d := range dirs {
+		items = append(items, response.NewRecruitmentDirectionResp(d))
+	}
+
+	response.OK(c, response.RecruitmentDirectionListResp{Items: items})
+}
+
+// AdminCreateDirection 创建招新方向。
+// @Summary 创建招新方向
+// @Description 管理员自助创建方向（issue #128）。code 为小写字母/数字/连字符（1~32），
+// 与已有行重复返回 400；创建后 open=false，不出现在用户端可报名列表，
+// 需 PATCH /directions/{code} 显式开启。
+// @Tags 管理端-招新
+// @Accept json
+// @Produce json
+// @Param request body request.RecruitmentCreateDirectionReq true "创建方向请求"
+// @Success 200 {object} response.Result{data=response.RecruitmentDirectionResp} "成功"
+// @Failure 400 {object} response.Result "参数错误或 code 已存在"
+// @Failure 401 {object} response.Result "未认证"
+// @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
+// @Router /api/v1/admin/recruitment/directions [post]
+func (h *RecruitmentHandler) AdminCreateDirection(c *gin.Context) {
+	var req request.RecruitmentCreateDirectionReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, err.Error())
+		return
+	}
+
+	dir, err := h.recruitmentService.CreateDirection(c.Request.Context(), req.Code, req.Name, req.SortOrder)
+	if err != nil {
+		failRecruitment(c, err)
+		return
+	}
+
+	response.OKWithMsg(c, "方向创建成功", response.NewRecruitmentDirectionResp(dir))
+}
+
 // AdminSetDirection 设置方向开关。
 // @Summary 设置方向开关
-// @Description 开启或关闭某个招新方向的报名开关。不在白名单内的方向拒绝配置。
+// @Description 开启或关闭某个招新方向的报名开关。表中不存在的 code 返回 400。
 // @Tags 管理端-招新
 // @Accept json
 // @Produce json
 // @Param code path string true "方向 code（如 front-end）"
 // @Param request body request.RecruitmentSetDirectionReq true "开关状态"
 // @Success 200 {object} response.Result "成功"
-// @Failure 400 {object} response.Result "方向不存在或不在白名单"
+// @Failure 400 {object} response.Result "方向不存在"
 // @Failure 401 {object} response.Result "未认证"
 // @Failure 403 {object} response.Result "非管理员"
 // @Security BearerAuth
