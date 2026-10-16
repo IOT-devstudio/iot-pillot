@@ -20,3 +20,6 @@ export const ANY_SIGNED_IN = ["admin", "member"] as const;
 // /dashboard 与 /settings 都有了真实页面，PlaceholderView 不再被任何路由引用。
 // 将来的占位需求（设置中心新区块等）按票内教训**不做占位导航**，
 // 等内容 issue 就绪再加真实路由。
+
+/** 有意公开：不要求登录或任何角色。 */
+export const PUBLIC = [] as const;

@@ -258,6 +258,18 @@ describe("AuthView", () => {
     vi.clearAllMocks();
   });
 
+  it("offers a guest entry without submitting credentials", async () => {
+    const mounted = mount();
+    unmount = mounted.unmount;
+    const entry = findElement(mounted.root, element => element.props.href === "/user/home");
+    expect(visibleText(entry)).toContain("先逛逛，了解工作室");
+    const handler = entry.props.onClick as (event: { preventDefault: () => void }) => void;
+    handler({ preventDefault: vi.fn() });
+    await nextTick();
+    expect(mocks.push).toHaveBeenCalledWith("/user/home");
+    expect(mocks.login).not.toHaveBeenCalled();
+  });
+
   it("切换到注册模式后渲染注册字段和可用的验证码按钮", async () => {
     const mounted = mount();
     unmount = mounted.unmount;
@@ -446,7 +458,7 @@ describe("AuthView", () => {
     unmount = mounted.unmount;
     const text = visibleText(mounted.root);
 
-    expect(text).toContain("创建工作室账号");
+    expect(text).toContain("先逛逛，了解工作室");
     expect(text).toContain("邮箱验证码");
     expect(text).toContain("把未知");
     expect(text).toContain("现实。");

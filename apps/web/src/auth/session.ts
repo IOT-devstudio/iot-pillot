@@ -4,8 +4,27 @@ import {
   type RefreshAuthSession,
 } from "@/api/auth";
 import { setCurrentProfile } from "@/modules/user-settings/profileIdentity";
+import { shallowReadonly, shallowRef } from "vue";
 
 export const AUTH_STORAGE_KEY = "iot-pillot.auth";
+
+const sessionState = shallowRef<AuthSession | null>(null);
+export const currentSession = shallowReadonly(sessionState);
+
+/** 首次挂载及其他标签页改动时同步，不发网络请求。 */
+export function syncAuthSession(): void {
+  const next = readAuthSession();
+  if (JSON.stringify(next) === JSON.stringify(sessionState.value)) return;
+  if (next?.user_id !== sessionState.value?.user_id || next === null) setCurrentProfile(null);
+  sessionState.value = next;
+}
+
+if (typeof window !== "undefined" && window.addEventListener) {
+  syncAuthSession();
+  window.addEventListener("storage", (event) => {
+    if (event.key === AUTH_STORAGE_KEY || event.key === null) syncAuthSession();
+  });
+}
 
 function getStorage(storage?: Storage): Storage {
   return storage ?? window.localStorage;
@@ -29,6 +48,8 @@ export function saveAuthSession(
   storage?: Storage,
 ): void {
   getStorage(storage).setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  if (sessionState.value?.user_id !== session.user_id) setCurrentProfile(null);
+  sessionState.value = session;
 }
 
 export function readAuthSession(storage?: Storage): AuthSession | null {
@@ -47,6 +68,7 @@ export function readAuthSession(storage?: Storage): AuthSession | null {
 
 export function clearAuthSession(storage?: Storage): void {
   getStorage(storage).removeItem(AUTH_STORAGE_KEY);
+  sessionState.value = null;
   setCurrentProfile(null);
 }
 

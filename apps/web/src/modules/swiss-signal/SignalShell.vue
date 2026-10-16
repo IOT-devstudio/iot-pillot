@@ -2,6 +2,8 @@
 import { computed, nextTick, onUnmounted, provide, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import UserMenu from "@/components/common/UserMenu.vue";
+import SignInCta from "@/components/common/SignInCta.vue";
+import { currentSession, syncAuthSession } from "@/auth/session";
 import type { AuthMode } from "@/auth/submit";
 import { currentProfile } from "@/modules/user-settings/profileIdentity";
 import { SIGNAL_BUSY, SIGNAL_MODE, SIGNAL_TRANSITION } from "./context";
@@ -12,6 +14,7 @@ defineProps<{ transitionOnly?: boolean }>();
 const emit = defineEmits<{ "transition-active": [active: boolean] }>();
 const route = useRoute();
 const router = useRouter();
+syncAuthSession();
 /**
  * masthead 的导航（issue #94）：
  *   - 认证页（/、/login）：不放导航——表单自带登录/注册切换，顶栏再来一份
@@ -145,7 +148,8 @@ watch(
         </button>
       </nav>
       <span v-if="isUserPage() && !isUserSettings()" class="masthead__user">
-        <UserMenu />
+        <UserMenu v-if="currentSession" :key="currentSession.user_id" />
+        <SignInCta v-else />
       </span>
     </header>
     <slot />

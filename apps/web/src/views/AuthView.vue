@@ -56,6 +56,12 @@ const passwordVisible = reactive({
   resetConfirm: false,
 });
 const loading = inject(SIGNAL_BUSY, ref(false));
+
+function browseStudio(event: MouseEvent): void {
+  event.preventDefault();
+  if (loading.value) return;
+  void transition(() => router.push("/user/home"));
+}
 const sendingCode = ref(false);
 const codeCooldown = ref(0);
 const verifyNotice = ref("");
@@ -444,15 +450,15 @@ onUnmounted(() => {
                   ><b aria-hidden="true">↗</b>
                 </button>
               </form>
-              <div class="form-divider"><span>或者，开启你的新章节</span></div>
-              <button
-                type="button"
+              <div class="form-divider"><span>或者，先了解我们</span></div>
+              <a
+                href="/user/home"
                 class="outline-button"
-                :disabled="loading"
-                @click="setMode('register')"
+                :aria-disabled="loading"
+                @click="browseStudio"
               >
-                创建工作室账号 <span>→</span>
-              </button>
+                先逛逛，了解工作室 <span aria-hidden="true">→</span>
+              </a>
               <p class="form-bottom">
                 还没有账号？<button
                   class="plain-link"

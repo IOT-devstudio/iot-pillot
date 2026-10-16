@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AuthRequestError } from "@/api/auth";
+import { PUBLIC } from "./route-specs";
 import {
   FOUNDING_SETTINGS_BLOCKED,
   landingFor,
@@ -41,6 +42,11 @@ function makeDeps(overrides: Partial<RouteGateDeps> = {}): RouteGateDeps & {
 }
 
 describe("resolveRouteAccess", () => {
+  it("lets a guest visit PUBLIC home without checking identity", async () => {
+    const deps = makeDeps({ readToken: () => null });
+    await expect(resolveRouteAccess(PUBLIC, "/user/home", deps)).resolves.toBeNull();
+    expect(deps.fetchIdentity).not.toHaveBeenCalled();
+  });
   it("preserves an invitation link through anonymous login", async () => {
     const deps = makeDeps({ readToken: () => null });
     const target = "/user/invitations?token=test-invitation-token";

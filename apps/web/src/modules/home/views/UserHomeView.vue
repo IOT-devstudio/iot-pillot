@@ -2,8 +2,8 @@
 /**
  * 用户侧个人首页 `/user/home`（issue #89：接入真实招新数据）。
  *
- * 数据全部来自后端（需登录，路由守卫已把关；未登录访问会被带到登录页
- * 并带上 ?redirect= 原目标）：
+ * 方向列表公开；个人资料与报名进度仅在有本地会话时读取（issue #156）。
+ * 公开页上会话失效清空个人数据并降为游客，继续浏览方向与介绍：
  *   - GET  /api/v1/recruitment/directions        方向与开放状态
  *   - POST /api/v1/recruitment/applications      报名（归属由令牌决定）
  *   - GET  /api/v1/recruitment/applications      本人申请（进度/统计）
@@ -12,10 +12,14 @@
  *
  * 三块数据彼此独立加载：方向挂了不该拖垮进度区，反之亦然。
  */
-import { computed, inject, nextTick, onMounted, ref } from "vue";
+import { computed, inject, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { AuthRequestError } from "@/api/auth";
+import { clearAuthSession, currentSession, syncAuthSession } from "@/auth/session";
+import { useSignInGate } from "@/auth/useSignInGate";
+import { requestForPublicPage } from "@/api/public-page-request";
+import SignInPrompt from "@/components/common/SignInPrompt.vue";
 import { fetchMyProfile } from "@/api/profile";
 import { FOUNDING_SETTINGS_BLOCKED } from "@/router/guards";
 import {
@@ -51,6 +55,7 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
 
 const router = useRouter();
 const route = useRoute();
+const { signedIn, action: signInAction, requireSignIn, dismiss, signIn } = useSignInGate();
 /**
  * 去关于我们：走壳层的擦除过渡（与「返回用户首页」「进入个人设置」
  * 同款动画），裸 RouterLink 会没有转场直接硬切。
@@ -67,7 +72,20 @@ function goAbout(event: MouseEvent): void {
 /** 首页所有跨页跳转统一走擦除过渡（review：硬切没质感） */
 function goSettings(event: MouseEvent): void {
   event.preventDefault();
+  if (!requireSignIn("查看个人设置")) return;
+  selectedDirection.value = null;
   void transition(() => router.push("/user/settings"));
+}
+
+function goJourney(event: MouseEvent): void {
+  if (!requireSignIn("查看我的进度")) { event.preventDefault(); return; }
+  scrollToSection(event, "journey");
+}
+
+function goInvitations(event: MouseEvent): void {
+  event.preventDefault();
+  if (!requireSignIn("查看邀请与结果")) return;
+  void transition(() => router.push("/user/invitations"));
 }
 
 const userError = ref("");
@@ -150,12 +168,16 @@ function describeError(error: unknown, fallback: string): string {
 }
 
 async function loadProfile(): Promise<void> {
+  const session = currentSession.value;
+  if (!session) return;
   const publish = beginProfileLoad();
   loading.value = true;
   userError.value = "";
   try {
-    publish(await fetchMyProfile());
+    const profile = await fetchMyProfile(requestForPublicPage);
+    if (currentSession.value === session) publish(profile);
   } catch (error) {
+    if (currentSession.value !== session) return;
     publish(null);
     userError.value = describeError(error, "暂时无法加载用户信息，请稍后重试");
   } finally {
@@ -164,11 +186,19 @@ async function loadProfile(): Promise<void> {
 }
 
 async function loadDirections(): Promise<void> {
+  const session = currentSession.value;
   directionsLoading.value = true;
   directionsError.value = "";
   try {
     directions.value = (await fetchDirections()).items;
   } catch (error) {
+    syncAuthSession();
+    if (session && currentSession.value === session && error instanceof AuthRequestError && [401, 403].includes(error.status)) {
+      clearAuthSession();
+      // 去掉失效会话后重读一次公开方向；不循环重试真正的服务异常。
+      await loadDirections();
+      return;
+    }
     directions.value = [];
     directionsError.value = describeError(
       error,
@@ -180,14 +210,19 @@ async function loadDirections(): Promise<void> {
 }
 
 async function loadApplications(): Promise<void> {
+  const session = currentSession.value;
+  if (!session) return;
   applicationsLoading.value = true;
   applicationsError.value = "";
   try {
-    applications.value = (await fetchMyApplications()).items;
+    const result = await fetchMyApplications(requestForPublicPage);
+    if (currentSession.value !== session) return;
+    applications.value = result.items;
     if (selectedRecordIndex.value >= applications.value.length) {
       selectedRecordIndex.value = 0;
     }
   } catch (error) {
+    if (currentSession.value !== session) return;
     applications.value = [];
     applicationsError.value = describeError(
       error,
@@ -198,10 +233,27 @@ async function loadApplications(): Promise<void> {
   }
 }
 
+watch(currentSession, (session) => {
+  userError.value = "";
+  applicationsError.value = "";
+  applications.value = [];
+  selectedRecordIndex.value = 0;
+  selectedDirection.value = null;
+  selectedApplication.value = null;
+  showApplications.value = false;
+  submitError.value = "";
+  submitNotice.value = "";
+  if (session) {
+    void loadProfile();
+    void loadApplications();
+  } else {
+    loading.value = false;
+    applicationsLoading.value = false;
+  }
+}, { immediate: true });
+
 onMounted(() => {
-  void loadProfile();
   void loadDirections();
-  void loadApplications();
   void scrollToHashSection();
   notifyIfRedirectedFromSettings();
 });
@@ -325,6 +377,7 @@ function railKey(event: KeyboardEvent) {
 
 /** 打开报名弹窗：清上一次的提交痕迹 */
 function openDirection(direction: RecruitmentDirection): void {
+  if (!requireSignIn("了解并报名")) return;
   selectedDirection.value = direction;
   submitError.value = "";
   submitNotice.value = "";
@@ -336,6 +389,7 @@ function openDirection(direction: RecruitmentDirection): void {
  * 引导回 /user/home，不在首页内嵌表单。
  */
 function handleInterview(): void {
+  if (!requireSignIn("填写面试表单")) return;
   const form = selectedDirection.value?.form ?? null;
   if (form === null || interviewBlockReason.value !== null) return;
   void transition(() => router.push(`/f/${form.share_token}`));
@@ -346,16 +400,20 @@ function handleInterview(): void {
  * 不在前端乐观插入；失败原地提示，可安全重试（后端唯一约束兜底重复）。
  */
 async function handleApply(): Promise<void> {
+  if (!requireSignIn("提交报名申请")) return;
+  const session = currentSession.value;
   const direction = selectedDirection.value;
   if (direction === null || submitting.value) return;
   submitError.value = "";
   submitNotice.value = "";
   submitting.value = true;
   try {
-    await submitApplication(direction.code);
+    await submitApplication(direction.code, requestForPublicPage, session?.user_id);
+    if (currentSession.value !== session) return;
     submitNotice.value = "报名成功，可在「我的进度」查看审核进展。";
     await loadApplications();
   } catch (error) {
+    if (currentSession.value !== session) return;
     submitError.value = describeError(error, "报名失败，请稍后重试");
   } finally {
     submitting.value = false;
@@ -364,14 +422,18 @@ async function handleApply(): Promise<void> {
 
 /** 打开详情弹窗并拉取时间线 */
 async function openDetail(application: RecruitmentApplication): Promise<void> {
+  if (!requireSignIn("查看报名详情")) return;
+  const session = currentSession.value;
   selectedApplication.value = application;
   detailTimeline.value = [];
   detailError.value = "";
   detailLoading.value = true;
   try {
-    const detail = await fetchMyApplication(application.id);
+    const detail = await fetchMyApplication(application.id, requestForPublicPage);
+    if (currentSession.value !== session) return;
     detailTimeline.value = detail.timeline;
   } catch (error) {
+    if (currentSession.value !== session) return;
     detailError.value = describeError(error, "暂时无法加载时间线，请稍后重试");
   } finally {
     detailLoading.value = false;
@@ -422,9 +484,9 @@ function steps(application: RecruitmentApplication) {
       <div>
         <a href="#directions" @click="scrollToSection($event, 'directions')"
           >探索方向</a
-        ><a href="#journey" @click="scrollToSection($event, 'journey')"
+        ><a href="#journey" @click="goJourney"
           >我的进度</a
-        ><RouterLink to="/user/invitations">邀请与结果</RouterLink
+        ><a href="/user/invitations" @click="goInvitations">邀请与结果</a
         ><RouterLink to="/user/about" @click="goAbout($event)"
           >关于我们</RouterLink
         >
@@ -433,7 +495,7 @@ function steps(application: RecruitmentApplication) {
     <section class="home-poster">
       <div class="mono home-poster-top">
         <span v-if="displayName">HELLO, {{ displayName }}.</span
-        ><span v-else>{{ loading ? "正在加载你的资料…" : "个人空间" }}</span
+        ><span v-else>{{ !signedIn ? "欢迎来到 IoT-Studio" : loading ? "正在加载你的资料…" : "个人空间" }}</span
         ><span>一起，连接新的可能。</span>
       </div>
       <h1>
@@ -470,16 +532,20 @@ function steps(application: RecruitmentApplication) {
       </div>
       <div>
         <span class="mono">MY APPLICATIONS</span
-        ><strong
+        ><strong v-if="signedIn"
           ><span>{{
             String(applications.length).padStart(2, "0")
           }}</span
           ><small>条报名记录</small></strong
         >
+        <p v-else class="guest-stat">登录后可查看</p>
       </div>
       <div class="stat-statement profile-readout" aria-label="本人资料">
         <span class="mono">PROFILE / YOUR IDENTITY</span>
-        <p v-if="loading" role="status">正在加载用户信息…</p>
+        <p v-if="!signedIn" class="guest-stat">登录后可查看
+          <button class="plain-link" @click="requireSignIn('查看个人资料')">去登录 ↗</button>
+        </p>
+        <p v-else-if="loading" role="status">正在加载用户信息…</p>
         <div v-else-if="userError" role="alert">
           {{ userError }}
           <button class="plain-link" @click="loadProfile">重试 ↗</button>
@@ -597,7 +663,11 @@ function steps(application: RecruitmentApplication) {
           查看全部 {{ applications.length }} 条报名记录 ↗
         </button>
       </div>
-      <p v-if="applicationsLoading" role="status">正在加载报名记录…</p>
+      <div v-if="!signedIn" class="guest-journey">
+        <p>登录后查看你的报名记录与审核进度。</p>
+        <button type="button" class="panel-button" @click="requireSignIn('查看我的进度')">登录查看我的进度 <span aria-hidden="true">↗</span></button>
+      </div>
+      <p v-else-if="applicationsLoading" role="status">正在加载报名记录…</p>
       <div v-else-if="applicationsError" role="alert">
         {{ applicationsError }}
         <button class="plain-link" @click="loadApplications">重试 ↗</button>
@@ -652,14 +722,15 @@ function steps(application: RecruitmentApplication) {
     <section class="closing-note">
       <span class="mono">ONE MORE THING.</span>
       <p>不必什么都会。<br /><span>愿意动手，就有可能。</span></p>
-      <RouterLink
+      <a
         v-if="!isFounding"
         class="panel-button"
-        to="/user/settings"
+        href="/user/settings"
         @click="goSettings($event)"
-        >完善我的资料 <span>↗</span></RouterLink
+        >完善我的资料 <span>↗</span></a
       >
     </section>
+    <SignInPrompt :action="signInAction" @close="dismiss" @confirm="signIn" />
     <SignalDialog
       v-if="selectedDirection"
       :title="selectedDirection.name"
@@ -776,3 +847,18 @@ function steps(application: RecruitmentApplication) {
     >
   </main>
 </template>
+
+<style scoped>
+.guest-stat { margin: 14px 0 0; font-size: 14px; line-height: 1.6; }
+.guest-stat .plain-link { margin-left: 12px; min-height: 44px; }
+.guest-journey {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 0;
+  border-top: 1px solid var(--line);
+}
+.guest-journey p { margin: 0; line-height: 1.7; }
+</style>
