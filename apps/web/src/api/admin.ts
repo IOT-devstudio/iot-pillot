@@ -6,6 +6,11 @@ export interface CurrentUser {
   user_id: number;
   username: string;
   role: UserRole | string;
+  /**
+   * 创始管理员标记（issue #120）。ADMIN_USERS 种入账号为 true；
+   * 后端字段缺省时按 false 处理（后端合并前守卫拦截静默不生效）。
+   */
+  is_founding?: boolean;
 }
 
 /**

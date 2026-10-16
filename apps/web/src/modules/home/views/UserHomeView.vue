@@ -14,8 +14,10 @@
  */
 import { computed, inject, nextTick, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile } from "@/api/profile";
+import { FOUNDING_SETTINGS_BLOCKED } from "@/router/guards";
 import {
   beginProfileLoad,
   currentProfile as user,
@@ -99,6 +101,12 @@ const detailLoading = ref(false);
 const detailError = ref("");
 
 const displayName = computed(() => profileDisplayName(user.value));
+
+/**
+ * 创始管理员没有个人设置页（issue #138）：首页的「完善资料」入口对它隐藏，
+ * 点进去也会被路由守卫弹回——入口还在就是自相矛盾。
+ */
+const isFounding = computed(() => user.value?.is_founding === true);
 const openDirectionCount = computed(
   () => directions.value.filter((direction) => direction.open).length,
 );
@@ -167,7 +175,22 @@ onMounted(() => {
   void loadDirections();
   void loadApplications();
   void scrollToHashSection();
+  notifyIfRedirectedFromSettings();
 });
+
+/**
+ * 创始管理员被守卫从 /user/settings 弹回时的解释（issue #138）。
+ *
+ * 守卫重定向带 ?notice=founding-settings；这里出一条提示说明原因，
+ * 而不是让人以为是自己点错了。提示后清掉 query，避免刷新后重复弹。
+ */
+function notifyIfRedirectedFromSettings(): void {
+  if (route.query.notice !== FOUNDING_SETTINGS_BLOCKED) return;
+  ElMessage.info(
+    "创始管理员账号由系统配置直接种入，不提供个人设置页面（无需完善资料，也不走自助改密）。",
+  );
+  void router.replace({ query: {} });
+}
 
 /**
  * 外链 hash 滚动（个人设置「去选择方向」→ /user/home#directions）。
@@ -427,6 +450,7 @@ function steps(application: RecruitmentApplication) {
             ><span>{{ displayName }}</span
             ><br /><span>{{ user.detail?.class || "未填写" }}</span></span
           ><RouterLink
+            v-if="!isFounding"
             class="profile-jump"
             to="/user/settings"
             aria-label="完善我的资料"
@@ -590,6 +614,7 @@ function steps(application: RecruitmentApplication) {
       <span class="mono">ONE MORE THING.</span>
       <p>不必什么都会。<br /><span>愿意动手，就有可能。</span></p>
       <RouterLink
+        v-if="!isFounding"
         class="panel-button"
         to="/user/settings"
         @click="goSettings($event)"
@@ -613,11 +638,12 @@ function steps(application: RecruitmentApplication) {
         <div>
           <span>资料</span
           ><RouterLink
+            v-if="!isFounding"
             class="plain-link"
             to="/user/settings"
             @click="goSettings($event)"
             >完善个人资料 ↗</RouterLink
-          >
+          ><span v-else class="mono">创始账号</span>
         </div>
       </div>
       <p class="dialog-note">
