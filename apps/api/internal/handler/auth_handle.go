@@ -394,8 +394,8 @@ func (h *AuthHandler) Me(c *gin.Context) {
 // UpdateMe 更新当前登录用户的资料
 // @Summary 更新本人资料
 // @Description 只改令牌本人的资料，body 不接受 user_id 等目标参数（未知键直接忽略）。
-// 白名单字段 class/student_id/qq/direction/name 三态语义：**缺省不动、null 清除、有值覆盖**。
-// name 自 issue #86 起可改，长度 3~20 字符（与注册时一致）；email 仍不可改（登录凭据）。
+// 白名单字段 class/student_id/qq/direction 三态语义：**缺省不动、null 清除、有值覆盖**。
+// name 缺省不动；修改时须为 2–20 个中文汉字，不允许 null 或空值。email 仍不可改（登录凭据）。
 // 校验：direction 须为枚举之一、student_id 非负整数、class ≤ 64 字符、qq ≤ 20 字符、
 // name 长度 3~20 字符。改名不触发令牌重签或会话失效。
 // @Tags 认证模块

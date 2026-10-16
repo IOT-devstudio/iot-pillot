@@ -80,7 +80,8 @@ async function handleSignOut(): Promise<void> {
     // 与用户侧跨页同款的擦除转场（issue #59 后续）：
     // 会话已清，覆盖态下切到认证页再揭开；壳外（管理台）时注入的是
     // App.vue 的全局擦除层，壳内仍是 SignalShell 自己的 withWipe。
-    await transition(() => router.replace("/"));
+    // ?reason=logged-out 让登录页出「您已退出登录」提示条（issue #159 后续）。
+    await transition(() => router.replace("/?reason=logged-out"));
   }
 }
 

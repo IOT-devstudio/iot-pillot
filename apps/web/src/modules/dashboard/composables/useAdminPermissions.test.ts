@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthRequestError } from "@/api/auth";
 import type { AdminUser } from "@/api/admin";
 
-// ElMessageBox.confirm 会弹真实对话框，helper 里必须打桩；ElMessage 同理只是个通知。
+// ElMessageBox.confirm/prompt 会弹真实对话框，helper 里必须打桩；ElMessage 同理只是个通知。
 vi.mock("element-plus", () => ({
   ElMessage: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-  ElMessageBox: { confirm: vi.fn() },
+  ElMessageBox: { confirm: vi.fn(), prompt: vi.fn() },
 }));
 
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -21,6 +21,7 @@ import {
 } from "./useAdminPermissions";
 
 const CONFIRM = vi.mocked(ElMessageBox.confirm);
+const PROMPT = vi.mocked(ElMessageBox.prompt);
 const SUCCESS = vi.mocked(ElMessage.success);
 const ERROR = vi.mocked(ElMessage.error);
 const WARNING = vi.mocked(ElMessage.warning);
@@ -59,6 +60,7 @@ function makeDeps(overrides: Partial<AdminPermissionsDeps> = {}) {
       is_admin: false,
       session_revoked: true,
     }),
+    deleteAdminUser: async () => {},
     ...overrides,
   };
   return deps;
@@ -372,5 +374,72 @@ describe("useAdminPermissions mutations", () => {
     expect(ERROR).toHaveBeenCalledTimes(1);
     expect(String(ERROR.mock.calls[0]?.[0])).toContain("管理员权限");
     expect(SUCCESS).not.toHaveBeenCalled();
+  });
+
+  // ── 注销账号（issue #142 Q4）──
+
+  it("注销自己会被前端拦下且不发请求", async () => {
+    const deleteAdminUser = vi.fn();
+    const state = useAdminPermissions(makeDeps({ deleteAdminUser }));
+    await state.loadAll();
+
+    await state.deleteUser(user({ user_id: 1 }));
+
+    expect(deleteAdminUser).not.toHaveBeenCalled();
+    expect(CONFIRM).not.toHaveBeenCalled();
+    expect(String(WARNING.mock.calls[0]?.[0])).toContain("不能注销自己");
+  });
+
+  it("对已注销行不发请求", async () => {
+    const deleteAdminUser = vi.fn();
+    const state = useAdminPermissions(makeDeps({ deleteAdminUser }));
+    await state.loadAll();
+
+    await state.deleteUser(user({ user_id: 7, is_deleted: true }));
+
+    expect(deleteAdminUser).not.toHaveBeenCalled();
+    expect(CONFIRM).not.toHaveBeenCalled();
+    expect(String(WARNING.mock.calls[0]?.[0])).toContain("已注销");
+  });
+
+  it("用户取消确认时不发请求", async () => {
+    const deleteAdminUser = vi.fn();
+    const state = useAdminPermissions(makeDeps({ deleteAdminUser }));
+    await state.loadAll();
+    CONFIRM.mockRejectedValue("cancel"); // 用户点取消
+
+    await state.deleteUser(user({ user_id: 7 }));
+
+    expect(deleteAdminUser).not.toHaveBeenCalled();
+    expect(SUCCESS).not.toHaveBeenCalled();
+  });
+
+  it("确认后调用注销接口并刷新", async () => {
+    const deleteAdminUser = vi.fn();
+    const state = useAdminPermissions(makeDeps({ deleteAdminUser }));
+    await state.loadAll();
+    CONFIRM.mockResolvedValue("confirm" as never);
+
+    await state.deleteUser(user({ user_id: 7 }));
+
+    expect(deleteAdminUser).toHaveBeenCalledWith(7);
+    expect(SUCCESS).toHaveBeenCalledTimes(1);
+  });
+
+  it("注销失败时给出可读提示", async () => {
+    const state = useAdminPermissions(
+      makeDeps({
+        deleteAdminUser: async () => {
+          throw new AuthRequestError("创始管理员账号不能被注销", 400);
+        },
+      }),
+    );
+    await state.loadAll();
+    CONFIRM.mockResolvedValue("confirm" as never);
+
+    await state.deleteUser(user({ user_id: 7 }));
+
+    expect(ERROR).toHaveBeenCalledTimes(1);
+    expect(String(ERROR.mock.calls[0]?.[0])).toContain("创始管理员");
   });
 });

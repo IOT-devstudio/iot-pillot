@@ -4,7 +4,7 @@
  *
  * 父组件 useUserSettings 提供响应式 form 与 profile，本组件只做接线。
  *
- * 姓名非空时为 3–20 个 Unicode 字符，留空发送 null 清除。
+ * 姓名修改时必须为 2–20 个中文汉字，不允许清空。
  * 班级、学号必填；默认只读，方向取最新报名，无报名时保留资料方向（#101）。
  *
  * 方向选项的中文标签与后端枚举一一对应（见 packages/shared-types 的 Direction）。
@@ -113,7 +113,7 @@ function handleSubmit(event: Event): void {
           :aria-invalid="Boolean(nameError)"
           aria-describedby="settings-name-hint settings-name-error"
         />
-        <span id="settings-name-hint" class="settings__hint">3–20 个字符；留空并保存可清除姓名。</span>
+        <span id="settings-name-hint" class="settings__hint">姓名须为 2–20 个中文汉字。</span>
         <span id="settings-name-error" class="settings__field-error" role="alert">{{ nameError }}</span>
       </label>
 

@@ -19,6 +19,9 @@ const router = useRouter();
  *   - 用户侧（/user/*）：用户名菜单（UserMenu）常驻；「返回」按钮只出现在
  *     非首页的用户页面，目标按角色分流（管理员→控制台，成员→个人首页）；
  *     个人设置页不放用户名菜单——页面本身就是「个人设置」，入口重复（issue #94 review）
+ *   - 品牌区（左上角）：静态展示，**不是链接**——它原是指向 "/" 的返回入口，
+ *     在首页点它会跳回登录页，与「首页」语义冲突。左侧徽标为工作室圆形图标，
+ *     右侧字标保持原样；返回入口只由上面的 view-nav 承担
  */
 const isUserPage = () => route.path.startsWith("/user/") || route.meta.signalShell === true;
 const isUserHome = () => route.path === "/user/home";
@@ -127,10 +130,10 @@ watch(
     :data-view="isUserPage() ? 'home' : mode"
   >
     <header class="masthead">
-      <RouterLink class="wordmark" to="/" aria-label="IoT Studio 首页"
-        ><span class="logo">⌁</span
-        ><span>IoT STUDIO<small>物联网工作室</small></span></RouterLink
-      >
+      <div class="wordmark">
+        <img class="logo" src="/studio-logo.png" alt="" aria-hidden="true" />
+        <span>IoT-Studio</span>
+      </div>
       <span class="masthead-note">A PLACE FOR CURIOUS MINDS.</span>
       <nav
         v-if="isUserPage() && !isUserHome()"
@@ -156,7 +159,7 @@ watch(
     </div>
     <footer class="footer">
       <!-- 关于我们的入口收敛到首页顶栏（review：页脚重复就删） -->
-      <span class="mono">IoT STUDIO / SWISS SIGNAL / 2026</span
+      <span class="mono">IoT-Studio / SWISS SIGNAL / 2026</span
       ><span>保持好奇，把想法做成作品。</span
       ><button class="plain-link" :aria-pressed="paused" @click="motion.toggle">
         {{ paused ? "恢复动效 ▶" : "暂停动效 ⏸" }}

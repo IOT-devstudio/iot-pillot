@@ -394,7 +394,7 @@ describe("AuthView", () => {
 
     // WebGL 不可用是环境特征，点回去会被立刻转投，形成死循环。
     // 锁住这一点，防止以后有人「顺手」把这个链接加回来。
-    // 注意范围只限提示条内部：左侧品牌面板的 wordmark 本来就指向 "/"。
+    // 注意范围只限提示条内部：本用例只挂载 AuthView，壳层 masthead 的品牌区不在范围内。
     const notice = findElement(
       mounted.root,
       (element) => element.props.class === "compat-notice",

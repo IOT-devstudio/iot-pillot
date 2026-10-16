@@ -131,7 +131,7 @@ onUnmounted(() => {
     <button class="dialog-close" aria-label="关闭详情" autofocus @click="close">
       ×
     </button>
-    <span class="mono">IoT STUDIO / YOUR NEXT STEP</span>
+    <span class="mono">IoT-Studio / YOUR NEXT STEP</span>
     <h2 id="signal-dialog-title">{{ props.title }}</h2>
     <div class="dialog-content"><slot /></div>
   </dialog>

@@ -13,6 +13,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 
 import { AuthRequestError } from "@/api/auth";
 import {
+  deleteAdminUser,
   fetchCurrentUser,
   grantAdmin,
   listAdminUsers,
@@ -109,6 +110,8 @@ export interface AdminPermissionsDeps {
   listAdmins: () => Promise<{ items: AdminUser[] }>;
   grantAdmin: (userId: number) => Promise<AdminMutation>;
   revokeAdmin: (userId: number) => Promise<AdminMutation>;
+  /** 注销账号（issue #142，仅创始管理员可调；后端另有三重守卫） */
+  deleteAdminUser: (userId: number) => Promise<void>;
 }
 
 const defaultDeps: AdminPermissionsDeps = {
@@ -117,6 +120,7 @@ const defaultDeps: AdminPermissionsDeps = {
   listAdmins: () => listAdmins(),
   grantAdmin: (userId) => grantAdmin(userId),
   revokeAdmin: (userId) => revokeAdmin(userId),
+  deleteAdminUser: (userId) => deleteAdminUser(userId),
 };
 
 /**
@@ -156,6 +160,8 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
 
   /** 当前登录用户的 user_id：用来挡住「撤销自己」这个自锁操作 */
   const currentUserId = ref<number | null>(null);
+  /** 当前登录用户是否创始管理员（issue #142 Q1）：只有创始能看到「注销」按钮 */
+  const isFounding = ref(false);
   /** 正在变更中的 user_id 集合，用于把对应行的按钮置灰 */
   const busyIds = ref<Set<number>>(new Set());
 
@@ -214,8 +220,11 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     try {
       const me = await deps.fetchCurrentUser();
       currentUserId.value = me.user_id;
+      // 创始标记只作入口可见性（issue #142 Q1）；后端 RequireFounding 才是强制
+      isFounding.value = me.is_founding === true;
     } catch {
       currentUserId.value = null;
+      isFounding.value = false;
     }
   }
 
@@ -351,6 +360,53 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     }
   }
 
+  /**
+   * 注销账号（issue #142 Q4）。
+   *
+   * 守卫分层：这里拦「自己 / 已注销 / 身份未识别」三个可见分支；
+   * 「目标是创始管理员」前端无法可靠识别（列表不暴露 is_founding），
+   * 由后端业务错误兜底——弹窗提交后错误原样展示。
+   */
+  async function deleteUser(user: AdminUser): Promise<void> {
+    if (currentUserId.value === null) {
+      ElMessage.warning(UNKNOWN_IDENTITY_NOTE);
+      return;
+    }
+    if (isSelf(user.user_id)) {
+      ElMessage.warning("不能注销自己的账号");
+      return;
+    }
+    if (user.is_deleted) {
+      ElMessage.warning("该账号已注销");
+      return;
+    }
+
+    try {
+      await ElMessageBox.confirm(
+        `此操作不可逆：注销「${user.name}」后其无法再登录，历史记录保留。确定注销？`,
+        "注销账号",
+        {
+          type: "warning",
+          confirmButtonText: "确认注销",
+          cancelButtonText: "取消",
+        },
+      );
+    } catch {
+      return; // 用户取消
+    }
+
+    markBusy(user.user_id, true);
+    try {
+      await deps.deleteAdminUser(user.user_id);
+      ElMessage.success("账号已注销，其会话已全部失效");
+      await refresh();
+    } catch (error: unknown) {
+      ElMessage.error(describeAuthError(error).message);
+    } finally {
+      markBusy(user.user_id, false);
+    }
+  }
+
   function resetFilters(): void {
     keyword.value = "";
     roleFilter.value = "all";
@@ -374,6 +430,8 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     adminsUnauthorized,
     // 当前登录身份与忙碌状态
     currentUserId,
+    isFounding,
+    deleteUser,
     isSelf,
     actionFor,
     isBusy,

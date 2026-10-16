@@ -170,7 +170,7 @@ describe("useUserSettings", () => {
       },
     }));
     await state.load(); state.edit();
-    state.form.name = " 新的姓名 ";
+    state.form.name = "新的姓名";
     expect(await state.save()).toBe(true);
     expect(state.form.name).toBe("新的姓名");
     expect(profileDisplayName(currentProfile.value)).toBe("新的姓名");
@@ -182,25 +182,49 @@ describe("useUserSettings", () => {
     const update = vi.fn(async () => profile());
     const state = useUserSettings(makeDeps({ updateMyProfile: update }));
     await state.load(); state.edit();
-    for (const name of ["张三", "a".repeat(21), "𠮷".repeat(21)]) {
+    for (const name of ["", "张", "张".repeat(21), "Alice", "张三A", "张三1", "张 三", " 张三", "张三 ", "张·三", "张三😀"]) {
       state.form.name = name;
       expect(await state.save()).toBe(false);
-      expect(state.nameError.value).toContain("3–20");
+      expect(state.nameError.value).toContain("2–20");
     }
     expect(update).not.toHaveBeenCalled();
     state.form.name = "𠮷".repeat(20);
     expect(await state.save()).toBe(true);
   });
 
-  it("clears the name with null and never falls back to the old JWT name", async () => {
-    const update = vi.fn(async (_input: MyProfileUpdate) => profile({ name: "" }));
+  it("accepts two Chinese characters and preserves legacy names when editing other fields", async () => {
+    const update = vi.fn(async (_input: MyProfileUpdate) => profile());
     const state = useUserSettings(makeDeps({ updateMyProfile: update }));
     await state.load(); state.edit();
-    state.form.name = "  ";
+    state.form.class = "新班级";
     expect(await state.save()).toBe(true);
-    expect(update.mock.calls[0]?.[0]).toMatchObject({ name: null });
-    expect(profileDisplayName(currentProfile.value)).toBe("ada@example.edu.cn");
-    expect(state.form.name).toBe("");
+    expect(update.mock.calls[0]?.[0]).not.toHaveProperty("name");
+    state.edit(); state.form.name = "张三";
+    expect(await state.save()).toBe(true);
+    expect(update.mock.calls[1]?.[0]).toHaveProperty("name", "张三");
+  });
+
+  it("does not auto-save an invalid Chinese name or discard the input", async () => {
+    const update = vi.fn(async () => profile());
+    const state = useUserSettings(makeDeps({ updateMyProfile: update }));
+    await state.load(); state.edit(); state.form.name = "张A";
+    await state.autoSave();
+    expect(update).not.toHaveBeenCalled();
+    expect(state.form.name).toBe("张A");
+    expect(state.nameError.value).toContain("中文汉字");
+  });
+
+  it("rejects invalid names in the unload save path", async () => {
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    try {
+      const state = useUserSettings(makeDeps());
+      await state.load(); state.edit(); state.form.name = "张1";
+      state.persistOnUnload();
+      expect(request).not.toHaveBeenCalled();
+      expect(state.form.name).toBe("张1");
+      expect(state.nameError.value).toContain("中文汉字");
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it("loads profile on first call and hydrates the form", async () => {
@@ -305,7 +329,6 @@ describe("useUserSettings", () => {
     const ok = await state.save();
     expect(ok).toBe(true);
     expect(update).toHaveBeenCalledWith({
-      name: "Ada",
       class: "iot 2301",
       student_id: 2023114514,
       qq: "99999",

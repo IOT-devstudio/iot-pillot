@@ -31,6 +31,11 @@ export interface AdminUser {
   name: string;
   created_at: string;
   is_admin: boolean;
+  /**
+   * 账号是否已注销（issue #142 Q3 软删标注）。后端字段缺省按 false；
+   * true 时列表显示「账号已注销」，该行不再提供注销按钮。
+   */
+  is_deleted?: boolean;
   detail?: AdminUserDetail;
 }
 
@@ -90,6 +95,17 @@ export function grantAdmin(userId: number): Promise<AdminMutation> {
 /** 撤销管理员；后端同样会撤销其会话。撤销自己会被服务端拒绝。 */
 export function revokeAdmin(userId: number): Promise<AdminMutation> {
   return requestWithSession<AdminMutation>(`/api/v1/admin/admins/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * 注销账号（issue #142，DELETE /admin/users/:id，创始管理员专属）。
+ * 二次确认（输入目标用户名）由调用方负责；后端另有三重守卫：
+ * 非创始 403、不能注销自己、创始互不注销。
+ */
+export function deleteAdminUser(userId: number): Promise<void> {
+  return requestWithSession<void>(`/api/v1/admin/users/${userId}`, {
     method: "DELETE",
   });
 }
