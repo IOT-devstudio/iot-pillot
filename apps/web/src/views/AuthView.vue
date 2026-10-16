@@ -99,6 +99,7 @@ const REASON_NOTICES: Record<string, string> = {
     "登录状态已失效（账号可能已在其他位置登录或密码已修改），请重新登录。",
   expired: "登录状态已过期，请重新登录。",
   "password-changed": "密码已修改，请使用新密码登录。",
+  "logged-out": "您已退出登录，请重新登录。",
   "account-deleted": "账号已注销。原报名与申请记录保留为历史存档，如有疑问请联系工作室管理员。",
 };
 const sessionNotice = computed(() => {
