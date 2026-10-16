@@ -133,7 +133,7 @@ function roleLabel(user: AdminUser): string {
             >
               重试
             </button>
-            <router-link to="/dashboard/admins" class="metric__link">
+            <router-link to="/settings/users" class="metric__link">
               查看用户 <span aria-hidden="true">→</span>
             </router-link>
           </div>
@@ -205,7 +205,7 @@ function roleLabel(user: AdminUser): string {
           <section class="panel panel--pad activity-panel">
             <header class="panel-head">
               <h3 class="panel-head__title">最近注册用户</h3>
-              <router-link to="/dashboard/admins" class="panel-head__link">
+              <router-link to="/settings/users" class="panel-head__link">
                 查看全部 <span aria-hidden="true">→</span>
               </router-link>
             </header>
