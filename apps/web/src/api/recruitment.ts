@@ -27,12 +27,24 @@ export type ApplicationStatus = "applied" | "reviewing" | "accepted" | "rejected
 /** 审核可流转到的目标（与后端 RecruitmentReviewReq 一致） */
 export type ReviewTarget = Extract<ApplicationStatus, "reviewing" | "accepted" | "rejected">;
 
+/** 方向绑定的面试表单（issue #136；由 #135 交付，未交付前字段缺省 = null） */
+export interface DirectionForm {
+  id: number;
+  share_token: string;
+  is_open: boolean;
+}
+
 export interface RecruitmentDirection {
   id: number;
   code: string;
   name: string;
   open: boolean;
   sort_order: number;
+  /**
+   * 面试表单；无表单时为 null（#136）。
+   * 后端 #135 交付前字段缺省，按 null 处理（面试入口降级置灰）。
+   */
+  form?: DirectionForm | null;
 }
 
 export interface RecruitmentApplication {

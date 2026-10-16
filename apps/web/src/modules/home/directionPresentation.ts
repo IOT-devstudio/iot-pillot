@@ -53,3 +53,43 @@ const FALLBACK: DirectionPresentation = {
 export function presentationOf(code: string): DirectionPresentation {
   return DIRECTION_PRESENTATION[code] ?? FALLBACK;
 }
+
+/* ------------------------------------------------------------------ *
+ * 面试路径置灰判定（issue #136）
+ * ------------------------------------------------------------------ */
+
+/** 方向绑定的面试表单；与 api/recruitment.ts 的 DirectionForm 同构 */
+export interface DirectionFormLike {
+  is_open: boolean;
+}
+
+/** 判定所需的方向切片：只要 form 字段 */
+export interface DirectionWithForm {
+  form?: DirectionFormLike | null;
+}
+
+/** 判定所需的申请切片：只要 status 字段 */
+export interface ApplicationLike {
+  status: string;
+}
+
+/**
+ * 面试按钮的置灰原因；null = 可点。
+ *
+ * 顺序即优先级（issue #136 §5 边界表）：
+ *   1. 方向无表单（form 缺省 / null，含 #135 交付前的字段缺省）
+ *   2. 表单未开放
+ *   3. 本人申请已到终态（accepted / rejected）
+ * applied / reviewing 反而是「可补交面试」的状态，不拦。
+ */
+export function interviewBlockReason(
+  direction: DirectionWithForm | null,
+  application: ApplicationLike | null,
+): string | null {
+  const form = direction?.form ?? null;
+  if (form === null) return "该方向暂未开放面试";
+  if (!form.is_open) return "面试表单未开放";
+  const status = application?.status;
+  if (status === "accepted" || status === "rejected") return "申请已结束";
+  return null;
+}

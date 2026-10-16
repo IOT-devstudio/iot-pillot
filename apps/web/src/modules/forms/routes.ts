@@ -30,6 +30,6 @@ export const formRoutes: RouteRecordRaw[] = [
     path: "/f/:shareToken",
     name: "form-share",
     component: () => import("./views/ShareFormView.vue"),
-    meta: { title: "招新报名表", allowRoles: ANY_SIGNED_IN, signalShell: true },
+    meta: { title: "招新申请表", allowRoles: ANY_SIGNED_IN, signalShell: true },
   },
 ];
