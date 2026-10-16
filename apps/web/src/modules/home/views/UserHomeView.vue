@@ -35,7 +35,10 @@ import {
   type RecruitmentTimelineEntry,
 } from "@/api/recruitment";
 import SignalDialog from "@/modules/swiss-signal/SignalDialog.vue";
-import { presentationOf } from "../directionPresentation";
+import {
+  interviewBlockReason as interviewBlockReasonOf,
+  presentationOf,
+} from "../directionPresentation";
 import { formatISODate } from "../format";
 
 /** 申请状态的中文标签（与后端状态机一致） */
@@ -115,6 +118,31 @@ const appliedCodes = computed(
     new Set(
       applications.value.map((application) => application.direction_code),
     ),
+);
+
+/**
+ * 选中方向的本人申请（issue #136）：弹窗按它的状态决定两条路径的置灰。
+ * 同方向多条申请取最新一条（服务端已按 id 倒序）。
+ */
+const selectedApplicationRecord = computed(() => {
+  const direction = selectedDirection.value;
+  if (direction === null) return null;
+  return (
+    applications.value.find(
+      (application) => application.direction_code === direction.code,
+    ) ?? null
+  );
+});
+
+/**
+ * 面试路径的置灰原因（issue #136 §5 边界表）；null = 可点。
+ * 判定逻辑抽在 directionPresentation.interviewBlockReason（纯函数、有单测）。
+ */
+const interviewBlockReason = computed(() =>
+  interviewBlockReasonOf(
+    selectedDirection.value,
+    selectedApplicationRecord.value,
+  ),
 );
 
 function describeError(error: unknown, fallback: string): string {
@@ -300,6 +328,17 @@ function openDirection(direction: RecruitmentDirection): void {
   selectedDirection.value = direction;
   submitError.value = "";
   submitNotice.value = "";
+}
+
+/**
+ * 面试路径（issue #136）：跳转该方向绑定的面试表单填写页。
+ * 沿用壳层擦除过渡（与首页其他跨页跳转一致）；提交成功后由填写页
+ * 引导回 /user/home，不在首页内嵌表单。
+ */
+function handleInterview(): void {
+  const form = selectedDirection.value?.form ?? null;
+  if (form === null || interviewBlockReason.value !== null) return;
+  void transition(() => router.push(`/f/${form.share_token}`));
 }
 
 /**
@@ -528,14 +567,14 @@ function steps(application: RecruitmentApplication) {
             </div>
             <button
               class="panel-button"
-              :disabled="!direction.open || appliedCodes.has(direction.code)"
+              :disabled="!direction.open"
               @click="openDirection(direction)"
             >
               {{
                 !direction.open
                   ? "暂未开放"
                   : appliedCodes.has(direction.code)
-                    ? "已报名"
+                    ? "查看"
                     : "了解并报名"
               }}
               <span>↗</span>
@@ -647,8 +686,10 @@ function steps(application: RecruitmentApplication) {
         </div>
       </div>
       <p class="dialog-note">
-        报名将提交真实申请，可在首页「我的进度」查看审核进展。
+        两条路径共用同一条申请：直接报名无需填表；面试需填写该方向的面试表单。
+        提交后可在首页「我的进度」查看审核进展。
       </p>
+      <!-- 报名路径（issue #136）：无需填表，已有申请时置灰为「已报名」 -->
       <button
         class="action-button"
         :disabled="
@@ -664,7 +705,18 @@ function steps(application: RecruitmentApplication) {
             ? "提交中…"
             : appliedCodes.has(selectedDirection.code)
               ? "已报名"
-              : "确认报名"
+              : "报名 · 无需填表"
+        }}</span
+        ><b aria-hidden="true">↗</b>
+      </button>
+      <!-- 面试路径（issue #136）：跳转该方向绑定的表单填写页，不内嵌 -->
+      <button
+        class="action-button"
+        :disabled="interviewBlockReason !== null"
+        @click="handleInterview"
+      >
+        <span>{{
+          interviewBlockReason ?? "面试 · 填写该方向表单"
         }}</span
         ><b aria-hidden="true">↗</b>
       </button>

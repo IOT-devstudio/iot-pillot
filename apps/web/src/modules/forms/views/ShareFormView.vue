@@ -76,7 +76,7 @@ async function submit() {
       <span class="share-form-mark" aria-hidden="true">↗</span>
     </div>
     <section v-if="loading" class="share-form-state" role="status">
-      正在打开报名表…
+      正在打开表单…
     </section>
     <section v-else-if="loadError" class="share-form-state" role="alert">
       <h1>暂时无法打开表单</h1>
@@ -123,8 +123,8 @@ async function submit() {
         >
       </section>
       <form v-else novalidate @submit.prevent="submit">
-        <section class="form-identity" aria-label="当前报名身份">
-          <span class="forms-kicker">当前报名身份</span
+        <section class="form-identity" aria-label="当前申请身份">
+          <span class="forms-kicker">当前申请身份</span
           ><strong>{{ profile?.name || profile?.username }}</strong>
           <p>
             {{ profile?.detail?.class || "班级未填写" }} ·
@@ -140,7 +140,7 @@ async function submit() {
           >
         </section>
         <fieldset class="form-fieldset" :disabled="submitting">
-          <legend class="form-sr-only">报名问题</legend>
+          <legend class="form-sr-only">表单问题</legend>
           <FormFields
             v-model="values"
             :fields="data.fields"
@@ -156,7 +156,7 @@ async function submit() {
         </p>
         <div class="share-form-submit">
           <p class="form-hint">
-            提交后将生成本轮次、此方向的报名申请。答案提交后不可修改。
+            提交后将生成本轮次、此方向的申请。答案提交后不可修改。
           </p>
           <button
             class="form-button form-button--primary"
