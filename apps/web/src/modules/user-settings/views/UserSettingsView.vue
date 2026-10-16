@@ -7,10 +7,13 @@
  *
  * 字段契约来自已合并的 #57 / #86，姓名编辑对应 #87。
  */
-import { inject, onBeforeUnmount, onMounted } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, ref } from "vue";
 import { onBeforeRouteLeave, useRouter } from "vue-router";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 import PageHeader from "@/components/common/PageHeader.vue";
+import { deleteCurrentUser } from "@/api/profile";
+import { clearAuthSession } from "@/auth/session";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import { useUserSettings } from "../composables/useUserSettings";
 import ChangePasswordCard from "../components/ChangePasswordCard.vue";
@@ -81,6 +84,47 @@ function pickDirection(): void {
   void transition(() => router.push("/user/home#directions"));
 }
 
+/**
+ * 自助注销（issue #159 Q1/Q2）：
+ * - 创始管理员隐藏整个入口（后端同样拒绝，前端只是体验）；
+ * - 确认形式是轻量确认弹窗（Q2 拍板：不要求输用户名/密码）；
+ * - 成功后后端已踢全部会话，本地清会话跳登录页带 account-deleted 提示。
+ */
+const deleting = ref(false);
+const isFounding = computed(() => profile.value?.is_founding === true);
+
+async function handleDeleteAccount(): Promise<void> {
+  if (deleting.value) return;
+  try {
+    await ElMessageBox.confirm(
+      "注销后将无法再登录，原报名与申请记录会保留为历史存档。确定注销账号？",
+      "注销账号",
+      {
+        type: "warning",
+        confirmButtonText: "确认注销",
+        cancelButtonText: "取消",
+        confirmButtonClass: "el-button--danger",
+      },
+    );
+  } catch {
+    return; // 用户取消
+  }
+
+  deleting.value = true;
+  try {
+    await deleteCurrentUser();
+    clearAuthSession();
+    await router.replace("/?reason=account-deleted");
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "注销失败，请稍后重试";
+    ElMessage.error(message);
+    deleting.value = false;
+  }
+}
+
 </script>
 
 <template>
@@ -144,6 +188,31 @@ function pickDirection(): void {
         <!-- 修改密码入口（issue #85 重构）：一行字样 + 液态玻璃弹窗，
              弹窗内走邮箱验证码流程（复用忘记密码后端契约） -->
         <ChangePasswordCard :email="profile.detail?.email ?? ''" />
+
+        <!-- 自助注销（issue #159）：创始管理员整个隐藏（Q1，
+             后端 DELETE /me 同样拒绝，这里只是体验层） -->
+        <section
+          v-if="!isFounding"
+          class="panel panel--pad danger-zone"
+          aria-label="注销账号"
+        >
+          <div class="danger-zone__text">
+            <h3>注销账号</h3>
+            <p>
+              注销后无法再登录；原报名与申请记录会保留为历史存档。
+              如需恢复请联系工作室管理员。
+            </p>
+          </div>
+          <el-button
+            type="danger"
+            plain
+            :disabled="deleting"
+            :loading="deleting"
+            @click="handleDeleteAccount"
+          >
+            {{ deleting ? "注销中…" : "注销账号" }}
+          </el-button>
+        </section>
       </template>
 
       <!-- 保存失败的局部提示：toast 容易被错过，把这条放在表单下面兜底 -->
@@ -239,5 +308,34 @@ function pickDirection(): void {
   border-radius: 6px;
   background: #fdf3f1;
   font-size: 13px;
+}
+
+/* 自助注销危险区（issue #159）：与上方卡片同款液态玻璃，
+   仅用左侧红规与危险色按钮标记危险语义，不做成刺眼的红卡 */
+.danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-left: 3px solid #a33d32;
+}
+
+.danger-zone__text h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.danger-zone__text p {
+  margin: 0;
+  color: var(--ink-soft, #5a6570);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .danger-zone {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

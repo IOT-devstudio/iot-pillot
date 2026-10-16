@@ -42,6 +42,9 @@ const {
   changePageSize,
   grant,
   revoke,
+  isFounding,
+  deleteUser,
+  isSelf,
   UNKNOWN_IDENTITY_NOTE,
 } = useAdminPermissions();
 
@@ -130,7 +133,14 @@ onMounted(loadAll);
           </p>
           <el-table v-else :data="filteredUsers">
             <el-table-column prop="user_id" label="用户 ID" width="110" />
-            <el-table-column prop="name" label="姓名" min-width="160" />
+            <el-table-column prop="name" label="姓名" min-width="160">
+              <template #default="{ row }">
+                {{ row.name }}
+                <el-tag v-if="row.is_deleted" type="danger" size="small" effect="plain">
+                  账号已注销
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="created_at" label="注册时间" min-width="200" />
             <el-table-column label="角色" width="110">
               <template #default="{ row }">
@@ -140,10 +150,21 @@ onMounted(loadAll);
                 <el-tag v-else type="info" effect="plain">普通用户</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="260" fixed="right">
+            <el-table-column label="操作" width="310" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openDetail(row)">
                   详情
+                </el-button>
+                <!-- 注销（issue #142 Q1/Q4）：仅创始管理员可见，对自己与
+                     已注销行不显示；确认弹窗要求输入目标用户名 -->
+                <el-button
+                  v-if="isFounding && !isSelf(row.user_id) && !row.is_deleted"
+                  link
+                  type="danger"
+                  :loading="isBusy(row.user_id)"
+                  @click="deleteUser(row)"
+                >
+                  注销
                 </el-button>
                 <template v-if="actionFor(row).kind === 'grant'">
                   <el-button
