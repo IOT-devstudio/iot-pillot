@@ -19,6 +19,9 @@ const router = useRouter();
  *   - 用户侧（/user/*）：用户名菜单（UserMenu）常驻；「返回」按钮只出现在
  *     非首页的用户页面，目标按角色分流（管理员→控制台，成员→个人首页）；
  *     个人设置页不放用户名菜单——页面本身就是「个人设置」，入口重复（issue #94 review）
+ *   - 品牌区（左上角）：静态展示，**不是链接**——它原是指向 "/" 的返回入口，
+ *     在首页点它会跳回登录页，与「首页」语义冲突。左侧徽标为工作室圆形图标，
+ *     右侧字标保持原样；返回入口只由上面的 view-nav 承担
  */
 const isUserPage = () => route.path.startsWith("/user/") || route.meta.signalShell === true;
 const isUserHome = () => route.path === "/user/home";
@@ -127,10 +130,10 @@ watch(
     :data-view="isUserPage() ? 'home' : mode"
   >
     <header class="masthead">
-      <RouterLink class="wordmark" to="/" aria-label="IOT studio 首页"
-        ><span class="logo">⌁</span
-        ><span>IOT studio</span></RouterLink
-      >
+      <div class="wordmark">
+        <img class="logo" src="/studio-logo.png" alt="" aria-hidden="true" />
+        <span>IOT studio</span>
+      </div>
       <span class="masthead-note">A PLACE FOR CURIOUS MINDS.</span>
       <nav
         v-if="isUserPage() && !isUserHome()"
