@@ -63,7 +63,7 @@ describe("application routes", () => {
       routes.find((route) => route.path === "/login")?.component,
     );
     // 开屏对所有人开放，不能挂上任何角色限制
-    expect(rootRoutes[0]?.meta?.allowRoles).toBeUndefined();
+    expect(rootRoutes[0]?.meta?.allowRoles).toEqual([]);
   });
 
   it("marks the buildings editor as member-only", () => {
@@ -127,7 +127,7 @@ describe("application routes", () => {
     expect(loginRoutes).toHaveLength(1);
     expect(loginRoutes[0]?.component).toMatchObject({ name: "AuthView" });
     // 后备登录页必须公开：3D 渲染失败转投过来时，守卫不能把它再挡走
-    expect(loginRoutes[0]?.meta?.allowRoles).toBeUndefined();
+    expect(loginRoutes[0]?.meta?.allowRoles).toEqual([]);
 
     // 内容首页已并入管理台，旧路径必须重定向过去，否则收藏夹和旧链接会变成死链
     const retiredHome = routes.filter((route) => route.path === "/home");
@@ -135,7 +135,7 @@ describe("application routes", () => {
     expect(retiredHome[0]?.redirect).toBe("/dashboard");
   });
 
-  it("guards the user-side pages for signed-in users", () => {
+  it("publishes home and about while protecting personal user pages", () => {
     const userPages = routes.filter((route) => route.path.startsWith("/user/"));
 
     expect(userPages.map(({ path, name }) => ({ path, name }))).toEqual([
@@ -144,9 +144,11 @@ describe("application routes", () => {
       { path: "/user/settings", name: "user-settings" },
       { path: "/user/invitations", name: "user-invitations" },
     ]);
-    // 用户侧页面必须挂守卫：未登录不能看，成员则照常放行（单向规则）
+    // 只有首页和介绍公开；个人设置与邀请仍要求登录。
     for (const page of userPages) {
-      expect(page.meta?.allowRoles).toEqual(["admin", "member"]);
+      expect(page.meta?.allowRoles).toEqual(
+        ["/user/home", "/user/about"].includes(page.path) ? [] : ["admin", "member"],
+      );
     }
   });
 

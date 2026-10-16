@@ -35,7 +35,7 @@ function bearerOf(init: RequestInit | undefined): string | null {
 }
 
 describe("recruitment api", () => {
-  it("reads the direction list through the session requester", async () => {
+  it("reads public directions without a Bearer token", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -58,7 +58,7 @@ describe("recruitment api", () => {
     });
     const [path, init] = fetchMock.mock.calls[0] ?? [];
     expect(path).toBe("/api/v1/recruitment/directions");
-    expect(bearerOf(init)).toBe("Bearer access-token");
+    expect(bearerOf(init)).toBe(null);
   });
 
   it("submits an application with the snake_case direction code", async () => {
