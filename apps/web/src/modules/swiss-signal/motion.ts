@@ -81,9 +81,6 @@ export function useSignalMotion(root: Ref<HTMLElement | null>) {
     x = y = sx = sy = 0;
     root.value?.style.setProperty("--drift-x", "0px");
     root.value?.style.setProperty("--drift-y", "0px");
-    root.value?.querySelectorAll<HTMLElement>("[data-count]").forEach((el) => {
-      el.textContent = String(Number(el.dataset.count)).padStart(2, "0");
-    });
     root.value
       ?.querySelectorAll<HTMLElement>(
         "[data-magnetic], .direction-panel, .home-poster",
@@ -281,25 +278,7 @@ export function useSignalMotion(root: Ref<HTMLElement | null>) {
           observer?.unobserve(entry.target);
           stagger([entry.target], 28);
           stagger(entry.target.querySelectorAll(".journey-steps li"), 18, 120);
-          entry.target
-            .querySelectorAll<HTMLElement>("[data-count]")
-            .forEach((el) => {
-              const target = Number(el.dataset.count);
-              if (!enabled()) return;
-              const start = performance.now();
-              const tick = (now: number) => {
-                if (!enabled()) {
-                  el.textContent = String(target).padStart(2, "0");
-                  return;
-                }
-                const p = Math.min(1, (now - start) / 850);
-                el.textContent = String(
-                  Math.round(target * (1 - Math.pow(1 - p, 3))),
-                ).padStart(2, "0");
-                if (p < 1) frame(tick);
-              };
-              frame(tick);
-            });
+          // 统计数字由 Vue 渲染；异步数据更新时不能用动画覆盖文本。
         }),
       { threshold: 0.15 },
     );
