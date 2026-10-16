@@ -462,7 +462,7 @@ function steps(application: RecruitmentApplication) {
       <div>
         <span class="mono">OPEN DIRECTIONS</span
         ><strong
-          ><span :data-count="openDirectionCount">{{
+          ><span>{{
             String(openDirectionCount).padStart(2, "0")
           }}</span
           ><small>个开放方向</small></strong
@@ -471,7 +471,7 @@ function steps(application: RecruitmentApplication) {
       <div>
         <span class="mono">MY APPLICATIONS</span
         ><strong
-          ><span :data-count="applications.length">{{
+          ><span>{{
             String(applications.length).padStart(2, "0")
           }}</span
           ><small>条报名记录</small></strong
