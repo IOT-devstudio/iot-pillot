@@ -7,22 +7,33 @@ import {
   ref,
   watch,
 } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 import UserMenu from "@/components/common/UserMenu.vue";
 
-interface AdminNavItem {
+interface AdminNavChild {
   label: string;
   to: string;
+}
+
+interface AdminNavItem {
+  label: string;
+  /** 折叠分组的父项：点击切换展开态，不直接导航（子项为空时兜底跳 to） */
+  to?: string;
   match?: string;
   exact?: boolean;
   icon: string;
+  /** 折叠分组的子项（issue #59 后续：设置中心后续区块挂在这里） */
+  children?: AdminNavChild[];
 }
 
 interface AdminNavGroup {
   label: string;
   items: AdminNavItem[];
 }
+
+/** 设置分组展开态的 localStorage 键（跨会话记住用户手动收起/展开） */
+const SETTINGS_GROUP_KEY = "iot-pillot.admin-nav.settings-expanded";
 
 const navGroups: AdminNavGroup[] = [
   {
@@ -63,20 +74,22 @@ const navGroups: AdminNavGroup[] = [
   },
   {
     label: "管理",
-    // 「用户与权限」不再单列（issue #59）：它并入「系统设置」成为第一个
-    // 区块（/settings/users）。侧栏不设 exact，/settings 前缀匹配
-    // 覆盖其全部子区块，设置中心内任意子页下「系统设置」保持高亮。
+    // 「用户与权限」不再单列（issue #59）：它并入「系统设置」分组成为
+    // 第一个子项。后续设置区块（SMTP 发件配置、注册开关……）在 children
+    // 里追加一行即可，父项点击切换展开态，展开记忆在 localStorage。
     items: [
       {
         label: "系统设置",
-        to: "/settings",
+        to: "/settings/users",
         icon: "M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5z M19.4 13.5a7.8 7.8 0 0 0 0-3l1.45-1.1-1.5-2.6-1.75.7a7.8 7.8 0 0 0-2.6-1.5l-.3-1.9h-3l-.3 1.9a7.8 7.8 0 0 0-2.6 1.5l-1.75-.7-1.5 2.6L5.5 10.5a7.8 7.8 0 0 0 0 3l-1.45 1.1 1.5 2.6 1.75-.7a7.8 7.8 0 0 0 2.6 1.5l.3 1.9h3l.3-1.9a7.8 7.8 0 0 0 2.6-1.5l1.75.7 1.5-2.6z",
+        children: [{ label: "用户与权限", to: "/settings/users" }],
       },
     ],
   },
 ];
 
 const route = useRoute();
+const router = useRouter();
 const collapsed = ref(false);
 const mobileOpen = ref(false);
 const isMobile = ref(false);
@@ -87,9 +100,53 @@ const isProspectDetail = computed(
   () => route.name === "recruitment-candidate-detail",
 );
 
+/**
+ * 设置分组展开态（issue #59 后续）。
+ * 默认展开；进入 /settings/* 时强制展开（用户从侧栏之外的入口进来时
+ * 子项不能是藏起来的）；手动切换写 localStorage，下次会话记住。
+ */
+const settingsExpanded = ref(
+  localStorage.getItem(SETTINGS_GROUP_KEY) !== "false",
+);
+watch(
+  () => route.path,
+  (path) => {
+    if (path.startsWith("/settings") && !settingsExpanded.value) {
+      settingsExpanded.value = true;
+    }
+  },
+);
+watch(settingsExpanded, (value) => {
+  localStorage.setItem(SETTINGS_GROUP_KEY, String(value));
+});
+
+/** 折叠分组父项点击：切换展开态；收起状态下点击则展开并跳默认区块 */
+function toggleGroup(item: AdminNavItem): void {
+  if (!item.children?.length) {
+    // 无子项的普通项保持直接导航
+    if (item.to) void router.push(item.to);
+    return;
+  }
+  if (!settingsExpanded.value) {
+    settingsExpanded.value = true;
+    if (item.to) void router.push(item.to);
+    return;
+  }
+  settingsExpanded.value = false;
+}
+
+/** 子项高亮：只认精确路径 */
+function isLeafActive(child: { to: string }): boolean {
+  return route.path === child.to;
+}
+
 function isActive(item: AdminNavItem): boolean {
+  if (item.children?.length) {
+    // 折叠分组父项：任一子项所在分区命中即高亮
+    return route.path.startsWith("/settings");
+  }
   if (item.exact) return route.path === item.to;
-  return route.path.startsWith(item.match ?? item.to);
+  return route.path.startsWith(item.match ?? item.to ?? "");
 }
 
 function closeMobileMenu(restoreFocus = false): void {
@@ -199,25 +256,76 @@ onBeforeUnmount(() => {
         >
           <p class="admin-navigation__heading">{{ group.label }}</p>
           <div class="admin-navigation__items">
-            <router-link
-              v-for="item in group.items"
-              :key="item.to"
-              :to="item.to"
-              class="admin-navigation__link"
-              :class="{ 'is-active': isActive(item) }"
-              :aria-current="isActive(item) ? 'page' : undefined"
-              :aria-label="collapsed ? item.label : undefined"
-              :title="collapsed ? item.label : undefined"
-            >
-              <svg
-                class="admin-navigation__icon"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
+            <template v-for="item in group.items" :key="item.label">
+              <!-- 折叠分组（issue #59 后续）：父项是切换按钮，子项缩进列出 -->
+              <div
+                v-if="item.children?.length"
+                class="admin-navigation__grouping"
               >
-                <path :d="item.icon" />
-              </svg>
-              <span class="admin-navigation__label">{{ item.label }}</span>
-            </router-link>
+                <button
+                  type="button"
+                  class="admin-navigation__link admin-navigation__grouping-trigger"
+                  :class="{ 'is-active': isActive(item) }"
+                  :aria-expanded="settingsExpanded"
+                  :aria-label="collapsed ? item.label : undefined"
+                  :title="collapsed ? item.label : undefined"
+                  @click="toggleGroup(item)"
+                >
+                  <svg
+                    class="admin-navigation__icon"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path :d="item.icon" />
+                  </svg>
+                  <span class="admin-navigation__label">{{ item.label }}</span>
+                  <svg
+                    v-if="!collapsed"
+                    class="admin-navigation__grouping-caret"
+                    :class="{ 'is-expanded': settingsExpanded }"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                <div
+                  v-show="settingsExpanded && !collapsed"
+                  class="admin-navigation__grouping-children"
+                >
+                  <router-link
+                    v-for="child in item.children"
+                    :key="child.to"
+                    :to="child.to"
+                    class="admin-navigation__link admin-navigation__child"
+                    :class="{ 'is-active': isLeafActive(child) }"
+                    :aria-current="isLeafActive(child) ? 'page' : undefined"
+                  >
+                    <span class="admin-navigation__label">{{
+                      child.label
+                    }}</span>
+                  </router-link>
+                </div>
+              </div>
+              <router-link
+                v-else
+                :to="item.to ?? '/'"
+                class="admin-navigation__link"
+                :class="{ 'is-active': isActive(item) }"
+                :aria-current="isActive(item) ? 'page' : undefined"
+                :aria-label="collapsed ? item.label : undefined"
+                :title="collapsed ? item.label : undefined"
+              >
+                <svg
+                  class="admin-navigation__icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path :d="item.icon" />
+                </svg>
+                <span class="admin-navigation__label">{{ item.label }}</span>
+              </router-link>
+            </template>
           </div>
           <div
             v-if="index < navGroups.length - 1"
@@ -451,6 +559,59 @@ onBeforeUnmount(() => {
 .admin-navigation__link:hover {
   color: var(--ink);
   background: rgb(16 43 78 / 5%);
+}
+
+/* ── 折叠分组（issue #59 后续）── */
+.admin-navigation__grouping-trigger {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.admin-navigation__grouping-caret {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  transition: transform 160ms ease;
+}
+
+.admin-navigation__grouping-caret.is-expanded {
+  transform: rotate(180deg);
+}
+
+.admin-navigation__grouping-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px;
+}
+
+/* 子项缩进对齐父项文字（icon 18px + gap 12px + 父项左padding 12px + 自身border 2px） */
+.admin-navigation__child {
+  min-height: 38px;
+  padding-left: 44px;
+  font-size: 12.5px;
+}
+
+.admin-navigation__child::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  margin-left: -14px;
+  margin-right: 9px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.55;
 }
 
 .admin-navigation__link.is-active {
