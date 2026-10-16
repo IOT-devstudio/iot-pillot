@@ -22,6 +22,9 @@ export const userSettingsRoutes: RouteRecordRaw[] = [
     path: "/user/settings",
     name: "user-settings",
     component: UserSettingsView,
-    meta: { title: "个人设置", allowRoles: ANY_SIGNED_IN },
+    // denyFounding（issue #138）：创始管理员没有个人设置页——该账号无绑定
+    // 邮箱、不走自助改密，表单语义不成立；守卫拦截后重定向回 /user/home
+    // 并带 notice 提示。#121 只隐藏了菜单入口，这里补路由级拦截。
+    meta: { title: "个人设置", allowRoles: ANY_SIGNED_IN, denyFounding: true },
   },
 ];

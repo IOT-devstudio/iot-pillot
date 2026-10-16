@@ -9,7 +9,7 @@ describe("share link login return", () => {
     expect(
       await resolveRouteAccess(["admin", "member"], target, {
         readToken: () => null,
-        fetchRole: async () => "member",
+        fetchIdentity: async () => ({ role: "member", isFounding: false }),
         clearSession: () => {},
       }),
     ).toEqual({ path: "/", query: { redirect: target } });
