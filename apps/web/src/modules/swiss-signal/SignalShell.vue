@@ -132,7 +132,7 @@ watch(
     <header class="masthead">
       <div class="wordmark">
         <img class="logo" src="/studio-logo.png" alt="" aria-hidden="true" />
-        <span>IOT studio</span>
+        <span>IoT-Studio</span>
       </div>
       <span class="masthead-note">A PLACE FOR CURIOUS MINDS.</span>
       <nav
@@ -159,7 +159,7 @@ watch(
     </div>
     <footer class="footer">
       <!-- 关于我们的入口收敛到首页顶栏（review：页脚重复就删） -->
-      <span class="mono">IoT STUDIO / SWISS SIGNAL / 2026</span
+      <span class="mono">IoT-Studio / SWISS SIGNAL / 2026</span
       ><span>保持好奇，把想法做成作品。</span
       ><button class="plain-link" :aria-pressed="paused" @click="motion.toggle">
         {{ paused ? "恢复动效 ▶" : "暂停动效 ⏸" }}
