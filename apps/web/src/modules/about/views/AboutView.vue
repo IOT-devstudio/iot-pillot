@@ -1,131 +1,152 @@
 <script setup lang="ts">
-/**
- * 关于我们 `/user/about`。
- *
- * 纯展示页：没有交互、不发请求、不持状态。
- *
- * 分工：
- *   fixtures.ts                   静态文案与假数据
- *   components/StudioIntroCard    工作室简介 + 数字
- *   components/FocusList          方向 / 定位
- *   components/WorksList          成果
- *   components/MemberList         成员
- *   本组件                         布局 + 接线
- *
- * ⚠️ 年份、人数、成果、成员姓名等**未经工作室确认的事实一律不展示**，
- * 统一以「待补充」状态呈现（见 fixtures.ts 与 issue #94）；简介与方向
- * 沿用登录页已有文案，不涉及具体数据。底部有一行标注兜底。
- *
- * 出路（issue #94）：页面挂在 SignalShell 壳内，回个人首页走 masthead 的
- * 「返回用户首页」，不再单放返回链接。
- *
- * 布局与视觉沿用 home 模块（`/user/home`）：`__inner` 是唯一的宽度容器，
- * `__body` 只负责卡片间距，因此四块卡片天然等宽、整页水平居中。
- *
- * 设计令牌在这里又定义了一份（`--about-*`，值与 `--home-*` 相同）。
- * 之所以不共用：`src/assets/` 全局样式目录还没建（CLAUDE.md 规划了，
- * 但「只有真实需要时才创建」），而本步骤只允许改 about 模块下的文件。
- * M3 做设计基线时应当把这两套抽到全局。
- */
-import {
-  STUDIO_FOCUS,
-  STUDIO_INTRO,
-  STUDIO_MEMBERS,
-  STUDIO_WORKS,
-} from "../fixtures";
+/** 关于我们：侧栏选择内容，复用原有玻璃卡与流光动画，不新增事实数据。 */
+import { ref } from "vue";
+import { STUDIO_FOCUS, STUDIO_INTRO, STUDIO_MEMBERS, STUDIO_WORKS } from "../fixtures";
 import FocusList from "../components/FocusList.vue";
 import MemberList from "../components/MemberList.vue";
 import StudioIntroCard from "../components/StudioIntroCard.vue";
 import WorksList from "../components/WorksList.vue";
 
-const profile = STUDIO_INTRO;
-const focuses = STUDIO_FOCUS;
-const works = STUDIO_WORKS;
-const members = STUDIO_MEMBERS;
+const sections = [
+  { id: "intro", label: "工作室简介", detail: "我们是谁" },
+  { id: "focus", label: "方向 / 定位", detail: "我们在探索什么" },
+  { id: "works", label: "成果", detail: "把想法做成作品" },
+  { id: "members", label: "成员", detail: "一起动手的人" },
+] as const;
+type SectionId = typeof sections[number]["id"];
+const active = ref<SectionId>("intro");
+const navigation = ref<HTMLElement | null>(null);
+
+function preview(event: PointerEvent, id: SectionId): void {
+  if (event.pointerType === "mouse") active.value = id;
+}
+
+function move(event: KeyboardEvent, index: number): void {
+  let next: number;
+  if (event.key === "ArrowDown" || event.key === "ArrowRight") next = (index + 1) % sections.length;
+  else if (event.key === "ArrowUp" || event.key === "ArrowLeft") next = (index + sections.length - 1) % sections.length;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = sections.length - 1;
+  else return;
+  event.preventDefault();
+  active.value = sections[next].id;
+  navigation.value?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+}
 </script>
 
 <template>
   <div class="about">
-    <!-- 品牌色柔光晕背景（issue #85 改造）：给液态玻璃卡「可透之物」 -->
     <div class="glass-backdrop" aria-hidden="true"></div>
-    <!-- 唯一的宽度容器：标题区和四块卡片都跟着它走，宽度天然一致 -->
     <div class="about__inner">
       <header class="about__header">
         <h1 class="about__title">关于我们</h1>
-        <p class="about__subtitle">{{ profile.name }} · 招新项目手册</p>
+        <p class="about__subtitle">{{ STUDIO_INTRO.name }} · 招新项目手册</p>
       </header>
 
-      <div class="about__body">
-        <StudioIntroCard :profile="profile" />
+      <div class="about__workspace">
+        <nav ref="navigation" class="about__sidebar" aria-label="关于我们栏目" role="tablist" aria-orientation="vertical">
+          <button
+            v-for="(section, index) in sections"
+            :id="`about-tab-${section.id}`"
+            :key="section.id"
+            type="button"
+            role="tab"
+            class="about__tab liquid-glass"
+            :class="{ 'about__tab--active': active === section.id }"
+            :aria-selected="active === section.id"
+            aria-controls="about-content"
+            :tabindex="active === section.id ? 0 : -1"
+            @pointerenter="preview($event, section.id)"
+            @focus="active = section.id"
+            @click="active = section.id"
+            @keydown="move($event, index)"
+          >
+            <span class="about__tab-label">{{ section.label }}</span>
+            <span class="about__tab-detail">{{ section.detail }}</span>
+            <span class="about__tab-arrow" aria-hidden="true">↗</span>
+          </button>
+        </nav>
 
-        <FocusList :focuses="focuses" />
-
-        <WorksList :works="works" />
-
-        <MemberList :members="members" />
+        <div
+          id="about-content"
+          class="about__content"
+          role="tabpanel"
+          :aria-labelledby="`about-tab-${active}`"
+          tabindex="0"
+        >
+          <Transition name="about-panel" mode="out-in">
+            <div :key="active" class="about__panel" :data-section="active">
+              <StudioIntroCard v-if="active === 'intro'" :profile="STUDIO_INTRO" />
+              <FocusList v-else-if="active === 'focus'" :focuses="STUDIO_FOCUS" />
+              <WorksList v-else-if="active === 'works'" :works="STUDIO_WORKS" />
+              <MemberList v-else :members="STUDIO_MEMBERS" />
+            </div>
+          </Transition>
+        </div>
       </div>
 
-      <p class="about__disclaimer">
-        以上为占位示例内容，待工作室提供正式资料。
-      </p>
+      <p class="about__disclaimer">以上为占位示例内容，待工作室提供正式资料。</p>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 设计令牌：与 home（/user/home）用同一套值，避免两个用户侧页面观感割裂 */
 .about {
   --about-ink: #102b4e;
   --about-muted: #5c6b7a;
   --about-accent: #164d80;
   --about-border: #d8dee4;
-  /* 内容栏宽度：标题与四块卡片共用这一个值，改宽度只改这里 */
-  --about-content-width: 720px;
-
   min-height: 100vh;
-  padding: 32px clamp(16px, 4vw, 48px) 48px;
+  padding: 40px clamp(16px, 4vw, 48px) 64px;
   color: var(--about-ink);
   background: #f4f6f8;
   font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
-
-/*
- * 内容整体水平居中。
- * 窗口比内容栏窄时 max-width 不生效，由 .about 的左右 padding 兜住，
- * 所以窄屏也不会贴边。
- */
-.about__inner {
-  position: relative;
-  z-index: 1;
-  max-width: var(--about-content-width);
-  margin: 0 auto;
-}
-
-.about__header {
-  margin-bottom: 20px;
-}
-
-.about__title {
-  margin: 0;
-  font-size: 22px;
-}
-
-.about__subtitle {
-  margin: 6px 0 0;
-  color: var(--about-muted);
-  font-size: 13px;
-}
-
-/* 只负责卡片间距；宽度交给 .about__inner，四块卡片因此天然等宽 */
-.about__body {
+.about__inner { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; }
+.about__header { margin-bottom: 32px; }
+.about__title { margin: 0; font-size: 28px; }
+.about__subtitle { margin: 8px 0 0; color: var(--about-muted); font-size: 13px; }
+.about__workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 28px; min-height: 440px; }
+.about__sidebar { display: grid; gap: 12px; }
+.about__tab {
   display: grid;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  width: 100%;
+  min-height: 92px;
+  padding: 20px;
+  color: var(--about-ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: color 240ms ease, box-shadow 240ms ease;
 }
-
-.about__disclaimer {
-  margin: 16px 0 0;
-  color: var(--about-muted);
-  font-size: 11px;
-  line-height: 1.6;
+.about__tab--active { color: var(--about-accent); box-shadow: 0 18px 48px -22px rgba(10, 16, 40, 0.35), inset 3px 0 0 #1739f5; }
+.about__tab-label { font-size: 15px; font-weight: 600; }
+.about__tab-detail { grid-column: 1; color: var(--about-muted); font-size: 11px; line-height: 1.6; }
+.about__tab-arrow { grid-column: 2; grid-row: 1 / 3; align-self: center; font-size: 22px; transition: transform 240ms ease; }
+.about__tab--active .about__tab-arrow { transform: translateX(3px); }
+.about__tab:focus-visible, .about__content:focus-visible { outline: 2px solid #1739f5; outline-offset: 5px; }
+.about__content { min-width: 0; border-radius: 24px; }
+.about__panel { width: 100%; }
+.about-panel-enter-active, .about-panel-leave-active { transition: opacity 220ms ease, transform 320ms cubic-bezier(.22, 1, .36, 1); }
+.about-panel-enter-from { opacity: 0; transform: translateX(-16px); }
+.about-panel-leave-to { opacity: 0; transform: translateX(10px); }
+.about__disclaimer { margin: 24px 0 0 248px; color: var(--about-muted); font-size: 11px; line-height: 1.6; }
+@media (max-width: 640px) {
+  .about { padding-top: 28px; }
+  .about__header { margin-bottom: 24px; }
+  .about__workspace { grid-template-columns: 96px minmax(0, 1fr); gap: 14px; }
+  .about__tab { display: block; min-height: 80px; padding: 16px 12px; border-radius: 18px; }
+  .about__tab-label { font-size: 13px; line-height: 1.5; }
+  .about__tab-detail, .about__tab-arrow { display: none; }
+  .about__disclaimer { margin-left: 110px; }
+  .about__panel :deep(.liquid-glass) { padding: 18px 14px; }
+  .about__panel :deep(.intro__stats) { gap: 12px; }
+  .about__panel :deep(.focus__item) { padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .about__tab, .about__tab-arrow, .about-panel-enter-active, .about-panel-leave-active { transition: none; }
+  .about-panel-enter-from, .about-panel-leave-to { transform: none; }
 }
 </style>
