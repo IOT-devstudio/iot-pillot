@@ -32,23 +32,36 @@ var ErrInvalidTransition = errors.New("当前申请状态不允许此操作")
 // ErrNotOwned 尝试读取/操作不属于自己的申请。
 var ErrNotOwned = errors.New("无权访问该申请")
 
-// allowedDirections 本期开放报名的方向 code 白名单。
-//
-// 与 issue #88 拍板一致：front-end / back-end / agent 可报名，
-// all / game / other 保留为用户资料倾向（users.detail_direction），不开放。
-//
-// 白名单校验放在服务层（业务规则），方向表里的 open 字段控制运营开关：
-// 即使种子数据被管理员误设为前端，白名单也会挡住 all/game/other。
-var allowedDirections = map[string]struct{}{
-	string(domain.FrontEnd): {},
-	string(domain.BackEnd):  {},
-	string(domain.Agent):    {},
-}
+// ErrInvalidDirectionCode 创建方向时 code 格式非法。
+var ErrInvalidDirectionCode = errors.New("方向 code 只能包含小写字母、数字和连字符，长度 1~32")
 
-// directionAllowed 报告该方向 code 是否在本期开放报名集合内。
-func directionAllowed(code string) bool {
-	_, ok := allowedDirections[strings.TrimSpace(code)]
-	return ok
+// ErrInvalidDirectionName 创建方向时 name 缺失或超长。
+var ErrInvalidDirectionName = errors.New("方向名称不能为空且不能超过 64 个字符")
+
+// maxDirectionCodeLen / maxDirectionNameLen 创建方向时的长度上限。
+const (
+	maxDirectionCodeLen = 32
+	maxDirectionNameLen = 64
+)
+
+// validDirectionCode 判断 code 是否符合创建格式：小写字母 / 数字 / 连字符，1~32 字符。
+//
+// 独立格式校验，刻意不复用 domain.Direction 六值枚举（issue #128 决策）：
+// domain.Direction 只服务 users.detail_direction（用户资料倾向），
+// 招新方向 code 是运营自助数据，复用枚举会把可报名方向重新耦合回编译期。
+// all / game / other 从不在方向表里（迁移 0007 只种三行），删白名单不会放开它们。
+func validDirectionCode(code string) bool {
+	if code == "" || len(code) > maxDirectionCodeLen {
+		return false
+	}
+	for _, r := range code {
+		isLower := r >= 'a' && r <= 'z'
+		isDigit := r >= '0' && r <= '9'
+		if !isLower && !isDigit && r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 /* ------------------------------------------------------------------ *
@@ -81,8 +94,9 @@ func (u *RecruitmentUseCase) ListDirections(ctx context.Context) ([]*domain.Recr
 	return u.repo.ListDirections(ctx)
 }
 
-// ListActiveDirections 只返回当前开放且在本期白名单内的方向。
+// ListActiveDirections 只返回当前开放的方向。
 // 报名页按这个渲染可选方向，保证不会让用户选到关停的方向。
+// 准入判据是「方向表内存在且 open=true」（issue #128：方向表为唯一事实源）。
 func (u *RecruitmentUseCase) ListActiveDirections(ctx context.Context) ([]*domain.RecruitmentDirection, error) {
 	dirs, err := u.repo.ListDirections(ctx)
 	if err != nil {
@@ -91,7 +105,7 @@ func (u *RecruitmentUseCase) ListActiveDirections(ctx context.Context) ([]*domai
 
 	out := make([]*domain.RecruitmentDirection, 0, len(dirs))
 	for _, d := range dirs {
-		if d.Open && directionAllowed(d.Code) {
+		if d.Open {
 			out = append(out, d)
 		}
 	}
@@ -99,13 +113,38 @@ func (u *RecruitmentUseCase) ListActiveDirections(ctx context.Context) ([]*domai
 }
 
 // SetDirectionOpen 管理端开启 / 关闭某方向的报名开关。
-// 不在本期开放白名单内（all/game/other）的方向拒绝配置，返回 ErrDirectionClosed。
+// 表中不存在的 code 由 repo 返回 ErrDirectionNotFound（400「招新方向不存在」），
+// 不再依赖编译期白名单判断（issue #128）。
 func (u *RecruitmentUseCase) SetDirectionOpen(ctx context.Context, code string, open bool) error {
+	return u.repo.SetDirectionOpen(ctx, strings.TrimSpace(code), open)
+}
+
+// CreateDirection 管理端创建招新方向（issue #128）。
+//
+// open 固定为 false（与方向表列默认一致）：创建本身不开放报名，
+// 需管理员显式 PATCH 开启，避免误开放。code 撞已有行时 repo 返回
+// ErrDirectionCodeExists，已有行不被修改。
+func (u *RecruitmentUseCase) CreateDirection(ctx context.Context, code, name string, sortOrder int) (*domain.RecruitmentDirection, error) {
 	code = strings.TrimSpace(code)
-	if !directionAllowed(code) {
-		return ErrDirectionClosed
+	if !validDirectionCode(code) {
+		return nil, ErrInvalidDirectionCode
 	}
-	return u.repo.SetDirectionOpen(ctx, code, open)
+
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > maxDirectionNameLen {
+		return nil, ErrInvalidDirectionName
+	}
+
+	dir := &domain.RecruitmentDirection{
+		Code:      code,
+		Name:      name,
+		Open:      false,
+		SortOrder: sortOrder,
+	}
+	if err := u.repo.CreateDirection(ctx, dir); err != nil {
+		return nil, err
+	}
+	return dir, nil
 }
 
 /* ------------------------------------------------------------------ *
@@ -131,14 +170,12 @@ func (u *RecruitmentUseCase) Submit(ctx context.Context, userID int, directionCo
 // SubmitToRound 按**指定轮次**创建申请（表单模块 #92 的入口）。
 //
 // 表单在创建时就绑定了轮次与方向，提交时不能改成"当前开放的那一轮"。
-// 校验与 Submit 完全一致：方向白名单 → 轮次开放 → 方向运营开关 →
-// 用户资料快照 → 申请 + 初始时间线。两个入口共享同一条唯一约束
+// 校验：轮次开放 → 方向表内存在且开放 → 用户资料快照 → 申请 + 初始时间线。
+// 方向准入不再过编译期白名单（issue #128）：GetDirectionByCode 不存在 →
+// ErrDirectionClosed，dir.Open 两道检查兜底。两个入口共享同一条唯一约束
 // (user_id, round_id, direction_code)，因此不会因为多了表单入口而多出第二条申请。
 func (u *RecruitmentUseCase) SubmitToRound(ctx context.Context, userID int, roundID int, directionCode string) (*domain.Application, error) {
 	directionCode = strings.TrimSpace(directionCode)
-	if !directionAllowed(directionCode) {
-		return nil, ErrDirectionClosed
-	}
 
 	round, err := u.repo.GetRoundByID(ctx, roundID)
 	if err != nil {
@@ -172,7 +209,7 @@ func (u *RecruitmentUseCase) SubmitToRound(ctx context.Context, userID int, roun
 		Name:          profile.Name,
 		Email:         profile.Detail.Email,
 		Class:         profile.Detail.Class,
-		StudentID: int64(profile.Detail.StudentID),
+		StudentID:     int64(profile.Detail.StudentID),
 		QQ:            profile.Detail.QQ,
 	}
 

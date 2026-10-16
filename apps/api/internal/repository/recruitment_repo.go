@@ -20,6 +20,12 @@ var ErrRoundNotFound = errors.New("招新轮次不存在")
 // ErrDirectionNotFound 指定的招新方向不存在或已不在报名范围内。
 var ErrDirectionNotFound = errors.New("招新方向不存在")
 
+// ErrDirectionCodeExists 创建方向时 code 与已有行冲突（唯一索引）。
+//
+// 明确区分于通用数据库错误：调用方（管理端创建接口）要回答
+// "这个 code 已被占用"，而不是暴露驱动层报错；已有行不被修改。
+var ErrDirectionCodeExists = errors.New("方向 code 已存在")
+
 // ErrApplicationNotFound 指定的报名申请不存在（或不属于当前查询方）。
 var ErrApplicationNotFound = errors.New("申请不存在")
 
@@ -42,6 +48,9 @@ type RecruitmentRepo interface {
 	GetDirectionByCode(ctx context.Context, code string) (*domain.RecruitmentDirection, error)
 	// SetDirectionOpen 开启 / 关闭某方向的报名开关。方向不存在返回 ErrDirectionNotFound。
 	SetDirectionOpen(ctx context.Context, code string, open bool) error
+	// CreateDirection 创建方向（issue #128）。code 撞唯一索引时返回 ErrDirectionCodeExists，
+	// 已有行不被修改。open 由用例层固定为 false，创建后需显式 PATCH 开启。
+	CreateDirection(ctx context.Context, dir *domain.RecruitmentDirection) error
 
 	// ── 招新轮次 ──
 	ListRounds(ctx context.Context) ([]*domain.RecruitmentRound, error)
@@ -132,6 +141,16 @@ func (r *gormRecruitmentRepo) SetDirectionOpen(ctx context.Context, code string,
 	}
 	if result.RowsAffected == 0 {
 		return ErrDirectionNotFound
+	}
+	return nil
+}
+
+func (r *gormRecruitmentRepo) CreateDirection(ctx context.Context, dir *domain.RecruitmentDirection) error {
+	if err := r.db.WithContext(ctx).Create(dir).Error; err != nil {
+		if IsDuplicateKey(err) {
+			return ErrDirectionCodeExists
+		}
+		return err
 	}
 	return nil
 }

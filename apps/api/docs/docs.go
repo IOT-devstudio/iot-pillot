@@ -1264,6 +1264,122 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/admin/recruitment/directions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回全部招新方向（含关闭中的），按 sort_order 稳定排序。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "管理端方向全量列表",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentDirectionListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员自助创建方向（issue #128）。code 为小写字母/数字/连字符（1~32），",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-招新"
+                ],
+                "summary": "创建招新方向",
+                "parameters": [
+                    {
+                        "description": "创建方向请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.RecruitmentCreateDirectionReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.RecruitmentDirectionResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误或 code 已存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/recruitment/directions/{code}": {
             "patch": {
                 "security": [
@@ -1271,7 +1387,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "开启或关闭某个招新方向的报名开关。不在白名单内的方向拒绝配置。",
+                "description": "开启或关闭某个招新方向的报名开关。表中不存在的 code 返回 400。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1308,7 +1424,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "方向不存在或不在白名单",
+                        "description": "方向不存在",
                         "schema": {
                             "$ref": "#/definitions/response.Result"
                         }
@@ -3187,6 +3303,25 @@ const docTemplate = `{
                 "type": "string"
             }
         },
+        "request.RecruitmentCreateDirectionReq": {
+            "type": "object",
+            "required": [
+                "code",
+                "name"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sort_order": {
+                    "description": "SortOrder 展示排序（小的在前），缺省 0。",
+                    "type": "integer"
+                }
+            }
+        },
         "request.RecruitmentReviewReq": {
             "type": "object",
             "required": [
@@ -3407,11 +3542,6 @@ const docTemplate = `{
                     "type": "string",
                     "example": "物联网工程 2301"
                 },
-                "name": {
-                    "description": "姓名；null 清除，缺省不动（issue #86 新增可改字段）",
-                    "type": "string",
-                    "example": "张三"
-                },
                 "direction": {
                     "description": "方向；null/空串清除，缺省不动",
                     "type": "string",
@@ -3424,6 +3554,11 @@ const docTemplate = `{
                         "other"
                     ],
                     "example": "front-end"
+                },
+                "name": {
+                    "description": "姓名；null 清除，缺省不动（issue #86 新增可改字段）",
+                    "type": "string",
+                    "example": "张三"
                 },
                 "qq": {
                     "description": "QQ；null 清除，缺省不动",

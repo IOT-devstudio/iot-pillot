@@ -25,3 +25,14 @@ type RecruitmentSetRoundReq struct {
 type RecruitmentSetDirectionReq struct {
 	Open bool `json:"open"`
 }
+
+// RecruitmentCreateDirectionReq 管理端创建招新方向（issue #128）。
+//
+// code 格式由服务层校验（小写字母/数字/连字符，1~32），不复用 domain.Direction 枚举；
+// open 刻意不在此暴露——创建后固定为 false，须显式 PATCH 开启，避免误开放。
+type RecruitmentCreateDirectionReq struct {
+	Code string `json:"code" binding:"required"`
+	Name string `json:"name" binding:"required"`
+	// SortOrder 展示排序（小的在前），缺省 0。
+	SortOrder int `json:"sort_order"`
+}

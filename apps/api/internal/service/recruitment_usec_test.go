@@ -22,10 +22,10 @@ type stubRecruitmentRepo struct {
 	nextAppID         int
 	duplicateOnCreate bool
 	// 可模拟错误
-	errRoundNotFound      error
+	errRoundNotFound     error
 	errDirectionNotFound error
-	errAppNotFound        error
-	errDuplicate          error
+	errAppNotFound       error
+	errDuplicate         error
 }
 
 func newStubRecruitmentRepo() *stubRecruitmentRepo {
@@ -55,7 +55,11 @@ func (s *stubRecruitmentRepo) GetDirectionByCode(_ context.Context, code string)
 			return d, nil
 		}
 	}
-	return nil, s.errDirectionNotFound
+	// 与 gorm 实现同契约：查不到返回哨兵错误（可用 errDirectionNotFound 覆盖注入其他错误）
+	if s.errDirectionNotFound != nil {
+		return nil, s.errDirectionNotFound
+	}
+	return nil, repository.ErrDirectionNotFound
 }
 
 func (s *stubRecruitmentRepo) SetDirectionOpen(_ context.Context, code string, open bool) error {
@@ -65,7 +69,21 @@ func (s *stubRecruitmentRepo) SetDirectionOpen(_ context.Context, code string, o
 			return nil
 		}
 	}
-	return s.errDirectionNotFound
+	if s.errDirectionNotFound != nil {
+		return s.errDirectionNotFound
+	}
+	return repository.ErrDirectionNotFound
+}
+
+func (s *stubRecruitmentRepo) CreateDirection(_ context.Context, dir *domain.RecruitmentDirection) error {
+	for _, d := range s.directions {
+		if d.Code == dir.Code {
+			return repository.ErrDirectionCodeExists
+		}
+	}
+	dir.ID = len(s.directions) + 1
+	s.directions = append(s.directions, dir)
+	return nil
 }
 
 func (s *stubRecruitmentRepo) ListRounds(_ context.Context) ([]*domain.RecruitmentRound, error) {
@@ -279,25 +297,29 @@ func TestSubmit_Duplicate(t *testing.T) {
 	_ = app1
 }
 
-// 验收项：关闭方向拒绝报名。
+// 验收项：关闭方向 / 表中不存在的方向拒绝报名。
 func TestSubmit_DirectionClosed(t *testing.T) {
 	uc, _, _ := recruitmentFixture()
+	ctx := context.Background()
 
-	_, err := uc.Submit(context.Background(), 1, "front-end")
+	_, err := uc.Submit(ctx, 1, "front-end")
 	if err != nil {
 		t.Fatalf("默认应开放，不应报错: %v", err)
 	}
 
-	// 关闭方向后拒绝
-	_, err = uc.Submit(context.Background(), 2, "back-end")
-	if err != nil {
-		t.Fatalf("b 端默认开放，不应报错: %v", err)
+	// 关闭方向后拒绝（issue #128：准入判据是表内存在且 open=true，无白名单）
+	if err := uc.SetDirectionOpen(ctx, "back-end", false); err != nil {
+		t.Fatalf("关闭 back-end 失败: %v", err)
+	}
+	_, err = uc.Submit(ctx, 2, "back-end")
+	if !errors.Is(err, ErrDirectionClosed) {
+		t.Errorf("已关闭的方向应返回 ErrDirectionClosed，实际: %v", err)
 	}
 
-	// 使用白名单外的方向
-	_, err = uc.Submit(context.Background(), 3, "all")
+	// 表中不存在的方向拒绝（原白名单用例的等价语义）
+	_, err = uc.Submit(ctx, 3, "not-in-table")
 	if !errors.Is(err, ErrDirectionClosed) {
-		t.Errorf("all 不在白名单，应返回 ErrDirectionClosed，实际: %v", err)
+		t.Errorf("表中不存在的方向应返回 ErrDirectionClosed，实际: %v", err)
 	}
 }
 
@@ -429,9 +451,16 @@ func TestReview_Timeline(t *testing.T) {
 	}
 }
 
-// 方向白名单过滤：all/game/other 不应出现在可报名列表。
-func TestListActiveDirections_Whitelist(t *testing.T) {
+// 可报名列表只含 open=true 的方向（issue #128：方向表为唯一事实源，无白名单）。
+// 夹具里 all 也是 open=true，按新语义应出现在列表——断言口径随之改为
+// 「open 必须为 true」，而不是按 code 黑名单过滤。
+func TestListActiveDirections_OpenOnly(t *testing.T) {
 	uc, _, _ := recruitmentFixture()
+
+	// 关掉 all，模拟它不该出现的场景
+	if err := uc.SetDirectionOpen(context.Background(), "all", false); err != nil {
+		t.Fatalf("关闭 all 失败: %v", err)
+	}
 
 	dirs, err := uc.ListActiveDirections(context.Background())
 	if err != nil {
@@ -439,48 +468,172 @@ func TestListActiveDirections_Whitelist(t *testing.T) {
 	}
 
 	for _, d := range dirs {
-		if d.Code == "all" || d.Code == "game" || d.Code == "other" {
-			t.Errorf("白名单外的方向不应出现在可报名列表: %s", d.Code)
+		if !d.Open {
+			t.Errorf("可报名列表不应含关闭方向: %s", d.Code)
+		}
+		if d.Code == "all" {
+			t.Error("已关闭的 all 不应出现在可报名列表")
 		}
 	}
 
-	// 前端/后端/agent 应在列表里
-	foundFront := false
-	foundBack := false
-	foundAgent := false
+	// 开放的 front-end/back-end/agent 仍在列表
+	codes := make(map[string]bool, len(dirs))
 	for _, d := range dirs {
-		if d.Code == "front-end" {
-			foundFront = true
-		}
-		if d.Code == "back-end" {
-			foundBack = true
-		}
-		if d.Code == "agent" {
-			foundAgent = true
-		}
+		codes[d.Code] = true
 	}
-	if !foundFront || !foundBack || !foundAgent {
-		t.Errorf("前端/后端/agent 都应在可报名列表，front=%v back=%v agent=%v", foundFront, foundBack, foundAgent)
+	for _, want := range []string{"front-end", "back-end", "agent"} {
+		if !codes[want] {
+			t.Errorf("开放方向 %s 应在可报名列表", want)
+		}
 	}
 }
 
-// 非白名单方向拒绝配置开关。
-func TestSetDirectionOpen_RejectNonWhitelist(t *testing.T) {
+// 表中不存在的 code 拒绝配置开关（替代原白名单语义，issue #128）。
+func TestSetDirectionOpen_RejectUnknownCode(t *testing.T) {
+	uc, repo, _ := recruitmentFixture()
+	repo.errDirectionNotFound = repository.ErrDirectionNotFound
+
+	err := uc.SetDirectionOpen(context.Background(), "not-a-direction", false)
+	if !errors.Is(err, repository.ErrDirectionNotFound) {
+		t.Errorf("表中不存在的 code 应返回 ErrDirectionNotFound，实际: %v", err)
+	}
+
+	// 表中存在的 code（含新创建的）可正常配置
+	if err := uc.SetDirectionOpen(context.Background(), "front-end", false); err != nil {
+		t.Errorf("表中存在的 front-end 应可正常配置: %v", err)
+	}
+}
+
+// 创建方向：默认 open=false；成功后可被 PATCH 开启并进入用户端可报名列表。
+func TestCreateDirection_DefaultClosedThenOpen(t *testing.T) {
 	uc, _, _ := recruitmentFixture()
+	ctx := context.Background()
 
-	err := uc.SetDirectionOpen(context.Background(), "all", false)
-	if !errors.Is(err, ErrDirectionClosed) {
-		t.Errorf("all 不在白名单，应返回 ErrDirectionClosed，实际: %v", err)
-	}
-
-	err = uc.SetDirectionOpen(context.Background(), "game", true)
-	if !errors.Is(err, ErrDirectionClosed) {
-		t.Errorf("game 不在白名单，应返回 ErrDirectionClosed，实际: %v", err)
-	}
-
-	// 白名单内的可以正常配置
-	err = uc.SetDirectionOpen(context.Background(), "front-end", false)
+	dir, err := uc.CreateDirection(ctx, "algo", "算法", 50)
 	if err != nil {
-		t.Errorf("front-end 在白名单内，应可正常配置: %v", err)
+		t.Fatalf("CreateDirection() error = %v", err)
+	}
+	if dir.Open {
+		t.Error("创建的方向必须默认 open=false（防误开放）")
+	}
+	if dir.Code != "algo" || dir.Name != "算法" || dir.SortOrder != 50 {
+		t.Errorf("创建的方向字段不符: %+v", dir)
+	}
+
+	// 未开启前：不出现在用户端可报名列表
+	dirs, err := uc.ListActiveDirections(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveDirections() error = %v", err)
+	}
+	for _, d := range dirs {
+		if d.Code == "algo" {
+			t.Error("未开启的新方向不应出现在可报名列表")
+		}
+	}
+
+	// PATCH 开启后：立即出现
+	if err := uc.SetDirectionOpen(ctx, "algo", true); err != nil {
+		t.Fatalf("开启新方向失败: %v", err)
+	}
+	dirs, err = uc.ListActiveDirections(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveDirections() error = %v", err)
+	}
+	found := false
+	for _, d := range dirs {
+		if d.Code == "algo" && d.Open {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("PATCH 开启后新方向应出现在可报名列表")
+	}
+}
+
+// 创建方向：code 格式非法 / name 缺失 → 业务错误，不落库。
+func TestCreateDirection_Validation(t *testing.T) {
+	uc, repo, _ := recruitmentFixture()
+	ctx := context.Background()
+	before := len(repo.directions)
+
+	cases := []struct {
+		desc    string
+		code    string
+		name    string
+		wantErr error
+	}{
+		{"空code", "  ", "名称", ErrInvalidDirectionCode},
+		{"大写", "Front", "名称", ErrInvalidDirectionCode},
+		{"非法字符", "front_end", "名称", ErrInvalidDirectionCode},
+		{"含空格", "front end", "名称", ErrInvalidDirectionCode},
+		{"超长33位", "a33", "名称", ErrInvalidDirectionCode},
+		{"空name", "new-dir", "  ", ErrInvalidDirectionName},
+		{"合法", "new-dir", "新方向", nil},
+	}
+	// 超长用例单独构造（33 个字符）
+	longCode := ""
+	for i := 0; i < 33; i++ {
+		longCode += "a"
+	}
+	cases[4].code = longCode
+
+	for _, tc := range cases {
+		_, err := uc.CreateDirection(ctx, tc.code, tc.name, 0)
+		if tc.wantErr == nil {
+			if err != nil {
+				t.Errorf("用例 %q 应成功，实际: %v", tc.desc, err)
+			}
+			continue
+		}
+		if !errors.Is(err, tc.wantErr) {
+			t.Errorf("用例 %q 应返回 %v，实际: %v", tc.desc, tc.wantErr, err)
+		}
+	}
+
+	// 只有「合法」那条落库
+	if len(repo.directions) != before+1 {
+		t.Errorf("非法创建不应落库，期望方向数 %d，实际 %d", before+1, len(repo.directions))
+	}
+}
+
+// 创建方向：code 重复 → ErrDirectionCodeExists，已有行不被修改。
+func TestCreateDirection_DuplicateCode(t *testing.T) {
+	uc, _, _ := recruitmentFixture()
+	ctx := context.Background()
+
+	_, err := uc.CreateDirection(ctx, "front-end", "冒名顶替", 999)
+	if !errors.Is(err, repository.ErrDirectionCodeExists) {
+		t.Fatalf("重复 code 应返回 ErrDirectionCodeExists，实际: %v", err)
+	}
+
+	// 已有行不被修改
+	dirs, _ := uc.ListDirections(ctx)
+	for _, d := range dirs {
+		if d.Code == "front-end" {
+			if d.Name != "前端开发" || d.SortOrder != 10 {
+				t.Errorf("重复创建不得修改已有行，实际 name=%q sort=%d", d.Name, d.SortOrder)
+			}
+		}
+	}
+}
+
+// 对表中存在的新 code 提交报名成功（不再被白名单拦截，issue #128 验收）。
+func TestSubmit_NewDirectionFromTable(t *testing.T) {
+	uc, _, _ := recruitmentFixture()
+	ctx := context.Background()
+
+	if _, err := uc.CreateDirection(ctx, "algo", "算法", 50); err != nil {
+		t.Fatalf("创建方向失败: %v", err)
+	}
+	if err := uc.SetDirectionOpen(ctx, "algo", true); err != nil {
+		t.Fatalf("开启方向失败: %v", err)
+	}
+
+	app, err := uc.Submit(ctx, 1, "algo")
+	if err != nil {
+		t.Fatalf("表中存在的新 code 应可报名，实际: %v", err)
+	}
+	if app.DirectionCode != "algo" {
+		t.Errorf("申请方向应为 algo，实际 %q", app.DirectionCode)
 	}
 }
