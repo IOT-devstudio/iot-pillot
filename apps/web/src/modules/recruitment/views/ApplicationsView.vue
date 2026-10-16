@@ -9,7 +9,7 @@
  *   - 轮次开关 GET/PATCH /admin/recruitment/rounds
  *   - 方向开关 PATCH /admin/recruitment/directions/:code
  *
- * 只做基础审核：邀请与候选人流转属于 #91 的范围，这里不发邮件不动邀请。
+ * 本页处理基础审核；邀请记录链接进入 #91 的真实邀请与候选人流程。
  */
 import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -30,7 +30,7 @@ import {
   type ReviewTarget,
 } from "@/api/recruitment";
 import { presentationOf } from "@/modules/home/directionPresentation";
-import { formatDateTime } from "../fixture";
+import { dateTime as formatDateTime } from "../workflow";
 
 const STATUS_LABELS: Record<ApplicationStatus, string> = {
   applied: "待审核",
@@ -85,10 +85,12 @@ const filtered = computed(() =>
 );
 
 const statusCounts = computed(() => {
-  const counts = { applied: 0, reviewing: 0, accepted: 0, rejected: 0 } as Record<
-    ApplicationStatus,
-    number
-  >;
+  const counts = {
+    applied: 0,
+    reviewing: 0,
+    accepted: 0,
+    rejected: 0,
+  } as Record<ApplicationStatus, number>;
   for (const item of applications.value) {
     counts[item.status] += 1;
   }
@@ -212,7 +214,7 @@ function toggleStatusFilter(status: ApplicationStatus): void {
       <PageHeader
         eyebrow="招新管理 · 真实数据"
         title="申请审核"
-        description="报名来自用户首页的真实提交。审核仅推进状态；邀请与候选人流转见后续票据。"
+        description="审核真实报名，选择申请人发送邀请，并在候选人页面继续处理面试结果。"
       />
 
       <!-- 配置条：轮次与方向开关 -->
@@ -248,9 +250,19 @@ function toggleStatusFilter(status: ApplicationStatus): void {
       </section>
 
       <!-- 状态筛选 -->
-      <div v-if="!loading && !loadError" class="status-filter" role="group" aria-label="按状态筛选">
+      <div
+        v-if="!loading && !loadError"
+        class="status-filter"
+        role="group"
+        aria-label="按状态筛选"
+      >
         <button
-          v-for="status in (['applied', 'reviewing', 'accepted', 'rejected'] as const)"
+          v-for="status in [
+            'applied',
+            'reviewing',
+            'accepted',
+            'rejected',
+          ] as const"
           :key="status"
           type="button"
           class="status-filter__chip"
@@ -270,13 +282,24 @@ function toggleStatusFilter(status: ApplicationStatus): void {
         </button>
       </div>
 
-      <section v-if="loading" class="panel panel--pad" role="status" aria-label="正在加载申请">
+      <section
+        v-if="loading"
+        class="panel panel--pad"
+        role="status"
+        aria-label="正在加载申请"
+      >
         <p>正在加载申请…</p>
       </section>
 
-      <section v-else-if="loadError" class="panel panel--pad app-error" role="alert">
+      <section
+        v-else-if="loadError"
+        class="panel panel--pad app-error"
+        role="alert"
+      >
         <p>{{ loadError }}</p>
-        <button type="button" class="retry-link" @click="loadAll">重试 ↗</button>
+        <button type="button" class="retry-link" @click="loadAll">
+          重试 ↗
+        </button>
       </section>
 
       <p v-else-if="!applications.length" class="empty-hint">
@@ -314,6 +337,13 @@ function toggleStatusFilter(status: ApplicationStatus): void {
               </td>
               <td>{{ formatDateTime(application.created_at) }}</td>
               <td class="app-table__actions">
+                <RouterLink
+                  :to="{
+                    path: '/recruitment/invitations',
+                    query: { application_id: application.id },
+                  }"
+                  >邀请记录</RouterLink
+                >
                 <template v-if="application.status === 'applied'">
                   <button
                     type="button"
@@ -346,9 +376,7 @@ function toggleStatusFilter(status: ApplicationStatus): void {
               </td>
             </tr>
             <tr v-if="!filtered.length">
-              <td colspan="8" class="app-table__empty">
-                该状态下暂无申请。
-              </td>
+              <td colspan="8" class="app-table__empty">该状态下暂无申请。</td>
             </tr>
           </tbody>
         </table>

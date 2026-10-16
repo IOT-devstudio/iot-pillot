@@ -16,7 +16,11 @@ import { computed, inject, nextTick, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile } from "@/api/profile";
-import { beginProfileLoad, currentProfile as user, profileDisplayName } from "@/modules/user-settings/profileIdentity";
+import {
+  beginProfileLoad,
+  currentProfile as user,
+  profileDisplayName,
+} from "@/modules/user-settings/profileIdentity";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import {
   fetchDirections,
@@ -46,12 +50,9 @@ const route = useRoute();
  * 去关于我们：走壳层的擦除过渡（与「返回用户首页」「进入个人设置」
  * 同款动画），裸 RouterLink 会没有转场直接硬切。
  */
-const transition = inject(
-  SIGNAL_TRANSITION,
-  async (change: () => unknown) => {
-    await change();
-  },
-);
+const transition = inject(SIGNAL_TRANSITION, async (change: () => unknown) => {
+  await change();
+});
 
 function goAbout(event: MouseEvent): void {
   event.preventDefault();
@@ -102,7 +103,10 @@ const openDirectionCount = computed(
   () => directions.value.filter((direction) => direction.open).length,
 );
 const appliedCodes = computed(
-  () => new Set(applications.value.map((application) => application.direction_code)),
+  () =>
+    new Set(
+      applications.value.map((application) => application.direction_code),
+    ),
 );
 
 function describeError(error: unknown, fallback: string): string {
@@ -130,7 +134,10 @@ async function loadDirections(): Promise<void> {
     directions.value = (await fetchDirections()).items;
   } catch (error) {
     directions.value = [];
-    directionsError.value = describeError(error, "暂时无法加载方向，请稍后重试");
+    directionsError.value = describeError(
+      error,
+      "暂时无法加载方向，请稍后重试",
+    );
   } finally {
     directionsLoading.value = false;
   }
@@ -351,13 +358,14 @@ function steps(application: RecruitmentApplication) {
     <nav class="space-nav" aria-label="页面内导航">
       <span class="mono">YOUR PERSONAL SPACE / 2026</span>
       <div>
-        <a
-          href="#directions"
-          @click="scrollToSection($event, 'directions')"
+        <a href="#directions" @click="scrollToSection($event, 'directions')"
           >探索方向</a
         ><a href="#journey" @click="scrollToSection($event, 'journey')"
           >我的进度</a
-        ><RouterLink to="/user/about" @click="goAbout($event)">关于我们</RouterLink>
+        ><RouterLink to="/user/invitations">邀请与结果</RouterLink
+        ><RouterLink to="/user/about" @click="goAbout($event)"
+          >关于我们</RouterLink
+        >
       </div>
     </nav>
     <section class="home-poster">
@@ -492,9 +500,7 @@ function steps(application: RecruitmentApplication) {
           <div class="panel-bottom">
             <div>
               <p>{{ presentationOf(direction.code).summary }}</p>
-              <span class="mono">{{
-                presentationOf(direction.code).tag
-              }}</span>
+              <span class="mono">{{ presentationOf(direction.code).tag }}</span>
             </div>
             <button
               class="panel-button"
@@ -545,8 +551,9 @@ function steps(application: RecruitmentApplication) {
             >
             <h3>
               {{
-                directions.find((d) => d.code === activeApplication?.direction_code)
-                  ?.name || "方向已下线"
+                directions.find(
+                  (d) => d.code === activeApplication?.direction_code,
+                )?.name || "方向已下线"
               }}
             </h3>
             <p>{{ formatISODate(activeApplication!.created_at) }} 提交</p>
@@ -656,11 +663,10 @@ function steps(application: RecruitmentApplication) {
         {{ detailError }}
       </p>
       <ol v-else class="detail-steps">
-        <li
-          v-for="entry in detailTimeline"
-          :key="entry.id"
-        >
-          <strong>{{ STATUS_LABELS[entry.to_status] ?? entry.to_status }}</strong>
+        <li v-for="entry in detailTimeline" :key="entry.id">
+          <strong>{{
+            STATUS_LABELS[entry.to_status] ?? entry.to_status
+          }}</strong>
           <p>{{ formatISODate(entry.created_at) }}</p>
         </li>
       </ol></SignalDialog

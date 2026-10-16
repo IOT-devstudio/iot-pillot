@@ -191,9 +191,11 @@ function handleSubmit(event: Event): void {
         <span class="settings__label">方向</span>
         <span class="settings__value">
           {{ directionLabel(latestDirection || form.direction) }}
-          <!-- 方向未定时的内联入口：跳首页方向版块走真实报名，选定后自动消失 -->
+          <!-- 「去选择」只给普通成员：跳首页方向版块走真实报名。
+               管理员不走报名链路，只读态隐藏此入口（review 反馈），
+               点「更改」进编辑态用下拉直接选 -->
           <button
-            v-if="!directionError && directionUnset"
+            v-if="!isAdmin && !directionError && directionUnset"
             type="button"
             class="settings__pick-link"
             :disabled="saving"
