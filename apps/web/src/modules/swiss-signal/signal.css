@@ -85,15 +85,11 @@
   flex-shrink: 0;
 }
 .swiss-signal .logo {
-  display: grid;
-  place-content: center;
+  display: block;
   width: 37px;
   height: 37px;
-  color: var(--yellow);
-  background: var(--blue);
-  font:
-    38px/1 Georgia,
-    serif;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 .swiss-signal .masthead-note {
   font:
@@ -1361,7 +1357,6 @@
   .swiss-signal .logo {
     width: 32px;
     height: 32px;
-    font-size: 32px;
   }
   .swiss-signal .view-nav {
     margin-left: auto;

@@ -218,7 +218,7 @@ onBeforeUnmount(() => {
           class="admin-brand"
           aria-label="iot-pillot 控制台"
         >
-          <span class="admin-brand__mark" aria-hidden="true">i/o</span>
+          <img class="admin-brand__mark" src="/studio-logo.png" alt="" aria-hidden="true" />
           <span class="admin-brand__name">iot-pillot</span>
         </router-link>
         <button
@@ -356,7 +356,7 @@ onBeforeUnmount(() => {
           </svg>
         </button>
         <router-link to="/dashboard" class="admin-main__mobile-brand">
-          <span class="admin-brand__mark" aria-hidden="true">i/o</span>
+          <img class="admin-brand__mark" src="/studio-logo.png" alt="" aria-hidden="true" />
           <span>iot-pillot</span>
         </router-link>
       </div>
@@ -432,17 +432,11 @@ onBeforeUnmount(() => {
 }
 
 .admin-brand__mark {
-  display: grid;
+  display: block;
   width: 32px;
   height: 32px;
   flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid var(--blue);
-  border-radius: 50%;
-  color: var(--blue);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  object-fit: contain;
 }
 
 .admin-brand__name,
