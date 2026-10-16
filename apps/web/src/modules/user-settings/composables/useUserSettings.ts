@@ -206,16 +206,28 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     }
   }
 
+  // 只校验主动修改的姓名，历史姓名不阻塞其他资料更新。
+  function validateName(): string {
+    const name = form.name ?? "";
+    if (name === (profile.value?.name ?? "")) return "";
+    const length = Array.from(name).length;
+    return length >= 2 && length <= 20 && /^\p{Script=Han}+$/u.test(name)
+      ? "" : "姓名须为 2–20 个中文汉字";
+  }
+
+  function profilePatch(): MyProfileUpdate {
+    const patch = formToUpdate(form);
+    if ((form.name ?? "") === (profile.value?.name ?? "")) delete patch.name;
+    return patch;
+  }
+
   async function save(): Promise<boolean> {
     if (saving.value || !editing.value || !profile.value) {
       return false;
     }
     saveError.value = "";
     fieldErrors.value = validateRequiredProfile(form);
-    const nameLength = Array.from((form.name ?? "").trim()).length;
-    nameError.value = nameLength !== 0 && (nameLength < 3 || nameLength > 20)
-      ? "姓名需为 3–20 个字符，也可留空清除"
-      : "";
+    nameError.value = validateName();
     if (nameError.value || Object.keys(fieldErrors.value).length) return false;
     saving.value = true;
     const publish = beginProfileSave();
@@ -225,7 +237,7 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       await checkDirection();
       if (!sessionIsCurrent()) return false;
       if (directionError.value) return false;
-      const next = await deps.updateMyProfile(formToUpdate(form), profile.value.user_id);
+      const next = await deps.updateMyProfile(profilePatch(), profile.value.user_id);
       hydrate(next, publish);
       editing.value = false;
       ElMessage.success("资料已保存");
@@ -254,8 +266,8 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       return;
     }
     const errors = validateRequiredProfile(form);
-    const nameLength = Array.from((form.name ?? "").trim()).length;
-    const nameInvalid = nameLength !== 0 && (nameLength < 3 || nameLength > 20);
+    nameError.value = validateName();
+    const nameInvalid = Boolean(nameError.value);
     if (nameInvalid || Object.keys(errors).length > 0) return;
 
     saving.value = true;
@@ -266,7 +278,7 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       if (!sessionIsCurrent()) return;
       if (directionError.value) return;
       const next = await deps.updateMyProfile(
-        formToUpdate(form),
+        profilePatch(),
         profile.value.user_id,
       );
       hydrate(next, publish);
@@ -289,8 +301,8 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     if (!editing.value || !profile.value || !isDirty.value) return;
     const errors = validateRequiredProfile(form);
     if (Object.keys(errors).length > 0) return;
-    const nameLength = Array.from((form.name ?? "").trim()).length;
-    if (nameLength !== 0 && (nameLength < 3 || nameLength > 20)) return;
+    nameError.value = validateName();
+    if (nameError.value) return;
     const session = readAuthSession();
     if (!session) return;
     void fetch("/api/v1/me", {
@@ -299,7 +311,7 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify(formToUpdate(form)),
+      body: JSON.stringify(profilePatch()),
       keepalive: true,
     }).catch(() => {});
   }
