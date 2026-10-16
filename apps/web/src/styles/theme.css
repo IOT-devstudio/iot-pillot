@@ -17,11 +17,16 @@
    默认 auto 时，页面高度一旦跨过「一屏」这条线（加载态骨架屏比数据态高
    一点点就会跨），滚动条的出现/消失会让视口宽度在 15px 间跳变；页面内容
    是居中的，于是整页横向抖 7.5px。
-   锁定成 scroll 后视口宽度恒定，加载态与数据态之间不再位移。
+
+   scrollbar-gutter: stable 保留槽位但**不强制常显**（比 overflow-y: scroll
+   更贴合原意：短页不该硬塞一条滚动条）。关键收益在弹窗场景：ElMessageBox /
+   el-dialog 锁滚动会把 overflow:hidden 打在 body 上、并按滚动条宽度补
+   padding-right——槽位常驻时这个补偿恰好抵消，页面不再横向跳变；
+   槽位若随 overflow 消失，补偿就成了多出来的 15px，整页会抖一下。
    浏览器级设置（Chrome 的覆盖式滚动条 / macOS 默认）会忽略这条规则，
    那种情况下本就没有槽位，也就没有这个问题。 */
 html {
-  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 :root {

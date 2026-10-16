@@ -190,10 +190,12 @@ async function handleDeleteAccount(): Promise<void> {
         <ChangePasswordCard :email="profile.detail?.email ?? ''" />
 
         <!-- 自助注销（issue #159）：创始管理员整个隐藏（Q1，
-             后端 DELETE /me 同样拒绝，这里只是体验层） -->
+             后端 DELETE /me 同样拒绝，这里只是体验层）。
+             卡片与同页其他卡同款液态玻璃，流光与文字换成警示红调
+             （.liquid-glass--danger，全局设计系统变体） -->
         <section
           v-if="!isFounding"
-          class="panel panel--pad danger-zone"
+          class="liquid-glass liquid-glass--danger danger-zone"
           aria-label="注销账号"
         >
           <div class="danger-zone__text">
@@ -310,24 +312,26 @@ async function handleDeleteAccount(): Promise<void> {
   font-size: 13px;
 }
 
-/* 自助注销危险区（issue #159）：与上方卡片同款液态玻璃，
-   仅用左侧红规与危险色按钮标记危险语义，不做成刺眼的红卡 */
+/* 自助注销危险区（issue #159）：玻璃本体与流光来自全局
+   .liquid-glass--danger（同款液态玻璃 + 红流光），这里只管布局与文字——
+   标题用陶土红（--red），正文用降饱和红调，危险但不刺眼 */
 .danger-zone {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  border-left: 3px solid #a33d32;
+  padding: 24px 26px;
 }
 
 .danger-zone__text h3 {
   margin: 0 0 4px;
   font-size: 15px;
+  color: var(--red, #b84235);
 }
 
 .danger-zone__text p {
   margin: 0;
-  color: var(--ink-soft, #5a6570);
+  color: #8a5a52;
   font-size: 13px;
   line-height: 1.6;
 }
