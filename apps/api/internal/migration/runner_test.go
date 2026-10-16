@@ -78,7 +78,7 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	if err := db.QueryRow("SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 9 || dirty {
+	if version != 10 || dirty {
 		t.Fatalf("version=%d dirty=%v", version, dirty)
 	}
 	var count int
@@ -87,6 +87,16 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	}
 	if count != 3 {
 		t.Fatalf("seed count=%d", count)
+	}
+	// 0010 的部分唯一索引必须真的落地，否则 #137 的约束形同虚设。
+	var indexdef string
+	if err := db.QueryRow(
+		"SELECT indexdef FROM pg_indexes WHERE tablename='forms' AND indexname='idx_forms_open_uniq'",
+	).Scan(&indexdef); err != nil {
+		t.Fatalf("0010 的唯一索引未创建: %v", err)
+	}
+	if !strings.Contains(indexdef, "UNIQUE") || !strings.Contains(indexdef, "is_open") {
+		t.Fatalf("索引应为 is_open 谓词上的部分唯一索引，实际 %q", indexdef)
 	}
 }
 
@@ -268,5 +278,102 @@ func TestAdoptRejectsIncompleteRecruitmentSeeds(t *testing.T) {
 				t.Fatal("incomplete seed state accepted")
 			}
 		})
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 0010：同轮同方向至多一张开放表单（issue #137）
+ * ------------------------------------------------------------------ */
+
+// 空库 up 到 0010 后，约束必须真的挡住"同轮同方向第二张开放表单"，
+// 同时不误伤历史（关闭）表单 —— 后者是 0010 选部分索引而不是普通唯一索引的理由。
+func TestFormsOpenUniqueConstraint(t *testing.T) {
+	db := testDB(t)
+	if err := Run(context.Background(), db, "up", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	execSQL(t, db, `INSERT INTO forms (title, round_id, direction_code, share_token, is_open)
+		VALUES ('开放表', 1, 'front-end', 'tok-open', true)`)
+
+	// 同轮同方向第二张开放表单：必须被约束拒绝
+	_, err := db.Exec(`INSERT INTO forms (title, round_id, direction_code, share_token, is_open)
+		VALUES ('第二张开放表', 1, 'front-end', 'tok-second', true)`)
+	if err == nil {
+		t.Fatal("同轮同方向第二张开放表单未被约束拒绝")
+	}
+
+	// 同轮同方向多张关闭表单可以共存（历史表单不被堵死）
+	for _, token := range []string{"tok-closed-1", "tok-closed-2"} {
+		if _, err := db.Exec(`INSERT INTO forms (title, round_id, direction_code, share_token, is_open)
+			VALUES ('历史表', 1, 'front-end', $1, false)`, token); err != nil {
+			t.Fatalf("关闭的历史表单应可共存，实际: %v", err)
+		}
+	}
+
+	// 别的方向、别的轮次各自可以有一张开放表（约束是 per 方向 per 轮次）
+	execSQL(t, db, `INSERT INTO forms (title, round_id, direction_code, share_token, is_open)
+		VALUES ('后端开放表', 1, 'back-end', 'tok-be', true)`)
+	execSQL(t, db, `INSERT INTO forms (title, round_id, direction_code, share_token, is_open)
+		VALUES ('下一轮开放表', 2, 'front-end', 'tok-round2', true)`)
+
+	// 把已开放的那张关掉，同方向就能再开放另一张（关闭永不受约束影响）
+	execSQL(t, db, `UPDATE forms SET is_open = false WHERE share_token = 'tok-open'`)
+	execSQL(t, db, `UPDATE forms SET is_open = true WHERE share_token = 'tok-closed-1'`)
+}
+
+// D1 的核心：库里已有重复开放行时，up 必须报错退出，且**不改数据、不建索引**。
+// 人工清理后重跑才成功 —— 脚本绝不替业务决定保留哪张。
+func TestFormsOpenUniqueRejectsExistingDuplicates(t *testing.T) {
+	db := testDB(t)
+	// 手工应用到 0009（0010 之前），此时还没有约束
+	manual(t, db, []uint{1, 2, 3, 4, 5, 6, 7, 8, 9})
+
+	// 制造坏数据：同轮同方向两张开放表单（在 0010 之前这是允许的）
+	execSQL(t, db, `INSERT INTO forms (title, round_id, direction_code, share_token, is_open)
+		VALUES ('坏表 A', 1, 'front-end', 'tok-a', true),
+		       ('坏表 B', 1, 'front-end', 'tok-b', true)`)
+
+	// 0009 已被手工执行，必须走 adopt 才能让 up 接手后续版本
+	if err := Run(context.Background(), db, "adopt", []uint{1, 2, 3, 4, 5, 6, 7, 8, 9}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Run(context.Background(), db, "up", nil); err == nil {
+		t.Fatal("存在重复开放表单时 up 应当失败")
+	}
+
+	// 零副作用：两张坏数据都还在，索引没建出来
+	var count int
+	if err := db.QueryRow("SELECT count(*) FROM forms WHERE is_open").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("脚本不应修改存量数据，开放表单应仍为 2 张，实际 %d", count)
+	}
+	var exists bool
+	if err := db.QueryRow(
+		"SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE tablename='forms' AND indexname='idx_forms_open_uniq')",
+	).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Fatal("失败时不应留下索引")
+	}
+
+	// 人工清理（保留一张、关闭另一张）后重跑应当成功
+	execSQL(t, db, `UPDATE forms SET is_open = false WHERE share_token = 'tok-b'`)
+	// 失败会留下 dirty，先按维护者手册修复元数据（等价于人工确认最后成功版本）
+	execSQL(t, db, `UPDATE schema_migrations SET version = 9, dirty = false`)
+	if err := Run(context.Background(), db, "up", nil); err != nil {
+		t.Fatalf("清理后重跑应当成功: %v", err)
+	}
+	if err := db.QueryRow(
+		"SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE tablename='forms' AND indexname='idx_forms_open_uniq')",
+	).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("清理后重跑应当建出索引")
 	}
 }

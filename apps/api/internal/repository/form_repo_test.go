@@ -74,6 +74,12 @@ func repoTestDB(t *testing.T) *gorm.DB {
 			updated_at timestamptz
 		)`,
 		`CREATE UNIQUE INDEX idx_forms_share_token ON forms (share_token)`,
+		// 与迁移 0010 一致：同轮同方向至多一张开放表单（#137）。
+		//
+		// 必须在这里复刻：否则仓储测试跑在一个比生产宽松的 schema 上，
+		// 「多张开放表单」这种生产里不可能出现的状态会被测成合法，
+		// 而 #135 的排序用例恰好需要构造它来验证取表规则。
+		`CREATE UNIQUE INDEX idx_forms_open_uniq ON forms (round_id, direction_code) WHERE is_open`,
 		`CREATE TABLE recruitment_applications (
 			id bigserial PRIMARY KEY,
 			user_id bigint NOT NULL,
@@ -171,17 +177,24 @@ func TestGetApplicationByUserRoundDirection_Miss(t *testing.T) {
  * ListOpenFormsByRound（#135 变更一的取表规则）
  * ------------------------------------------------------------------ */
 
-// 验收标准：同轮同方向多张表单时，按「is_open 且 updated_at 最新」稳定取一张。
-func TestListOpenFormsByRound_PicksNewestPerDirection(t *testing.T) {
+// 取表规则在 #137 之后的形态：只返回本轮的开放表，且排序确定。
+//
+// ⚠️ 与 #135 的差异（#137 引入）：#135 原本用「同方向两张开放表」验证
+// updated_at DESC 取最新。0010 的部分唯一索引让那个状态在生产里**不可能出现**
+// （同轮同方向至多一张开放表），所以这里只验证仍然可达的行为 —— 过滤与排序。
+// 排序里的 updated_at DESC / id DESC 兜底保留在实现中（跨方向排序仍需要它，
+// 且它是 #135 D1 的既定决策），但同方向的那一段已是防御性代码：
+// 见 TestOpenFormsPerDirectionNowUnique。
+func TestListOpenFormsByRound_FiltersAndOrders(t *testing.T) {
 	db := repoTestDB(t)
 	repo := NewFormRepo(db)
 	ctx := context.Background()
 
 	base := time.Now().Add(-time.Hour)
 	seed := []*domain.Form{
-		{Title: "旧表", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-old", IsOpen: true, UpdatedAt: base},
-		{Title: "新表", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-new", IsOpen: true, UpdatedAt: base.Add(time.Minute)},
-		{Title: "关闭的表", RoundID: 1, DirectionCode: "back-end", ShareToken: "t-closed", IsOpen: false, UpdatedAt: base.Add(2 * time.Minute)},
+		{Title: "前端开放", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-fe", IsOpen: true, UpdatedAt: base},
+		{Title: "后端开放", RoundID: 1, DirectionCode: "back-end", ShareToken: "t-be", IsOpen: true, UpdatedAt: base.Add(time.Minute)},
+		{Title: "关闭的表", RoundID: 1, DirectionCode: "agent", ShareToken: "t-closed", IsOpen: false, UpdatedAt: base.Add(2 * time.Minute)},
 		{Title: "下一轮的表", RoundID: 2, DirectionCode: "front-end", ShareToken: "t-round2", IsOpen: true, UpdatedAt: base.Add(3 * time.Minute)},
 	}
 	for _, f := range seed {
@@ -195,64 +208,113 @@ func TestListOpenFormsByRound_PicksNewestPerDirection(t *testing.T) {
 		t.Fatalf("查询失败: %v", err)
 	}
 
-	// 仓储返回的是「本轮全部开放表」的有序列表（去重是服务层 OpenFormsByRound 的事）：
-	// front-end 两张开放（old/new），back-end 关闭，round 2 不属于本轮。
+	// 本轮两张开放表（前端、后端各一）；agent 关闭、round 2 不属于本轮。
 	if len(forms) != 2 {
 		t.Fatalf("本轮应有 2 张开放表，实际 %d 张", len(forms))
 	}
-	// 排序保证同方向第一张就是该方向该用的那张：updated_at 新的在前
-	if forms[0].ShareToken != "t-new" {
-		t.Errorf("同方向最新的一张应排在最前（t-new），实际 %q", forms[0].ShareToken)
-	}
 	for _, f := range forms {
-		if f.DirectionCode != "front-end" {
-			t.Errorf("结果不应包含其他方向的开放表，实际含 %q", f.DirectionCode)
-		}
 		if !f.IsOpen {
 			t.Error("结果不应包含关闭的表")
 		}
-	}
-}
-
-// D1 的关键：updated_at 完全相同（批量建表同一秒）时靠 id DESC 兜底，结果必须稳定。
-func TestListOpenFormsByRound_TieBreaksByIdDesc(t *testing.T) {
-	db := repoTestDB(t)
-	repo := NewFormRepo(db)
-	ctx := context.Background()
-
-	same := time.Now().Add(-time.Minute)
-	first := &domain.Form{Title: "先建", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-1", IsOpen: true, UpdatedAt: same}
-	second := &domain.Form{Title: "后建", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-2", IsOpen: true, UpdatedAt: same}
-	for _, f := range []*domain.Form{first, second} {
-		if err := db.Create(f).Error; err != nil {
-			t.Fatalf("预置表单失败: %v", err)
+		if f.RoundID != 1 {
+			t.Errorf("结果不应包含其他轮次的表，实际 round_id=%d", f.RoundID)
 		}
 	}
-	if second.ID <= first.ID {
-		t.Fatalf("前提不成立：后建的 id 应更大（%d vs %d）", second.ID, first.ID)
+	// 主排序是 direction_code ASC：调用方按方向取第一张，顺序必须确定。
+	if forms[0].DirectionCode != "back-end" || forms[1].DirectionCode != "front-end" {
+		t.Errorf("应按 direction_code ASC 排序，实际 %q, %q",
+			forms[0].DirectionCode, forms[1].DirectionCode)
 	}
 
-	forms, err := repo.ListOpenFormsByRound(ctx, 1)
-	if err != nil {
-		t.Fatalf("查询失败: %v", err)
-	}
-	if len(forms) != 2 {
-		t.Fatalf("应有 2 张开放表，实际 %d 张", len(forms))
-	}
-	// id DESC 兜底：同 updated_at 时 id 大的排前面
-	if forms[0].ShareToken != "t-2" {
-		t.Errorf("updated_at 打平时应按 id DESC 兜底（t-2 在前），实际 %q", forms[0].ShareToken)
-	}
-
-	// 重复查询结果稳定
+	// 重复查询结果稳定（排序不随查询计划漂移）
 	for i := 0; i < 3; i++ {
 		again, err := repo.ListOpenFormsByRound(ctx, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if again[0].ShareToken != "t-2" {
+		if len(again) != 2 || again[0].ShareToken != forms[0].ShareToken {
 			t.Fatalf("第 %d 次查询结果漂移：%q", i+2, again[0].ShareToken)
 		}
+	}
+}
+
+// #137 的核心：同一轮同一方向至多一张开放表单。
+//
+// 本测试同时守住两件事：
+//  1. 仓储测试的 schema 与生产一致（复刻了 0010 的部分唯一索引）——
+//     否则「多张开放表单」这种生产不可能的状态会被测成合法；
+//  2. #135 那个「同方向比 updated_at」的场景确实已不可构造。
+func TestOpenFormsPerDirectionNowUnique(t *testing.T) {
+	db := repoTestDB(t)
+	repo := NewFormRepo(db)
+	ctx := context.Background()
+
+	first := &domain.Form{Title: "先开放", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-1", IsOpen: true}
+	if err := db.Create(first).Error; err != nil {
+		t.Fatalf("第一张开放表应当写入成功: %v", err)
+	}
+
+	// 同轮同方向第二张开放表：必须被 0010 的约束拒绝
+	second := &domain.Form{Title: "后开放", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-2", IsOpen: true}
+	if err := db.Create(second).Error; err == nil {
+		t.Fatal("同轮同方向第二张开放表未被约束拒绝 —— 仓储 schema 与迁移 0010 不一致")
+	}
+
+	// 关闭的历史表单仍可共存（部分索引只覆盖 is_open = true）
+	for _, token := range []string{"t-c1", "t-c2"} {
+		if err := db.Create(&domain.Form{
+			Title: "历史表", RoundID: 1, DirectionCode: "front-end", ShareToken: token, IsOpen: false,
+		}).Error; err != nil {
+			t.Fatalf("关闭的历史表单应可共存，实际: %v", err)
+		}
+	}
+
+	// 因此该方向的开放表恰好只有一张 —— 取表规则在此方向上无歧义。
+	forms, err := repo.ListOpenFormsByRound(ctx, 1)
+	if err != nil {
+		t.Fatalf("查询失败: %v", err)
+	}
+	if len(forms) != 1 || forms[0].ShareToken != "t-1" {
+		t.Fatalf("该方向应恰有一张开放表 t-1，实际 %d 张", len(forms))
+	}
+}
+
+// 仓储层把约束冲突翻译成 ErrFormAlreadyOpen（#137）：
+// 并发下服务层的前置检查会双双通过，最终靠这条翻译给出可读错误。
+func TestUpdateForm_TranslatesOpenConflict(t *testing.T) {
+	db := repoTestDB(t)
+	repo := NewFormRepo(db)
+	ctx := context.Background()
+
+	open := &domain.Form{Title: "已开放", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-open", IsOpen: true}
+	if err := db.Create(open).Error; err != nil {
+		t.Fatal(err)
+	}
+	other := &domain.Form{Title: "待开放", RoundID: 1, DirectionCode: "front-end", ShareToken: "t-other", IsOpen: false}
+	if err := db.Create(other).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// 直接走仓储（绕过服务层前置检查）模拟并发窗口里输掉的那个事务
+	other.IsOpen = true
+	err := repo.UpdateForm(ctx, other, nil)
+	if !errors.Is(err, ErrFormAlreadyOpen) {
+		t.Fatalf("应翻译为 ErrFormAlreadyOpen，实际: %v", err)
+	}
+
+	// 零副作用：另一张仍是关闭状态
+	var reloaded domain.Form
+	if err := db.First(&reloaded, other.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.IsOpen {
+		t.Error("失败时不应写入 is_open")
+	}
+
+	// 关闭操作永不冲突
+	open.IsOpen = false
+	if err := repo.UpdateForm(ctx, open, nil); err != nil {
+		t.Fatalf("关闭表单不应受约束影响: %v", err)
 	}
 }
 

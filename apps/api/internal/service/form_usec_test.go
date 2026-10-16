@@ -28,6 +28,9 @@ type stubFormRepo struct {
 	duplicateOnCreateSubmission bool
 	duplicateOnCreateForm       bool
 	tokenAttempts               int
+	// conflictOnUpdateForm 模拟并发下撞 idx_forms_open_uniq（#137）：
+	// UpdateForm 不改任何状态，直接返回仓储翻译后的哨兵错误。
+	conflictOnUpdateForm bool
 }
 
 func newStubFormRepo() *stubFormRepo {
@@ -96,6 +99,10 @@ func (s *stubFormRepo) ListForms(_ context.Context, page int, pageSize int) ([]*
 }
 
 func (s *stubFormRepo) UpdateForm(_ context.Context, form *domain.Form, fields []*domain.FormField) error {
+	if s.conflictOnUpdateForm {
+		// 撞索引 = 整笔事务回滚：不改 current 的任何字段
+		return repository.ErrFormAlreadyOpen
+	}
 	current, ok := s.forms[form.ID]
 	if !ok {
 		return repository.ErrFormNotFound
@@ -557,6 +564,114 @@ func TestUpdateForm_RejectsForeignFieldID(t *testing.T) {
 	if !errors.Is(err, repository.ErrFormFieldNotFound) {
 		t.Errorf("外部字段 id 应返回 ErrFormFieldNotFound，实际: %v", err)
 	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 开放前置检查（#137 D2）
+ * ------------------------------------------------------------------ */
+
+// 同轮同方向已有另一张开放表单时，开放本表单必须被前置检查拒绝，
+// 且错误是包装了 ErrFormAlreadyOpen 的可读中文（带上已开放表单的标题）。
+func TestUpdateForm_OpenBlockedByExisting(t *testing.T) {
+	uc, repo, _ := formFixture()
+
+	// 已有 front-end 的开放表（直接塞仓储，模拟并发前置检查放行后的状态）
+	repo.forms[1] = &domain.Form{
+		ID: 1, Title: "已开放的前端面试表", RoundID: 1, DirectionCode: "front-end",
+		ShareToken: "tok-open", IsOpen: true,
+	}
+
+	// 新建一张同轮同方向的表（建表一律关闭，所以建表不受约束影响）
+	_, _, err := uc.CreateForm(context.Background(), fiveFieldForm())
+	if err != nil {
+		t.Fatalf("建表（默认关闭）不应被约束拒绝: %v", err)
+	}
+	second := repo.forms[10] // stubFormRepo 的 nextFormID 从 10 起
+	if second == nil || second.ID != 10 {
+		t.Fatalf("第二张表应已建出，实际: %+v", second)
+	}
+
+	_, _, _, err = uc.UpdateForm(context.Background(), second.ID, UpdateFormInput{IsOpen: boolPtr(true)})
+	if !errors.Is(err, repository.ErrFormAlreadyOpen) {
+		t.Fatalf("开放第二张同方向表应返回 ErrFormAlreadyOpen，实际: %v", err)
+	}
+	// 消息里必须带出冲突来源，管理员才知道该关哪张
+	if !strings.Contains(err.Error(), "已开放的前端面试表") {
+		t.Errorf("错误应指明已开放的表单标题，实际: %v", err)
+	}
+	// 零副作用：第二张仍是关闭状态
+	if second.IsOpen {
+		t.Error("前置检查拒绝时不应写入 is_open")
+	}
+}
+
+// 反向路径不被误伤：
+//   - 关闭操作永不检查（部分索引只覆盖开放行）；
+//   - 已开放的表单再保存标题，前置检查不能把它自己算成冲突；
+//   - 别的方向、别的轮次各开放一张互不影响。
+func TestUpdateForm_OpenAllowedWhenNoRealConflict(t *testing.T) {
+	uc, repo, _ := formFixture()
+
+	repo.forms[1] = &domain.Form{
+		ID: 1, Title: "前端开放表", RoundID: 1, DirectionCode: "front-end",
+		ShareToken: "tok-fe", IsOpen: true,
+	}
+
+	// ① 已开放表保存标题：自己不算冲突
+	if _, _, _, err := uc.UpdateForm(context.Background(), 1, UpdateFormInput{Title: strPtr("改个名")}); err != nil {
+		t.Fatalf("已开放表保存标题不应被前置检查拒绝: %v", err)
+	}
+	if repo.forms[1].Title != "改个名" {
+		t.Errorf("标题应已更新，实际 %q", repo.forms[1].Title)
+	}
+
+	// ② 关闭再开放自己：不报错
+	if _, _, _, err := uc.UpdateForm(context.Background(), 1, UpdateFormInput{IsOpen: boolPtr(false)}); err != nil {
+		t.Fatalf("关闭不应被检查: %v", err)
+	}
+	if _, _, _, err := uc.UpdateForm(context.Background(), 1, UpdateFormInput{IsOpen: boolPtr(true)}); err != nil {
+		t.Fatalf("重新开放自己没有冲突，不应被拒: %v", err)
+	}
+
+	// ③ 另一方向的表开放：互不影响
+	repo.forms[2] = &domain.Form{
+		ID: 2, Title: "后端开放表", RoundID: 1, DirectionCode: "back-end",
+		ShareToken: "tok-be", IsOpen: false,
+	}
+	if _, _, _, err := uc.UpdateForm(context.Background(), 2, UpdateFormInput{IsOpen: boolPtr(true)}); err != nil {
+		t.Fatalf("另一方向开放不应被拒: %v", err)
+	}
+
+	// ④ 别的轮次同方向：约束按轮次隔离
+	repo.forms[3] = &domain.Form{
+		ID: 3, Title: "下一轮前端表", RoundID: 2, DirectionCode: "front-end",
+		ShareToken: "tok-r2", IsOpen: false,
+	}
+	if _, _, _, err := uc.UpdateForm(context.Background(), 3, UpdateFormInput{IsOpen: boolPtr(true)}); err != nil {
+		t.Fatalf("另一轮次同方向开放不应被拒: %v", err)
+	}
+}
+
+// 前置检查通过 ≠ 写得进去：并发窗口里输掉的事务会撞 idx_forms_open_uniq，
+// 由仓储翻译成 ErrFormAlreadyOpen 冒出来。这里用桩直接注入那个返回值，
+// 验证服务层把它原样上抛（不包装成 ErrFormConfig 之类、不吞掉）。
+func TestUpdateForm_ConcurrentConflictBubblesUp(t *testing.T) {
+	uc, repo, _ := formFixture()
+
+	repo.forms[1] = &domain.Form{
+		ID: 1, Title: "我的表", RoundID: 1, DirectionCode: "front-end",
+		ShareToken: "tok-mine", IsOpen: false,
+	}
+	// 模拟并发：前置检查时另一张开放表还没提交（查不到），写库时撞约束。
+	repo.conflictOnUpdateForm = true
+
+	_, _, _, err := uc.UpdateForm(context.Background(), 1, UpdateFormInput{IsOpen: boolPtr(true)})
+	if !errors.Is(err, repository.ErrFormAlreadyOpen) {
+		t.Fatalf("仓储翻译的冲突应原样上抛，实际: %v", err)
+	}
+	// DB 零副作用（撞索引 = 事务回滚、is_open 未写入）在仓储层用例
+	// TestUpdateForm_TranslatesOpenConflict 用真实 PG 验证；服务层这里
+	// 桩与对象共享内存，不重复断言。
 }
 
 /* ------------------------------------------------------------------ *

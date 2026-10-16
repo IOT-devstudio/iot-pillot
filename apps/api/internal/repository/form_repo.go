@@ -31,6 +31,18 @@ var ErrDuplicateSubmission = errors.New("你已提交过这份表单，不能重
 // ErrDuplicateShareToken 分享令牌冲突（概率极低，服务层换一个再试）。
 var ErrDuplicateShareToken = errors.New("分享令牌冲突，请重试")
 
+// ErrFormAlreadyOpen 同轮同方向已有另一张开放表单（issue #137）。
+//
+// 由迁移 0010 的部分唯一索引 idx_forms_open_uniq 强制：同一 (round_id,
+// direction_code) 至多一行 is_open = true。历史（关闭）表单照旧可以共存。
+//
+// 两条路径都会产出本错误：
+//   - 服务层开放前的前置检查（消息里带上冲突表单的标题，更可读）；
+//   - 并发窗口下撞索引，由仓储层在此翻译（消息就是本哨兵原文）。
+//
+// 调用方一律用 errors.Is 识别 —— 前置检查那条是包装错误。
+var ErrFormAlreadyOpen = errors.New("该方向已有开放中的表单，请先关闭它再开放本表单")
+
 /* ------------------------------------------------------------------ *
  * 表单仓储接口
  * ------------------------------------------------------------------ */
@@ -61,6 +73,10 @@ type FormRepo interface {
 	// 排序即取表规则：同一方向的第一张就是该方向该用的那张。updated_at 相同时
 	// （批量建表会落在同一秒）用 id DESC 兜底，保证结果稳定、不随查询计划漂移。
 	// 无开放轮次或该轮无开放表单都返回空切片与 nil 错误 —— 调用方据此把 form 置 null。
+	//
+	// 开放前的前置检查（#137）也走这个方法：按 (round_id, direction_code) 逐方向
+	// 取开放表单与它同源同序，不另开一个只差一个过滤条件的查询 —— 那会让"开放
+	// 表单的读取"出现两个所有者，两处排序规则迟早漂移。
 	ListOpenFormsByRound(ctx context.Context, roundID int) ([]*domain.Form, error)
 	// UpdateForm 更新表单基本字段；fields 非 nil 时在同一事务里做字段增量
 	// （带 id 的原地更新、无 id 的新增、未出现的删除）。fields 为 nil = 只改表单本身。
@@ -193,8 +209,13 @@ func (r *gormFormRepo) ListOpenFormsByRound(ctx context.Context, roundID int) ([
 // 字段增量按 id 对齐：带 id 的原地更新（保留 id，历史答案仍对得上字段），
 // 无 id 的新增，未在入参里出现的删除。整个过程一个事务 ——
 // 改表到一半失败会留下"字段对不上"的表单，比整单失败更难排查。
+//
+// 唯一约束冲突在这里只可能是 idx_forms_open_uniq（#137）：本方法只写
+// title / description / is_open / updated_at，不碰 share_token，所以
+// forms 上的另一个唯一约束撞不上。翻译成 ErrFormAlreadyOpen，别让调用方
+// 看到驱动层的英文报错。
 func (r *gormFormRepo) UpdateForm(ctx context.Context, form *domain.Form, fields []*domain.FormField) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&domain.Form{}).
 			Where("id = ?", form.ID).
 			Updates(map[string]any{
@@ -286,14 +307,26 @@ func (r *gormFormRepo) UpdateForm(ctx context.Context, form *domain.Form, fields
 		}
 		return nil
 	})
+	if err != nil && IsDuplicateKey(err) {
+		return ErrFormAlreadyOpen
+	}
+	return err
 }
 
+// SetFormOpen 开启 / 关闭表单提交；表单不存在返回 ErrFormNotFound。
+//
+// 开启时同样受 idx_forms_open_uniq 约束（#137）：同轮同方向已有开放表单
+// 则撞索引，翻译成 ErrFormAlreadyOpen。关闭（open = false）永不冲突 ——
+// 部分唯一索引只覆盖 is_open = true 的行。
 func (r *gormFormRepo) SetFormOpen(ctx context.Context, id int, open bool) error {
 	result := r.db.WithContext(ctx).
 		Model(&domain.Form{}).
 		Where("id = ?", id).
 		Update("is_open", open)
 	if result.Error != nil {
+		if IsDuplicateKey(result.Error) {
+			return ErrFormAlreadyOpen
+		}
 		return result.Error
 	}
 	if result.RowsAffected == 0 {

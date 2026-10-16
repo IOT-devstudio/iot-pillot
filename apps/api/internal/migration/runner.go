@@ -22,6 +22,11 @@ import (
 	"github.com/lib/pq"
 )
 
+// legacyVersion is the highest version that existed before the tool took over
+// schema management. It bounds only the one-time manual `check`/`adopt`
+// manifest: versions above it were never applied by hand, so claiming them is
+// rejected. Migrations added later (0010+) run through `up` and never appear in
+// a manual manifest.
 const legacyVersion = 9
 
 // ParseApplied validates the one-time, explicitly reviewed manual history.
@@ -32,7 +37,7 @@ func ParseApplied(input string) ([]uint, error) {
 	for _, item := range strings.Split(input, ",") {
 		v, err := strconv.ParseUint(strings.TrimSpace(item), 10, 32)
 		if err != nil || v == 0 || v > legacyVersion || seen[uint(v)] {
-			return nil, errors.New("applied must contain distinct versions from 1 to 9")
+			return nil, fmt.Errorf("applied must contain distinct versions from 1 to %d", legacyVersion)
 		}
 		seen[uint(v)] = true
 		result = append(result, uint(v))
@@ -217,7 +222,7 @@ func adopt(ctx context.Context, conn *sql.Conn, applied []uint, dryRun bool) err
 		return nil
 	}
 	if _, err := tx.ExecContext(ctx, `CREATE TABLE public.migration_adoptions (
-		version bigint PRIMARY KEY CHECK (version BETWEEN 1 AND 9),
+		version bigint PRIMARY KEY CHECK (version BETWEEN 1 AND `+strconv.Itoa(legacyVersion)+`),
 		checksum text NOT NULL,
 		adopted_at timestamptz NOT NULL DEFAULT now()
 	)`); err != nil {
