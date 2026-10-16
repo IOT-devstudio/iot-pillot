@@ -110,6 +110,9 @@ func NewRouter(
 		apiV1.POST("/reset-password", authHandler.ResetPassword)
 		apiV1.POST("/refresh", authHandler.Refresh)
 		apiV1.POST("/logout", authHandler.Logout)
+		// 可报名方向列表（issue #155）：游客模式首页要展示方向，公开只读。
+		// handler 只消费 request context，不读登录身份、不写数据，响应无用户维度。
+		apiV1.GET("/recruitment/directions", recruitmentHandler.ListActiveDirections)
 
 		// ── 需要登录 ──
 		// /me 的读写都只要求登录（不是 admin）：改的是令牌本人的资料，
@@ -142,8 +145,8 @@ func NewRouter(
 		admin.DELETE("/mails/batch-delete", mailHandler.DeleteMails)
 
 		// ── 招新（用户端，需登录）──
+		// 方向列表已移到公开段（issue #155），这里只剩报名相关接口。
 		recruit := apiV1.Group("/recruitment", authRequired)
-		recruit.GET("/directions", recruitmentHandler.ListActiveDirections)
 		recruit.POST("/applications", recruitmentHandler.SubmitApplication)
 		recruit.GET("/applications", recruitmentHandler.ListMyApplications)
 		recruit.GET("/applications/:id", recruitmentHandler.GetMyApplication)

@@ -69,14 +69,12 @@ func failRecruitment(c *gin.Context, err error) {
  * 用户侧
  * ------------------------------------------------------------------ */
 
-// ListActiveDirections 获取可报名方向。
-// @Summary 可报名方向列表
-// @Description 返回当前开放报名的招新方向，供用户报名页渲染可选方向。每个方向带 form（该方向的面试表单定位信息），无开放表单时为 null。
+// ListActiveDirections 获取可报名方向（公开接口，无需登录即可调用）。
+// @Summary 可报名方向列表（公开）
+// @Description 返回当前开放报名的招新方向，供用户报名页渲染可选方向。每个方向带 form（该方向的面试表单定位信息），无开放表单时为 null。无需登录即可调用（issue #155，游客模式首页方向区）。
 // @Tags 招新模块
 // @Produce json
 // @Success 200 {object} response.Result{data=response.RecruitmentDirectionListResp} "成功"
-// @Failure 401 {object} response.Result "未认证"
-// @Security BearerAuth
 // @Router /api/v1/recruitment/directions [get]
 func (h *RecruitmentHandler) ListActiveDirections(c *gin.Context) {
 	ctx := c.Request.Context()

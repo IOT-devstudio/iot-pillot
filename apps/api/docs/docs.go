@@ -2720,19 +2720,14 @@ const docTemplate = `{
         },
         "/api/v1/recruitment/directions": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "返回当前开放报名的招新方向，供用户报名页渲染可选方向。每个方向带 form（该方向的面试表单定位信息），无开放表单时为 null。",
+                "description": "返回当前开放报名的招新方向，供用户报名页渲染可选方向。每个方向带 form（该方向的面试表单定位信息），无开放表单时为 null。无需登录即可调用（issue #155，游客模式首页方向区）。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "招新模块"
                 ],
-                "summary": "可报名方向列表",
+                "summary": "可报名方向列表（公开）",
                 "responses": {
                     "200": {
                         "description": "成功",
@@ -2750,12 +2745,6 @@ const docTemplate = `{
                                     }
                                 }
                             ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证",
-                        "schema": {
-                            "$ref": "#/definitions/response.Result"
                         }
                     }
                 }

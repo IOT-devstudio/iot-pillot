@@ -56,6 +56,7 @@ func (s *httpFormRepoForDirections) ListOpenFormsByRound(_ context.Context, roun
 }
 
 // newDirectionsEngine 组装方向列表路由（#135 变更一的验收面）。
+// 路由挂载与生产 router.go 保持一致（#155）：方向列表公开、报名接口需登录。
 func newDirectionsEngine(dirs []*domain.RecruitmentDirection, rounds []*domain.RecruitmentRound, forms []*domain.Form) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 
@@ -68,9 +69,12 @@ func newDirectionsEngine(dirs []*domain.RecruitmentDirection, rounds []*domain.R
 	h := NewRecruitmentHandler(recUC, formUC)
 
 	r := gin.New()
-	r.GET("/api/v1/recruitment/directions",
-		middleware.AuthRequired(stubValidator{accept: "good-token", userID: 1}),
-		h.ListActiveDirections)
+	authRequired := middleware.AuthRequired(stubValidator{accept: "good-token", userID: 1})
+	// 公开：方向列表不带 authRequired（#155）
+	r.GET("/api/v1/recruitment/directions", h.ListActiveDirections)
+	// 回归护栏：报名接口仍挂真实鉴权链
+	r.POST("/api/v1/recruitment/applications", authRequired, h.SubmitApplication)
+	r.GET("/api/v1/recruitment/applications", authRequired, h.ListMyApplications)
 	return r
 }
 
@@ -217,19 +221,52 @@ func TestListActiveDirections_NoActiveRound(t *testing.T) {
 }
 
 /* ------------------------------------------------------------------ *
- * 验收项：方向列表需要登录
+ * 验收项：方向列表公开可访问（#155），且报名接口仍要求登录
  * ------------------------------------------------------------------ */
 
-func TestListActiveDirections_RequiresLogin(t *testing.T) {
+// 无 Authorization 头调方向列表 → 200，响应结构与带令牌时逐字段一致。
+func TestListActiveDirections_PublicNoAuth(t *testing.T) {
 	dirs := []*domain.RecruitmentDirection{
 		{ID: 1, Code: "front-end", Name: "前端开发", Open: true, SortOrder: 10},
 	}
 	rounds := []*domain.RecruitmentRound{{ID: 1, RoundNum: 1, Accepting: true}}
 
 	r := newDirectionsEngine(dirs, rounds, nil)
-	w := doJSON(r, http.MethodGet, "/api/v1/recruitment/directions", "", "")
 
+	// 游客：不带 Authorization
+	wGuest := doJSON(r, http.MethodGet, "/api/v1/recruitment/directions", "", "")
+	if wGuest.Code != http.StatusOK {
+		t.Fatalf("未登录读方向列表应返回 200，实际 %d，body=%s", wGuest.Code, wGuest.Body.String())
+	}
+
+	// 登录用户：带有效令牌
+	wAuth := doJSON(r, http.MethodGet, "/api/v1/recruitment/directions", "", "good-token")
+	if wAuth.Code != http.StatusOK {
+		t.Fatalf("登录读方向列表应返回 200，实际 %d，body=%s", wAuth.Code, wAuth.Body.String())
+	}
+
+	// 去掉鉴权中间件不得改变任何输出：两种身份响应体逐字节一致
+	if wGuest.Body.String() != wAuth.Body.String() {
+		t.Errorf("公开与登录响应体应一致：guest=%s auth=%s", wGuest.Body.String(), wAuth.Body.String())
+	}
+
+	items := decodeDirections(t, wGuest.Body.Bytes())
+	if len(items) != 1 || items[0].Code != "front-end" || !items[0].Open {
+		t.Errorf("游客可读的方向内容不符：%+v", items)
+	}
+}
+
+// 回归护栏：报名接口仍挂在 authRequired 后面，未登录必须 401。
+func TestRecruitmentApplications_StillRequireLogin(t *testing.T) {
+	r := newDirectionsEngine(nil, nil, nil)
+
+	w := doJSON(r, http.MethodPost, "/api/v1/recruitment/applications", `{"direction_code":"front-end"}`, "")
 	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("未登录读方向列表应返回 401，实际 %d，body=%s", w.Code, w.Body.String())
+		t.Errorf("未登录 POST /applications 应返回 401，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+
+	w = doJSON(r, http.MethodGet, "/api/v1/recruitment/applications", "", "")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("未登录 GET /applications 应返回 401，实际 %d，body=%s", w.Code, w.Body.String())
 	}
 }
