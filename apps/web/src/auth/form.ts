@@ -86,8 +86,8 @@ export function validateRegisterForm(
 
   if (!name) {
     errors.name = "请输入姓名";
-  } else if (name.length < 3 || name.length > 20) {
-    errors.name = "姓名长度为 3-20 个字符";
+  } else if (name.length < 2 || name.length > 20) {
+    errors.name = "姓名长度为 2-20 个字符";
   }
 
   if (!email) {

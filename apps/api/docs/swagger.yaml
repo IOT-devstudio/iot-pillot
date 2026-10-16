@@ -233,7 +233,7 @@ definitions:
         type: string
       name:
         maxLength: 20
-        minLength: 3
+        minLength: 2
         type: string
       password:
         maxLength: 20

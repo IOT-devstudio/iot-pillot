@@ -3473,7 +3473,7 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "maxLength": 20,
-                    "minLength": 3
+                    "minLength": 2
                 },
                 "password": {
                     "type": "string",

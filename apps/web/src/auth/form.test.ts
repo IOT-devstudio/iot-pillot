@@ -20,17 +20,43 @@ describe("validateLoginForm", () => {
 });
 
 describe("validateRegisterForm", () => {
+  it.each(["张三", "ab", "张".repeat(20)])(
+    "accepts a registration name within 2-20 characters: %s",
+    (name) => {
+      expect(validateRegisterForm({
+        name,
+        email: "test@example.com",
+        password: "123456",
+        confirmPassword: "123456",
+        code: "123456",
+      })).toEqual({});
+    },
+  );
+
+  it.each(["", "张", "张".repeat(21)])(
+    "rejects a registration name outside 2-20 characters: %s",
+    (name) => {
+      expect(validateRegisterForm({
+        name,
+        email: "test@example.com",
+        password: "123456",
+        confirmPassword: "123456",
+        code: "123456",
+      }).name).toBeTruthy();
+    },
+  );
+
   it("checks backend length rules, email format, code and confirmation", () => {
     expect(
       validateRegisterForm({
-        name: "ab",
+        name: "张",
         email: "wrong",
         password: "123456",
         confirmPassword: "654321",
         code: "12345",
       }),
     ).toEqual({
-      name: "姓名长度为 3-20 个字符",
+      name: "姓名长度为 2-20 个字符",
       email: "请输入正确的邮箱地址",
       confirmPassword: "两次输入的密码不一致",
       code: "请输入 6 位验证码",
