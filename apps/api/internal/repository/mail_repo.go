@@ -20,6 +20,10 @@ var ErrDuplicateMailModel = errors.New("模板名或模板类型已存在")
 type MailModelRepo interface {
 	List(ctx context.Context) ([]*domain.MailModel, error)
 	GetByID(ctx context.Context, id int) (*domain.MailModel, error)
+	// GetByType 按类型取模板（type 有唯一索引，每类型至多一个，issue #159）。
+	// 未配置该类型时返回 (nil, nil) —— 「没有模板」是合法状态而非错误，
+	// 调用方据此走内置默认文案兜底。
+	GetByType(ctx context.Context, mailType string) (*domain.MailModel, error)
 	Create(ctx context.Context, model *domain.MailModel) error
 	Update(ctx context.Context, model *domain.MailModel) error
 	Delete(ctx context.Context, id int) error
@@ -66,6 +70,19 @@ func (r *gormMailModelRepo) GetByID(ctx context.Context, id int) (*domain.MailMo
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("模板不存在")
+		}
+		return nil, err
+	}
+	return &model, nil
+}
+
+func (r *gormMailModelRepo) GetByType(ctx context.Context, mailType string) (*domain.MailModel, error) {
+	var model domain.MailModel
+	err := r.db.WithContext(ctx).Where("type = ?", mailType).First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 未配置该类型是合法状态（issue #159：deletion 模板可选，缺了走内置兜底）
+			return nil, nil
 		}
 		return nil, err
 	}

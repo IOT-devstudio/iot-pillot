@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/request"
@@ -75,6 +76,21 @@ func (r *issue86UserRepo) Save(_ context.Context, _ *domain.User) error {
 
 func (r *issue86UserRepo) GetAll(_ context.Context, _, _ int) ([]*domain.User, int64, error) {
 	return r.all, int64(len(r.all)), nil
+}
+
+// SoftDelete 内存版软删（issue #142）：标记 DeletedAt，重复注销返回
+// ErrUserAlreadyDeleted（与 gorm 实现同契约，供注销测试断言）。
+func (r *issue86UserRepo) SoftDelete(_ context.Context, id int) error {
+	user, ok := r.byID[id]
+	if !ok {
+		return repository.ErrUserNotFound
+	}
+	if user.DeletedAt != nil {
+		return repository.ErrUserAlreadyDeleted
+	}
+	now := time.Now()
+	user.DeletedAt = &now
+	return nil
 }
 
 // issue86TokenManager 空实现 TokenIssuer，改名测试不需要签发令牌。

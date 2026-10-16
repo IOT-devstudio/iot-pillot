@@ -78,7 +78,7 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	if err := db.QueryRow("SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 10 || dirty {
+	if version != 11 || dirty {
 		t.Fatalf("version=%d dirty=%v", version, dirty)
 	}
 	var count int
@@ -97,6 +97,17 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	}
 	if !strings.Contains(indexdef, "UNIQUE") || !strings.Contains(indexdef, "is_open") {
 		t.Fatalf("索引应为 is_open 谓词上的部分唯一索引，实际 %q", indexdef)
+	}
+	// 0011 的邮箱唯一索引谓词必须带 deleted_at IS NULL（issue #142 Q5），
+	// 否则注销释放邮箱的语义形同虚设——重注册会撞老行的唯一约束。
+	var emailIndexDef string
+	if err := db.QueryRow(
+		"SELECT indexdef FROM pg_indexes WHERE tablename='users' AND indexname='uniq_users_detail_email'",
+	).Scan(&emailIndexDef); err != nil {
+		t.Fatalf("0011 的邮箱唯一索引未创建: %v", err)
+	}
+	if !strings.Contains(emailIndexDef, "deleted_at") {
+		t.Fatalf("邮箱唯一索引谓词应含 deleted_at IS NULL（#142 Q5），实际 %q", emailIndexDef)
 	}
 }
 

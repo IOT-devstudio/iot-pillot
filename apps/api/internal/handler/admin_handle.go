@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/request"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/middleware"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -154,4 +156,51 @@ func (h *AdminHandler) RevokeAdmin(c *gin.Context) {
 	}
 
 	response.OKWithMsg(c, "已撤销管理员，对方需要重新登录", result)
+}
+
+// DeleteUser 注销账号（创始管理员专属，issue #142）。
+// @Summary 注销账号（软删）
+// @Description 创始管理员专用：软删目标账号——踢掉全部会话、移出管理员与
+// 创始集合，登录面（登录/注册查重/重置密码）立即失效；招新申请、表单提交、
+// 邮件记录按 user_id 保留。**仅创始管理员可调**（路由上的 RequireFounding），
+// 晋升管理员返回 403。不能注销自己，也不能注销其他创始管理员。
+// @Tags 管理端
+// @Produce json
+// @Param user_id path int true "目标用户 ID"
+// @Success 200 {object} response.Result "注销成功"
+// @Failure 400 {object} response.Result "不能注销自己/创始账号受保护/账号已注销"
+// @Failure 401 {object} response.Result "未认证"
+// @Failure 403 {object} response.Result "非管理员或非创始管理员"
+// @Security BearerAuth
+// @Router /api/v1/admin/users/{user_id} [delete]
+func (h *AdminHandler) DeleteUser(c *gin.Context) {
+	userID, err := strconv.Atoi(c.Param("user_id"))
+	if err != nil || userID <= 0 {
+		response.FailInvalidParam(c, "user_id 必须是正整数")
+		return
+	}
+
+	operatorID, _, _, ok := middleware.CurrentUser(c)
+	if !ok {
+		// RequireFounding 已保证有身份；这里兜底防御（同 RevokeAdmin 的口径）
+		response.FailUnauthorized(c, "缺少认证信息")
+		return
+	}
+
+	if err := h.adminService.DeleteUser(c.Request.Context(), operatorID, userID); err != nil {
+		// 业务守卫全部翻 400 + 可读中文；未知错误才走 500 脱敏
+		switch {
+		case errors.Is(err, service.ErrSelfDeletion),
+			errors.Is(err, service.ErrFoundingProtected),
+			errors.Is(err, repository.ErrUserAlreadyDeleted):
+			response.FailInvalidParam(c, err.Error())
+		case errors.Is(err, repository.ErrUserNotFound):
+			response.FailInvalidParam(c, "用户不存在")
+		default:
+			failInternal(c, err)
+		}
+		return
+	}
+
+	response.OKWithMsg(c, "账号已注销，其会话已全部失效", nil)
 }

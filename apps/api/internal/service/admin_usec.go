@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -23,12 +24,26 @@ type SessionRevoker interface {
 	RevokeUserSessions(ctx context.Context, userID int) error
 }
 
+// AccountMailer 注销通知邮件的发送能力（issue #159）。
+//
+// 窄接口收窄到「给某用户发注销通知」一个方法：AdminUseCase 不该知道
+// 模板中心、发信记录这些 MailModule 内部细节（仓库约定：邮件统一走 MailModule）。
+type AccountMailer interface {
+	SendAccountDeletionNotice(ctx context.Context, operatorID int, user *domain.User) error
+}
+
 // NewSessionRevoker 把 *utils.TokenManager 作为 SessionRevoker 提供给装配层。
 //
 // 与 NewTokenIssuer 同理：wire 按类型连线，隐式接口满足对它无效；
 // 接口声明在本包，转换函数就写在本包（utils 反向 import service 会成环）。
 func NewSessionRevoker(manager *utils.TokenManager) SessionRevoker {
 	return manager
+}
+
+// NewAccountMailer 把 *MailUseCase 作为 AccountMailer 提供给装配层（issue #159）。
+// 同款接口转换，理由见 NewSessionRevoker。
+func NewAccountMailer(mailUseCase *MailUseCase) AccountMailer {
+	return mailUseCase
 }
 
 // AdminUseCase 管理端用例：用户列表、管理员名单、角色变更。
@@ -40,6 +55,7 @@ type AdminUseCase struct {
 	userRepo repository.UserRepo
 	admins   utils.AdminDirectory
 	sessions SessionRevoker
+	mailer   AccountMailer
 }
 
 // NewAdminUseCase 构造管理员用例，并执行一次启动期引导：把配置里的管理员补种进 Redis。
@@ -54,12 +70,14 @@ func NewAdminUseCase(
 	userRepo repository.UserRepo,
 	admins utils.AdminDirectory,
 	sessions SessionRevoker,
+	mailer AccountMailer,
 	cfg *config.Config,
 ) (*AdminUseCase, error) {
 	useCase := &AdminUseCase{
 		userRepo: userRepo,
 		admins:   admins,
 		sessions: sessions,
+		mailer:   mailer,
 	}
 
 	if err := useCase.SeedAdmins(context.Background(), cfg.AUTH.AdminUsers); err != nil {
@@ -296,6 +314,87 @@ func (a *AdminUseCase) RevokeAdmin(ctx context.Context, userID int) (*response.A
 }
 
 /* ------------------------------------------------------------------ *
+ * 账号注销（issue #142）
+ * ------------------------------------------------------------------ */
+
+// ErrSelfDeletion 尝试注销自己。
+//
+// 自注销是纯误操作：操作者自己消失、请求随即失去授权依据，
+// 出问题也无法追查是谁点的。前端隐藏按钮只是体验，这里强制。
+var ErrSelfDeletion = errors.New("不能注销自己的账号")
+
+// ErrFoundingProtected 尝试注销其他创始管理员。
+//
+// 创始集合内互不注销（#142 Q4 裁决）：创始账号来自部署配置（ADMIN_USERS），
+// 撤销它的唯一出口是改配置重启——给彼此开一个「互相注销」的口子，
+// 等于让运营配置可以被页面上的误操作绕过。
+var ErrFoundingProtected = errors.New("创始管理员账号不能被注销，请通过部署配置调整")
+
+// DeleteUser 注销账号（创始管理员专属，#142）：软删 + 踢会话 + 清两个管理员集合。
+//
+// 前置鉴权（仅创始管理员可调）在中间件层，本方法只管业务守卫与编排：
+//  1. 守卫：不能注销自己；不能注销其他创始管理员；重复注销返回明确业务错误
+//  2. 软删（repo 层幂等闸门，已删行返回 ErrUserAlreadyDeleted）
+//  3. 移出 auth:admins / auth:admins:founding（与 RevokeAdmin 同款顺序：
+//     先创始后主名单，失败外传不静默——残留创始标记会让 is_founding 失真）
+//  4. 踢掉全部会话（复用 RevokeUserSessions，与改密/撤销管理员同款）
+//
+// 历史记录（招新申请/表单提交/邮件）不删不改，按 user_id 保留（Q3）。
+// 错误顺序刻意「守卫在前、副作用在后」：任何守卫失败都不产生半套状态。
+func (a *AdminUseCase) DeleteUser(ctx context.Context, operatorID int, targetID int) error {
+	if operatorID == targetID {
+		return ErrSelfDeletion
+	}
+
+	target, err := a.userRepo.GetByID(ctx, targetID)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			// 保留哨兵可判别性：handler 靠 errors.Is 翻译成 400「用户不存在」，
+			// 就地 errors.New 出来的新错误判不中，会掉进 failInternal 变 500。
+			return fmt.Errorf("用户不存在: %w", repository.ErrUserNotFound)
+		}
+		return err
+	}
+
+	// 目标是否创始：在软删前判定，避免注销了创始账号后才发现
+	if found, err := a.admins.IsFounding(ctx, targetID); err != nil {
+		return err
+	} else if found {
+		return ErrFoundingProtected
+	}
+
+	if err := a.userRepo.SoftDelete(ctx, targetID); err != nil {
+		// ErrUserAlreadyDeleted 原样上抛，由 handler 翻译成 400
+		return err
+	}
+
+	if err := a.admins.RemoveFounding(ctx, targetID); err != nil {
+		return err
+	}
+	if err := a.admins.RemoveAdmin(ctx, targetID); err != nil {
+		return err
+	}
+
+	// 踢会话失败不回滚软删（账号已注销，登录面已封死，残留令牌最多活到过期），
+	// 但必须外传——与「注销成功」混在一起静默吞掉会让调用方误判。
+	if err := a.sessions.RevokeUserSessions(ctx, targetID); err != nil {
+		return fmt.Errorf("账号已注销，但清理会话失败（旧令牌将在过期后失效）: %w", err)
+	}
+
+	// 注销通知邮件（issue #159 Q3/Q4）：仅管理员发起时发；发送失败
+	// **不阻断注销**——账号已注销是既成事实，回滚没有意义（学踢会话
+	// 失败的降级先例），记日志供排查即可。自助注销不走这里。
+	if err := a.mailer.SendAccountDeletionNotice(ctx, operatorID, target); err != nil {
+		log.Printf("[admin] 注销通知邮件发送失败（userID=%d，注销已生效，不阻断）: %v",
+			targetID, err)
+	}
+
+	log.Printf("[admin] 账号已注销: userID=%d name=%q（操作者 userID=%d）",
+		targetID, target.Name, operatorID)
+	return nil
+}
+
+/* ------------------------------------------------------------------ *
  * 辅助
  * ------------------------------------------------------------------ */
 
@@ -319,6 +418,8 @@ func toAdminUserResp(user *domain.User, adminSet map[int]struct{}) response.Admi
 		Name:      user.Name,
 		CreatedAt: user.CreatedAt.Format(time.RFC3339),
 		IsAdmin:   isAdmin,
+		// 已注销行保留在列表里（#142 Q3），前端按此标「账号已注销」
+		IsDeleted: user.IsDeleted(),
 		Detail:    response.NewUserProfileDetail(user.Detail),
 	}
 }

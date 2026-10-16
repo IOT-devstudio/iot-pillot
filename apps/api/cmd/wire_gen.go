@@ -52,16 +52,17 @@ func InitializeApp() (*handler.Router, func(), error) {
 	authUseCase := service.NewAuthUseCase(userRepo, tokenIssuer, verifyCodeChecker, adminDirectory, limiter)
 	authHandler := handler.NewAuthHandler(authUseCase, limiter)
 	sessionRevoker := service.NewSessionRevoker(tokenManager)
-	adminUseCase, err := service.NewAdminUseCase(userRepo, adminDirectory, sessionRevoker, configConfig)
+	mailModelRepo := repository.NewMailModelRepo(db)
+	mailRepo := repository.NewMailRepo(db)
+	mailSender := service.NewMailSender(mailManager)
+	mailUseCase := service.NewMailUseCase(mailModelRepo, mailRepo, userRepo, mailSender)
+	accountMailer := service.NewAccountMailer(mailUseCase)
+	adminUseCase, err := service.NewAdminUseCase(userRepo, adminDirectory, sessionRevoker, accountMailer, configConfig)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
 	adminHandler := handler.NewAdminHandler(adminUseCase)
-	mailModelRepo := repository.NewMailModelRepo(db)
-	mailRepo := repository.NewMailRepo(db)
-	mailSender := service.NewMailSender(mailManager)
-	mailUseCase := service.NewMailUseCase(mailModelRepo, mailRepo, userRepo, mailSender)
 	mailHandler := handler.NewMailHandler(mailUseCase)
 	recruitmentRepo := repository.NewRecruitmentRepo(db)
 	recruitmentUseCase := service.NewRecruitmentUseCase(recruitmentRepo, userRepo)

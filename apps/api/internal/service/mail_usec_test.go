@@ -49,6 +49,16 @@ func (s *stubMailModelRepo) GetByID(_ context.Context, id int) (*domain.MailMode
 	return model, nil
 }
 
+// GetByType 按类型查（issue #159）：未配置返回 (nil, nil)，与 gorm 实现同契约。
+func (s *stubMailModelRepo) GetByType(_ context.Context, mailType string) (*domain.MailModel, error) {
+	for _, model := range s.models {
+		if model.Type == mailType {
+			return model, nil
+		}
+	}
+	return nil, nil
+}
+
 func (s *stubMailModelRepo) Create(_ context.Context, model *domain.MailModel) error {
 	if s.createErr != nil {
 		return s.createErr
@@ -132,6 +142,9 @@ func (s *stubUserRepo) Save(_ context.Context, user *domain.User) error {
 func (s *stubUserRepo) GetAll(_ context.Context, _, _ int) ([]*domain.User, int64, error) {
 	return s.all, int64(len(s.all)), nil
 }
+
+// SoftDelete 空实现（issue #142 加接口方法）：发信测试不涉及注销。
+func (s *stubUserRepo) SoftDelete(_ context.Context, _ int) error { return nil }
 
 func (s *stubMailRepo) Create(_ context.Context, mail *domain.Mail) error {
 	if s.err != nil {
@@ -540,4 +553,102 @@ func TestSendToUser_WrapsDeliveryFailure(t *testing.T) {
 	if !errors.Is(err, ErrMailDelivery) {
 		t.Errorf("SMTP 失败应当包装成 ErrMailDelivery，实际: %v", err)
 	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 注销通知邮件（issue #159）
+ * ------------------------------------------------------------------ */
+
+// 配置了 type=deletion 模板 → 用模板文案发送。
+func TestSendAccountDeletionNotice_UsesConfiguredTemplate(t *testing.T) {
+	mails := &stubMailRepo{}
+	sender := &stubMailSender{}
+	models := newStubMailModelRepo(&domain.MailModel{
+		ID: 9, Name: "注销通知", Type: "deletion",
+		Title:     "【通知】{{name}} 的账号已注销",
+		MailModel: "管理员已注销你的账号，原因请联系工作室。",
+	})
+	users := newStubUserRepoWithUsers(&domain.User{
+		ID: 7, Name: "victim",
+		Detail: domain.Detail{Email: "victim@example.com"},
+	})
+	useCase := NewMailUseCase(models, mails, users, sender)
+
+	if err := useCase.SendAccountDeletionNotice(context.Background(), 1, mustUser(t, users, 7)); err != nil {
+		t.Fatalf("发送失败: %v", err)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("应发出 1 封，实际 %d", len(sender.sent))
+	}
+	if sender.sent[0].subject != "【通知】victim 的账号已注销" {
+		t.Errorf("应走模板文案，subject = %q", sender.sent[0].subject)
+	}
+	if len(mails.created) != 1 {
+		t.Errorf("应落发信记录，实际 %d", len(mails.created))
+	}
+}
+
+// 未配置 deletion 模板 → 内置默认文案兜底，照常发送（Q4：不因缺模板失败）。
+func TestSendAccountDeletionNotice_FallsBackToBuiltIn(t *testing.T) {
+	mails := &stubMailRepo{}
+	sender := &stubMailSender{}
+	models := newStubMailModelRepo() // 空模板中心
+	users := newStubUserRepoWithUsers(&domain.User{
+		ID: 7, Name: "victim",
+		Detail: domain.Detail{Email: "victim@example.com"},
+	})
+	useCase := NewMailUseCase(models, mails, users, sender)
+
+	if err := useCase.SendAccountDeletionNotice(context.Background(), 1, mustUser(t, users, 7)); err != nil {
+		t.Fatalf("无模板时应走内置兜底，实际失败: %v", err)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("应发出 1 封，实际 %d", len(sender.sent))
+	}
+	if !strings.Contains(sender.sent[0].subject, "注销") {
+		t.Errorf("内置文案主题应含「注销」，subject = %q", sender.sent[0].subject)
+	}
+	if !strings.Contains(sender.sent[0].body, "victim") {
+		t.Errorf("内置文案应渲染收件人姓名，body = %q", sender.sent[0].body)
+	}
+}
+
+// 收件账号无邮箱 → 返回错误（由注销侧按 Q4 记日志降级，不阻断）。
+func TestSendAccountDeletionNotice_NoEmailFails(t *testing.T) {
+	mails := &stubMailRepo{}
+	sender := &stubMailSender{}
+	models := newStubMailModelRepo()
+	users := newStubUserRepoWithUsers(&domain.User{ID: 8, Name: "seeded"})
+	useCase := NewMailUseCase(models, mails, users, sender)
+
+	if err := useCase.SendAccountDeletionNotice(context.Background(), 1, mustUser(t, users, 8)); err == nil {
+		t.Error("无邮箱账号应返回错误，让调用方记日志")
+	}
+	if len(sender.sent) != 0 {
+		t.Error("无邮箱不应发出任何邮件")
+	}
+}
+
+// newStubUserRepoWithUsers 便捷构造：byID 与 all 同步填充（issue #159 测试用）。
+func newStubUserRepoWithUsers(users ...*domain.User) *stubUserRepo {
+	repo := &stubUserRepo{
+		byID:   map[int]*domain.User{},
+		byName: map[string]*domain.User{},
+	}
+	for _, user := range users {
+		repo.byID[user.ID] = user
+		repo.byName[user.Name] = user
+		repo.all = append(repo.all, user)
+	}
+	return repo
+}
+
+// mustUser 取桩内用户，取不到直接 Fail（测试辅助）。
+func mustUser(t *testing.T, repo *stubUserRepo, id int) *domain.User {
+	t.Helper()
+	user, err := repo.GetByID(context.Background(), id)
+	if err != nil || user == nil {
+		t.Fatalf("桩内应有 userID=%d，err=%v", id, err)
+	}
+	return user
 }

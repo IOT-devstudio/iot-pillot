@@ -41,6 +41,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		service.NewVerifyCodeChecker,
 		service.NewMailSender,
 		service.NewSessionRevoker,
+		service.NewAccountMailer,
 		handler.NewDatabasePinger,
 		handler.NewRedisPinger,
 
