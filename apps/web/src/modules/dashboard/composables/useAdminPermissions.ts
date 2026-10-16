@@ -361,8 +361,7 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
   }
 
   /**
-   * 注销账号（issue #142 Q4）：二次确认要求**输入目标用户名精确匹配**——
-   * 注销不可逆（无恢复入口，见票 Out of scope），确认门槛刻意高于提升/撤销。
+   * 注销账号（issue #142 Q4）。
    *
    * 守卫分层：这里拦「自己 / 已注销 / 身份未识别」三个可见分支；
    * 「目标是创始管理员」前端无法可靠识别（列表不暴露 is_founding），
@@ -383,16 +382,13 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     }
 
     try {
-      await ElMessageBox.prompt(
-        `此操作不可逆：注销「${user.name}」后其无法再登录，历史记录保留。
-请输入该用户的用户名「${user.name}」确认：`,
+      await ElMessageBox.confirm(
+        `此操作不可逆：注销「${user.name}」后其无法再登录，历史记录保留。确定注销？`,
         "注销账号",
         {
-          type: "error",
+          type: "warning",
           confirmButtonText: "确认注销",
           cancelButtonText: "取消",
-          inputValidator: (value: string) =>
-            value === user.name || "用户名不匹配，请输入完整用户名",
         },
       );
     } catch {

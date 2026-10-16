@@ -386,7 +386,7 @@ describe("useAdminPermissions mutations", () => {
     await state.deleteUser(user({ user_id: 1 }));
 
     expect(deleteAdminUser).not.toHaveBeenCalled();
-    expect(PROMPT).not.toHaveBeenCalled();
+    expect(CONFIRM).not.toHaveBeenCalled();
     expect(String(WARNING.mock.calls[0]?.[0])).toContain("不能注销自己");
   });
 
@@ -398,15 +398,15 @@ describe("useAdminPermissions mutations", () => {
     await state.deleteUser(user({ user_id: 7, is_deleted: true }));
 
     expect(deleteAdminUser).not.toHaveBeenCalled();
-    expect(PROMPT).not.toHaveBeenCalled();
+    expect(CONFIRM).not.toHaveBeenCalled();
     expect(String(WARNING.mock.calls[0]?.[0])).toContain("已注销");
   });
 
-  it("用户取消输入确认时不发请求", async () => {
+  it("用户取消确认时不发请求", async () => {
     const deleteAdminUser = vi.fn();
     const state = useAdminPermissions(makeDeps({ deleteAdminUser }));
     await state.loadAll();
-    PROMPT.mockRejectedValue("cancel"); // 用户点取消
+    CONFIRM.mockRejectedValue("cancel"); // 用户点取消
 
     await state.deleteUser(user({ user_id: 7 }));
 
@@ -418,7 +418,7 @@ describe("useAdminPermissions mutations", () => {
     const deleteAdminUser = vi.fn();
     const state = useAdminPermissions(makeDeps({ deleteAdminUser }));
     await state.loadAll();
-    PROMPT.mockResolvedValue("confirm" as never);
+    CONFIRM.mockResolvedValue("confirm" as never);
 
     await state.deleteUser(user({ user_id: 7 }));
 
@@ -435,7 +435,7 @@ describe("useAdminPermissions mutations", () => {
       }),
     );
     await state.loadAll();
-    PROMPT.mockResolvedValue("confirm" as never);
+    CONFIRM.mockResolvedValue("confirm" as never);
 
     await state.deleteUser(user({ user_id: 7 }));
 
