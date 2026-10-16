@@ -117,7 +117,7 @@ defineEmits<{
           v-model="registerForm.name"
           label="姓名"
           autocomplete="name"
-          placeholder="3–20 个字符"
+          placeholder="2–20 个字符"
           :error="errors.name"
         />
         <AuthField

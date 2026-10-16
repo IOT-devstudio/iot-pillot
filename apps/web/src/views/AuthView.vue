@@ -494,7 +494,7 @@ onUnmounted(() => {
                     name="name"
                     type="text"
                     autocomplete="name"
-                    placeholder="输入 3–20 个字符"
+                    placeholder="输入 2–20 个字符"
                     :aria-invalid="Boolean(errors.name)"
                     :aria-describedby="errors.name ? 'name-error' : undefined"
                   />
