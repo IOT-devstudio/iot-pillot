@@ -44,6 +44,11 @@ func failForm(c *gin.Context, err error) {
 		response.FailInvalidParam(c, err.Error())
 	case errors.Is(err, repository.ErrDuplicateApplication):
 		response.FailInvalidParam(c, err.Error())
+	case errors.Is(err, repository.ErrFormAlreadyOpen):
+		// 同轮同方向已有开放表单（#137）。两条来源：服务层前置检查（消息里
+		// 带上了已开放表单的标题）与并发下撞 idx_forms_open_uniq 的仓储翻译。
+		// 都走 400 + 可读中文，不让调用方看到驱动层英文。
+		response.FailInvalidParam(c, err.Error())
 	case errors.Is(err, repository.ErrRoundNotFound):
 		response.FailInvalidParam(c, "招新轮次不存在")
 	case errors.Is(err, repository.ErrDirectionNotFound):

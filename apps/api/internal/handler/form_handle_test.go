@@ -52,6 +52,35 @@ func (s *httpFormRepo) GetFormByShareToken(_ context.Context, token string) (*do
 	return nil, repository.ErrFormNotFound
 }
 
+// GetFormByID / ListOpenFormsByRound / UpdateForm 支撑 PATCH 开放路径（#137）。
+func (s *httpFormRepo) GetFormByID(_ context.Context, id int) (*domain.Form, error) {
+	if f, ok := s.forms[id]; ok {
+		return f, nil
+	}
+	return nil, repository.ErrFormNotFound
+}
+
+func (s *httpFormRepo) ListOpenFormsByRound(_ context.Context, roundID int) ([]*domain.Form, error) {
+	var out []*domain.Form
+	for _, f := range s.forms {
+		if f.RoundID == roundID && f.IsOpen {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+func (s *httpFormRepo) UpdateForm(_ context.Context, form *domain.Form, _ []*domain.FormField) error {
+	current, ok := s.forms[form.ID]
+	if !ok {
+		return repository.ErrFormNotFound
+	}
+	current.Title = form.Title
+	current.Description = form.Description
+	current.IsOpen = form.IsOpen
+	return nil
+}
+
 func (s *httpFormRepo) ListFields(_ context.Context, formID int) ([]*domain.FormField, error) {
 	if _, ok := s.forms[formID]; !ok {
 		return nil, repository.ErrFormNotFound
@@ -73,6 +102,18 @@ func (s *httpFormRepo) CreateSubmission(_ context.Context, submission *domain.Fo
 	s.nextSubID++
 	s.submissions[submission.ID] = submission
 	return nil
+}
+
+func (s *httpFormRepo) CountSubmissions(_ context.Context, formIDs []int) (map[int]int64, error) {
+	counts := make(map[int]int64, len(formIDs))
+	for _, sub := range s.submissions {
+		for _, id := range formIDs {
+			if sub.FormID == id {
+				counts[id]++
+			}
+		}
+	}
+	return counts, nil
 }
 
 type httpDirectory struct{ service.RecruitmentDirectory }
@@ -185,6 +226,23 @@ func newFormTestEngineWithCreator(t *testing.T, creator service.ApplicationCreat
 	r.GET("/api/v1/forms/public/:shareToken", authRequired, h.ReadShareForm)
 	r.POST("/api/v1/forms", authRequired, requireAdmin, h.CreateForm)
 	return r, repo, uc
+}
+
+// newFormAdminEngine 在夹具之上注册 PATCH /forms/:id 并放行管理员，
+// 用于验证开放动作的错误映射（#137）。
+func newFormAdminEngine(t *testing.T) (*gin.Engine, *httpFormRepo) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	repo := newHTTPFormRepo()
+	uc := service.NewFormUseCase(repo, httpDirectory{}, httpCreator{})
+	h := NewFormHandler(uc)
+
+	r := gin.New()
+	authRequired := middleware.AuthRequired(stubValidator{accept: "good-token", userID: 1})
+	requireAdmin := middleware.RequireAdmin(stubAdminChecker{admin: true})
+	r.PATCH("/api/v1/forms/:id", authRequired, requireAdmin, h.UpdateForm)
+	return r, repo
 }
 
 func doJSON(r *gin.Engine, method string, path string, body string, token string) *httptest.ResponseRecorder {
@@ -439,5 +497,45 @@ func TestSubmitForm_ServerSideValidation(t *testing.T) {
 	}
 	if len(repo.submissions) != 0 {
 		t.Error("校验失败与关闭状态下都不应留下提交记录")
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 验收项：开放同方向第二张表 → 400 + 中文文案（#137）
+ * ------------------------------------------------------------------ */
+
+func TestUpdateForm_OpenConflictMappedToReadable400(t *testing.T) {
+	r, repo := newFormAdminEngine(t)
+
+	// 已开放的前端表（前置检查会查到的那张）
+	repo.forms[1] = &domain.Form{
+		ID: 1, Title: "已开放的前端面试表", RoundID: 1, DirectionCode: "front-end",
+		ShareToken: "tok-open", IsOpen: true,
+	}
+	// 待开放的第二张
+	repo.forms[2] = &domain.Form{
+		ID: 2, Title: "另一张前端表", RoundID: 1, DirectionCode: "front-end",
+		ShareToken: "tok-second", IsOpen: false,
+	}
+
+	w := doJSON(r, http.MethodPatch, "/api/v1/forms/2", `{"is_open":true}`, "good-token")
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("开放冲突应返回 400，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	// 必须是可读中文业务错误，不是 500、不是驱动层英文（brief 硬约束）
+	if !strings.Contains(body, "已有开放中的表单") {
+		t.Errorf("应给出「已有开放中的表单」的明确反馈，实际 %s", body)
+	}
+	if !strings.Contains(body, "已开放的前端面试表") {
+		t.Errorf("应带上冲突来源的标题，实际 %s", body)
+	}
+	if strings.Contains(body, "idx_forms_open_uniq") {
+		t.Errorf("不能把索引名/驱动层错误透出，实际 %s", body)
+	}
+	// 零副作用：第二张没有被开放
+	if repo.forms[2].IsOpen {
+		t.Error("400 拒绝后 is_open 不应被写入")
 	}
 }

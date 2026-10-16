@@ -252,9 +252,33 @@ func (u *FormUseCase) UpdateForm(ctx context.Context, formID int, in UpdateFormI
 	}
 
 	if in.IsOpen != nil {
+		// 开放跃迁的前置检查（#137 D2）：同轮同方向只允许一张开放表单。
+		//
+		// ⚠️ 这道检查**不是最终防线**，只是提前给出干净的中文错误。真正挡住并发的是
+		// 迁移 0010 的部分唯一索引 idx_forms_open_uniq —— 两个管理员同时开放两张表时，
+		// 两个 UpdateForm 各自 SELECT 都看不到对方未提交的行，双双通过本检查，然后
+		// 在索引上分胜负（输的那个由仓储层翻译成 ErrFormAlreadyOpen）。所以这里
+		// 检查通过不代表一定写得进去，仓储层那条翻译必须保留。
+		//
+		// 只在显式请求开放时检查：is_open 不跃迁的保存（改标题等）不可能引入冲突。
+		// 放在赋值之前，检查失败时不留任何内存副作用（调用方重试前看到的还是旧状态）。
+		if *in.IsOpen {
+			openForms, err := u.forms.ListOpenFormsByRound(ctx, form.RoundID)
+			if err != nil {
+				return nil, nil, 0, err
+			}
+			for _, other := range openForms {
+				if other.ID == form.ID || other.DirectionCode != form.DirectionCode {
+					continue
+				}
+				return nil, nil, 0, fmt.Errorf("%w（已开放的是「%s」）", repository.ErrFormAlreadyOpen, other.Title)
+			}
+		}
 		form.IsOpen = *in.IsOpen
 	}
 
+	// 纯入参校验放在查库之前：字段写错了就该报字段错，不该先被"已有开放表单"
+	// 这种业务冲突盖过去。
 	var fields []*domain.FormField
 	if in.Fields != nil {
 		fields, err = validateFieldInputs(*in.Fields)
