@@ -73,6 +73,13 @@ type RecruitmentRepo interface {
 	ListApplicationsByUser(ctx context.Context, userID int, page int, pageSize int) ([]*domain.Application, int64, error)
 	// GetApplicationByID 按 id 取申请；不存在返回 ErrApplicationNotFound。
 	GetApplicationByID(ctx context.Context, id int) (*domain.Application, error)
+	// GetApplicationByUserRoundDirection 按 (用户, 轮次, 方向) 三元组取申请。
+	//
+	// 三元组就是唯一约束 (user_id, round_id, direction_code) 的完整键，因此
+	// 命中最多一条。表单提交（#135）用它判断"这位用户是不是已经报过这个方向"：
+	// 是则复用那条申请，不再走创建（否则必撞唯一约束）。
+	// 不存在返回 ErrApplicationNotFound。
+	GetApplicationByUserRoundDirection(ctx context.Context, userID int, roundID int, directionCode string) (*domain.Application, error)
 	// ListApplications 分页列出全部申请，可按轮次/方向/状态过滤。
 	ListApplications(ctx context.Context, filter ApplicationListFilter, page int, pageSize int) ([]*domain.Application, int64, error)
 	// UpdateApplicationStatus 更新申请状态并返回更新的行数。
@@ -258,6 +265,25 @@ func (r *gormRecruitmentRepo) ListApplicationsByUser(ctx context.Context, userID
 func (r *gormRecruitmentRepo) GetApplicationByID(ctx context.Context, id int) (*domain.Application, error) {
 	var app domain.Application
 	err := r.db.WithContext(ctx).First(&app, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrApplicationNotFound
+		}
+		return nil, err
+	}
+	return &app, nil
+}
+
+// GetApplicationByUserRoundDirection 按唯一约束的完整键取申请。
+//
+// 三元组与 (user_id, round_id, direction_code) 唯一索引一一对应，命中即唯一，
+// 不需要 order by 兜底。方向 code 先 TrimSpace，与写入侧的规范化保持一致 ——
+// 否则 "front-end " 与 "front-end" 会被当成两个方向，查不到本该命中的申请。
+func (r *gormRecruitmentRepo) GetApplicationByUserRoundDirection(ctx context.Context, userID int, roundID int, directionCode string) (*domain.Application, error) {
+	var app domain.Application
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND round_id = ? AND direction_code = ?", userID, roundID, strings.TrimSpace(directionCode)).
+		First(&app).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrApplicationNotFound

@@ -2,6 +2,20 @@ package response
 
 import "github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 
+// RecruitmentDirectionFormResp 方向的面试表单定位信息（#135）。
+//
+// 只给前端三个值：点「面试」要跳哪张表（share_token）、以及该表当前开不开放
+// （is_open）好让按钮按条件置灰。不给标题 / 字段等定义内容 —— 那些由填写页
+// 按 share_token 自己读（GET /forms/public/:shareToken）。
+//
+// share_token 只是定位符、不是凭据（迁移 0009 注释已明确「不构成鉴权绕过」，
+// 读取与提交都挂在 AuthRequired 之后），交给已登录用户无安全问题。
+type RecruitmentDirectionFormResp struct {
+	ID         int    `json:"id"`
+	ShareToken string `json:"share_token"`
+	IsOpen     bool   `json:"is_open"`
+}
+
 // RecruitmentDirectionResp 招新方向（用户端读）。
 type RecruitmentDirectionResp struct {
 	ID       int    `json:"id"`
@@ -9,6 +23,9 @@ type RecruitmentDirectionResp struct {
 	Name     string `json:"name"`
 	Open     bool   `json:"open"`
 	SortOrder int   `json:"sort_order"`
+	// Form 是该方向的面试表单；该方向无开放表单时为 null（指针类型才能序列化出 null，
+	// 值类型会变成 {"id":0,...} 这种假对象，前端无法用 form === null 判断）。
+	Form *RecruitmentDirectionFormResp `json:"form"`
 }
 
 // RecruitmentDirectionListResp 方向列表。
@@ -71,6 +88,9 @@ type RecruitmentApplicationListResp struct {
 }
 
 // NewRecruitmentDirectionResp 领域方向 → 响应 DTO。
+//
+// form 由调用方（handler）另行组装：表单是表单域的读能力，方向 DTO 的构造函数
+// 只认招新域，不认识 domain.Form（跨域依赖停在 handler 层，#135 §2.2）。
 func NewRecruitmentDirectionResp(d *domain.RecruitmentDirection) RecruitmentDirectionResp {
 	return RecruitmentDirectionResp{
 		ID:       d.ID,
@@ -78,6 +98,18 @@ func NewRecruitmentDirectionResp(d *domain.RecruitmentDirection) RecruitmentDire
 		Name:     d.Name,
 		Open:     d.Open,
 		SortOrder: d.SortOrder,
+	}
+}
+
+// NewRecruitmentDirectionFormResp 领域表单 → 方向上的面试表单 DTO。
+func NewRecruitmentDirectionFormResp(f *domain.Form) *RecruitmentDirectionFormResp {
+	if f == nil {
+		return nil
+	}
+	return &RecruitmentDirectionFormResp{
+		ID:         f.ID,
+		ShareToken: f.ShareToken,
+		IsOpen:     f.IsOpen,
 	}
 }
 

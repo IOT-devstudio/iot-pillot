@@ -53,6 +53,15 @@ type FormRepo interface {
 	GetFormByShareToken(ctx context.Context, token string) (*domain.Form, error)
 	// ListForms 分页列出全部表单（新建在前）。
 	ListForms(ctx context.Context, page int, pageSize int) ([]*domain.Form, int64, error)
+	// ListOpenFormsByRound 列出某轮次下的全部开放表单，按 (direction_code, updated_at DESC, id DESC) 排序。
+	//
+	// 方向列表组装（#135）需要知道"每个方向该跳哪张表"。一次查回整轮、在内存里
+	// 按方向取第一张，而不是按方向逐个查：方向是个位数，一次查询比 N 次往返干净。
+	//
+	// 排序即取表规则：同一方向的第一张就是该方向该用的那张。updated_at 相同时
+	// （批量建表会落在同一秒）用 id DESC 兜底，保证结果稳定、不随查询计划漂移。
+	// 无开放轮次或该轮无开放表单都返回空切片与 nil 错误 —— 调用方据此把 form 置 null。
+	ListOpenFormsByRound(ctx context.Context, roundID int) ([]*domain.Form, error)
 	// UpdateForm 更新表单基本字段；fields 非 nil 时在同一事务里做字段增量
 	// （带 id 的原地更新、无 id 的新增、未出现的删除）。fields 为 nil = 只改表单本身。
 	UpdateForm(ctx context.Context, form *domain.Form, fields []*domain.FormField) error
@@ -157,6 +166,26 @@ func (r *gormFormRepo) ListForms(ctx context.Context, page int, pageSize int) ([
 		return nil, 0, err
 	}
 	return forms, total, nil
+}
+
+// ListOpenFormsByRound 列出某轮次下的开放表单，按取表规则排序。
+//
+// 取表规则（#135 §2.1 / D1）：同一轮同一方向可能有多张表单（迁移 0009 的
+// idx_forms_round_direction 只是普通索引，没有唯一约束），用户端点「面试」只能跳
+// 一张。规则是「is_open = true 且 updated_at 最新」；updated_at 打平时用 id DESC
+// 兜底 —— 只按 updated_at 排序在批量建表（同一秒）时结果不稳定。
+//
+// 同轮同方向"只允许一张开放表单"的约束不在本 issue 范围（见 #137）。
+func (r *gormFormRepo) ListOpenFormsByRound(ctx context.Context, roundID int) ([]*domain.Form, error) {
+	var forms []*domain.Form
+	err := r.db.WithContext(ctx).
+		Where("round_id = ? AND is_open = ?", roundID, true).
+		Order("direction_code ASC, updated_at DESC, id DESC").
+		Find(&forms).Error
+	if err != nil {
+		return nil, err
+	}
+	return forms, nil
 }
 
 // UpdateForm 更新表单本身，并在 fields 非 nil 时做字段增量。

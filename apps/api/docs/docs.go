@@ -2725,7 +2725,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "返回当前开放报名的招新方向，供用户报名页渲染可选方向。",
+                "description": "返回当前开放报名的招新方向，供用户报名页渲染可选方向。每个方向带 form（该方向的面试表单定位信息），无开放表单时为 null。",
                 "produces": [
                     "application/json"
                 ],
@@ -4300,6 +4300,20 @@ const docTemplate = `{
                 }
             }
         },
+        "response.RecruitmentDirectionFormResp": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "is_open": {
+                    "type": "boolean"
+                },
+                "share_token": {
+                    "type": "string"
+                }
+            }
+        },
         "response.RecruitmentDirectionListResp": {
             "type": "object",
             "properties": {
@@ -4316,6 +4330,14 @@ const docTemplate = `{
             "properties": {
                 "code": {
                     "type": "string"
+                },
+                "form": {
+                    "description": "Form 是该方向的面试表单；该方向无开放表单时为 null（指针类型才能序列化出 null，\n值类型会变成 {\"id\":0,...} 这种假对象，前端无法用 form === null 判断）。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/response.RecruitmentDirectionFormResp"
+                        }
+                    ]
                 },
                 "id": {
                     "type": "integer"

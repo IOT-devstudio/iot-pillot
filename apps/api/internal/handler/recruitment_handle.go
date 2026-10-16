@@ -17,12 +17,17 @@ import (
 //
 // 用户侧接口走 authRequired，管理侧接口走 admin 组（authRequired + requireAdmin）。
 // 归属与权限由中间件 + 服务层校验，handler 只做参数绑定与响应封装。
+//
+// formService 的存在只为方向列表组装「该方向的面试表单」（#135 §2.2）：
+// 跨域依赖停在 handler 层，不让 RecruitmentUseCase 反向依赖表单仓储，
+// 两个域的边界因此保持干净。
 type RecruitmentHandler struct {
 	recruitmentService *service.RecruitmentUseCase
+	formService        *service.FormUseCase
 }
 
-func NewRecruitmentHandler(recruitmentService *service.RecruitmentUseCase) *RecruitmentHandler {
-	return &RecruitmentHandler{recruitmentService: recruitmentService}
+func NewRecruitmentHandler(recruitmentService *service.RecruitmentUseCase, formService *service.FormUseCase) *RecruitmentHandler {
+	return &RecruitmentHandler{recruitmentService: recruitmentService, formService: formService}
 }
 
 // failRecruitment 把招新域错误映射成 HTTP 响应。
@@ -66,7 +71,7 @@ func failRecruitment(c *gin.Context, err error) {
 
 // ListActiveDirections 获取可报名方向。
 // @Summary 可报名方向列表
-// @Description 返回当前开放报名的招新方向，供用户报名页渲染可选方向。
+// @Description 返回当前开放报名的招新方向，供用户报名页渲染可选方向。每个方向带 form（该方向的面试表单定位信息），无开放表单时为 null。
 // @Tags 招新模块
 // @Produce json
 // @Success 200 {object} response.Result{data=response.RecruitmentDirectionListResp} "成功"
@@ -74,7 +79,24 @@ func failRecruitment(c *gin.Context, err error) {
 // @Security BearerAuth
 // @Router /api/v1/recruitment/directions [get]
 func (h *RecruitmentHandler) ListActiveDirections(c *gin.Context) {
-	dirs, err := h.recruitmentService.ListActiveDirections(c.Request.Context())
+	ctx := c.Request.Context()
+
+	dirs, err := h.recruitmentService.ListActiveDirections(ctx)
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+
+	// 取「当前开放轮次」下各方向的面试表单。没有开放轮次时 roundID = 0，
+	// formService 直接返回空 map —— 方向列表照常返回，只是 form 全为 null，
+	// 不因为"现在没开招新"就让整个接口报错。
+	roundID, err := h.recruitmentService.ActiveRoundID(ctx)
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+
+	forms, err := h.formService.OpenFormsByRound(ctx, roundID)
 	if err != nil {
 		failInternal(c, err)
 		return
@@ -82,7 +104,10 @@ func (h *RecruitmentHandler) ListActiveDirections(c *gin.Context) {
 
 	items := make([]response.RecruitmentDirectionResp, 0, len(dirs))
 	for _, d := range dirs {
-		items = append(items, response.NewRecruitmentDirectionResp(d))
+		item := response.NewRecruitmentDirectionResp(d)
+		// 方向没有开放表单时 form 保持 nil → 序列化成 null（前端靠 form === null 降级）
+		item.Form = response.NewRecruitmentDirectionFormResp(forms[d.Code])
+		items = append(items, item)
 	}
 
 	response.OK(c, response.RecruitmentDirectionListResp{Items: items})

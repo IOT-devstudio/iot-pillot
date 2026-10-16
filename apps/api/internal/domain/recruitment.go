@@ -60,6 +60,23 @@ func (s ApplicationStatus) Valid() bool {
 	return false
 }
 
+// AllowsInterviewSupplement 报告该状态的申请还能否补交面试材料（issue #135）。
+//
+// 与 CanTransitionTo 是两回事：那个问"审核动作能不能推进状态"，这个问
+// "申请还活着、值得再收一份面试材料吗"。applied / reviewing 尚未出结果，
+// 补交有意义；accepted / rejected 已经定论，再交材料没有业务含义。
+//
+// 表单提交走这个判断，而不是复用 CanTransitionTo —— 后者对 applied 只认
+// reviewing，会把"先报名、后补面试"这种正常路径误判成非法流转。
+func (s ApplicationStatus) AllowsInterviewSupplement() bool {
+	switch s {
+	case ApplicationApplied, ApplicationReviewing:
+		return true
+	default:
+		return false
+	}
+}
+
 // CanTransitionTo 报告能否从当前状态流转到 target（顺序状态机）。
 //
 // 只允许沿 applied → reviewing → accepted/rejected 前进：

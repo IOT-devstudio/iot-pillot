@@ -112,6 +112,30 @@ func (u *RecruitmentUseCase) ListActiveDirections(ctx context.Context) ([]*domai
 	return out, nil
 }
 
+// GetApplicationByUserRoundDirection 转调仓储，供表单模块（#135）判断可否复用申请。
+//
+// 放在用例层而不是让表单模块直接拿仓储：表单模块只声明 ApplicationCreator 窄接口，
+// 申请域的读取口径（三元组 = 唯一约束的完整键）由这里持有。
+func (u *RecruitmentUseCase) GetApplicationByUserRoundDirection(ctx context.Context, userID int, roundID int, directionCode string) (*domain.Application, error) {
+	return u.repo.GetApplicationByUserRoundDirection(ctx, userID, roundID, directionCode)
+}
+
+// ActiveRoundID 返回当前开放轮次的 ID；没有开放轮次时返回 0 与 nil 错误。
+//
+// 给方向列表组装用（#135）：取「当前开放轮次 + 方向」的面试表单，需要先知道
+// 是哪一轮。这里刻意把"没有开放轮次"当成正常状态（0, nil）而不是错误 ——
+// 无开放轮次时方向列表仍要正常返回，只是所有 form 为 null。
+func (u *RecruitmentUseCase) ActiveRoundID(ctx context.Context) (int, error) {
+	round, err := u.repo.GetActiveRound(ctx)
+	if err != nil {
+		if errors.Is(err, repository.ErrRoundNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return round.ID, nil
+}
+
 // SetDirectionOpen 管理端开启 / 关闭某方向的报名开关。
 // 表中不存在的 code 由 repo 返回 ErrDirectionNotFound（400「招新方向不存在」），
 // 不再依赖编译期白名单判断（issue #128）。
