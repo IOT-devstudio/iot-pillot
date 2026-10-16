@@ -90,7 +90,9 @@ watch(
     verifyNotice.value = "";
     succeeded.value = false;
     await nextTick();
-    if (hasEmail.value) codeInput.value?.focus();
+    // preventScroll：focus 默认会把元素滚入视口，进场动画途中页面被带一下，
+    // 表现为弹窗刚出现就「跳一下」
+    if (hasEmail.value) codeInput.value?.focus({ preventScroll: true });
   },
 );
 
@@ -450,6 +452,21 @@ async function handleSubmit(): Promise<void> {
   backdrop-filter: blur(10px) saturate(1.1);
   -webkit-backdrop-filter: blur(10px) saturate(1.1);
   transform: translateZ(0);
+}
+
+/* 全屏 blur 随进场从 0 长到 10px：
+   若首帧就要求 10px blur，浏览器要先栅格化整屏模糊层才能出画，
+   表现为「停顿半拍 → 模糊和卡片一起跳出来」；从 blur(0) 起步
+   首帧零成本，模糊成本摊到后续每帧，与卡片缩放同步浮现 */
+.pwd-modal-enter-active .pwd-modal__overlay,
+.pwd-modal-leave-active .pwd-modal__overlay {
+  transition: backdrop-filter 0.26s ease, -webkit-backdrop-filter 0.26s ease;
+}
+
+.pwd-modal-enter-from .pwd-modal__overlay,
+.pwd-modal-leave-to .pwd-modal__overlay {
+  backdrop-filter: blur(0) saturate(1.1);
+  -webkit-backdrop-filter: blur(0) saturate(1.1);
 }
 
 /* 卡片玻璃质感来自全局 .liquid-glass（通透底 + 流光边缘）；

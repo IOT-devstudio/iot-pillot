@@ -1,13 +1,15 @@
 /**
  * 弹窗打开期间的整页滚动锁（issue #85 系列 review 修复的公共化）。
  *
- * 三件事，缺一不可：
+ * 两件事：
  *   1. html + body 双锁——项目给 html 显式设了 overflow: auto，只锁 body
  *      不会传导到视口，高页面照样能滚
- *   2. body padding-right 补偿滚动条宽度——滚动条消失会让视口变宽 15px，
- *      开关弹窗时页面「抽动一下再恢复」
- *   3. Element 自带 lock-scroll 只锁 body 且也做 padding 补偿，会与本锁
- *      叠加成双重 padding——弹窗上必须 :lock-scroll="false"
+ *   2. Element 自带 lock-scroll 只锁 body，弹窗上必须 :lock-scroll="false"
+ *      避免与本锁语义重叠
+ *
+ * 不做 body padding-right 补偿：theme.css 的 html { scrollbar-gutter: stable }
+ * 已让滚动条槽位常驻，锁滚动时视口内容宽度本来就不变；再补 15px padding
+ * 是双重补偿，实测会把页面内容左推 ~7.5px——正是「开关弹窗页面横跳」的来源。
  *
  * 关闭或组件卸载时全部归还，避免整页永久锁死。
  *
@@ -24,25 +26,13 @@ export function useDialogLock(visible: () => boolean): void {
 
   watch(visible, (open) => {
     if (!canTouchDom()) return;
-    if (open) {
-      const scrollbarGap =
-        window.innerWidth - document.documentElement.clientWidth;
-      document.documentElement.style.overflow = "hidden";
-      document.body.style.overflow = "hidden";
-      if (scrollbarGap > 0) {
-        document.body.style.paddingRight = `${scrollbarGap}px`;
-      }
-    } else {
-      document.documentElement.style.overflow = "";
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-    }
+    document.documentElement.style.overflow = open ? "hidden" : "";
+    document.body.style.overflow = open ? "hidden" : "";
   }, { immediate: true });
 
   onBeforeUnmount(() => {
     if (!canTouchDom()) return;
     document.documentElement.style.overflow = "";
     document.body.style.overflow = "";
-    document.body.style.paddingRight = "";
   });
 }
