@@ -73,6 +73,9 @@ type AdminUserResp struct {
 	CreatedAt string `json:"created_at"`
 	// IsAdmin 由 Redis 名单现算，方便管理端直接标注"当前是不是管理员"
 	IsAdmin bool `json:"is_admin"`
+	// IsDeleted 账号是否已注销（issue #142 Q3：历史保留，列表标注）。
+	// false = 正常账号；true = 软删行，前端显示「账号已注销」。
+	IsDeleted bool `json:"is_deleted"`
 	// Detail 只读资料（issue #57）：管理员能看到完整信息，但改不了——
 	// 编辑入口只有本人的 PUT /me。
 	Detail UserProfileDetail `json:"detail"`

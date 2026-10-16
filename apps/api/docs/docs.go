@@ -1622,6 +1622,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/admin/users/{user_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创始管理员专用：软删目标账号——踢掉全部会话、移出管理员与",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端"
+                ],
+                "summary": "注销账号（软删）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "目标用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "注销成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "不能注销自己/创始账号受保护/账号已注销",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员或非创始管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/change-password": {
             "post": {
                 "security": [
@@ -3673,6 +3725,10 @@ const docTemplate = `{
                 },
                 "is_admin": {
                     "description": "IsAdmin 由 Redis 名单现算，方便管理端直接标注\"当前是不是管理员\"",
+                    "type": "boolean"
+                },
+                "is_deleted": {
+                    "description": "IsDeleted 账号是否已注销（issue #142 Q3：历史保留，列表标注）。\nfalse = 正常账号；true = 软删行，前端显示「账号已注销」。",
                     "type": "boolean"
                 },
                 "name": {

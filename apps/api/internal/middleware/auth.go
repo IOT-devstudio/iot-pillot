@@ -106,6 +106,15 @@ type AdminChecker interface {
 	IsAdmin(ctx context.Context, userID int) (bool, error)
 }
 
+// FoundingChecker 是创始判定对外的全部依赖（issue #142 Q1）。
+//
+// 这是创始标记（auth:admins:founding，#120）**第一次参与鉴权**——
+// 仅限注销账号这一个端点，推翻 #120「仅展示分流」的裁决但边界锁死：
+// 其余所有端点仍只看 IsAdmin，is_founding 字段也依旧只做展示。
+type FoundingChecker interface {
+	IsFounding(ctx context.Context, userID int) (bool, error)
+}
+
 // RequireAdmin 要求当前登录用户是管理员，否则 403。
 //
 // 判定读的是 **AdminChecker（Redis）**，不是 JWT 里的 role claim：
@@ -133,6 +142,40 @@ func RequireAdmin(checker AdminChecker) gin.HandlerFunc {
 
 		if !isAdmin {
 			// 不回显所需角色，避免向普通成员暴露管理端结构
+			response.Fail(c, http.StatusForbidden, response.CodeForbidden, "无权限访问该资源")
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// RequireFounding 要求当前登录用户是创始管理员，否则 403（issue #142 Q1）。
+//
+// 必须挂在 RequireAdmin **之后**（admin 组天然满足）：先过管理员关，
+// 再过创始关——普通成员 401/403 按既有口径，晋升管理员拿 403，
+// 且不回显「创始」这个概念，避免向普通管理员暴露创始体系的存在。
+//
+// 读失败按 500 拒绝（同 RequireAdmin 的取舍）：Redis 抽风不能变成
+// 一次绕过注销防护的窗口。
+func RequireFounding(checker FoundingChecker) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _, _, ok := CurrentUser(c)
+		if !ok {
+			response.FailUnauthorized(c, "缺少认证信息，请先通过 AuthRequired 中间件")
+			c.Abort()
+			return
+		}
+
+		isFounding, err := checker.IsFounding(c.Request.Context(), userID)
+		if err != nil {
+			response.FailServer(c, "无法确认操作权限，请稍后重试")
+			c.Abort()
+			return
+		}
+
+		if !isFounding {
 			response.Fail(c, http.StatusForbidden, response.CodeForbidden, "无权限访问该资源")
 			c.Abort()
 			return

@@ -133,6 +133,9 @@ func (s *stubUserRepo) GetAll(_ context.Context, _, _ int) ([]*domain.User, int6
 	return s.all, int64(len(s.all)), nil
 }
 
+// SoftDelete 空实现（issue #142 加接口方法）：发信测试不涉及注销。
+func (s *stubUserRepo) SoftDelete(_ context.Context, _ int) error { return nil }
+
 func (s *stubMailRepo) Create(_ context.Context, mail *domain.Mail) error {
 	if s.err != nil {
 		return s.err

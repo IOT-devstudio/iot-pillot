@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/request"
@@ -77,6 +78,21 @@ func (r *issue86UserRepo) GetAll(_ context.Context, _, _ int) ([]*domain.User, i
 	return r.all, int64(len(r.all)), nil
 }
 
+// SoftDelete 内存版软删（issue #142）：标记 DeletedAt，重复注销返回
+// ErrUserAlreadyDeleted（与 gorm 实现同契约，供注销测试断言）。
+func (r *issue86UserRepo) SoftDelete(_ context.Context, id int) error {
+	user, ok := r.byID[id]
+	if !ok {
+		return repository.ErrUserNotFound
+	}
+	if user.DeletedAt != nil {
+		return repository.ErrUserAlreadyDeleted
+	}
+	now := time.Now()
+	user.DeletedAt = &now
+	return nil
+}
+
 // issue86TokenManager 空实现 TokenIssuer，改名测试不需要签发令牌。
 type issue86TokenManager struct{}
 
@@ -89,7 +105,7 @@ func (issue86TokenManager) ValidateRefreshToken(_ context.Context, _ string) (in
 }
 
 func (issue86TokenManager) RevokeSession(_ context.Context, _, _ string) error { return nil }
-func (issue86TokenManager) RevokeUserSessions(_ context.Context, _ int) error { return nil }
+func (issue86TokenManager) RevokeUserSessions(_ context.Context, _ int) error  { return nil }
 
 // issue86CodeManager 空实现 VerifyCodeChecker。
 type issue86CodeManager struct{}
@@ -104,13 +120,13 @@ func (issue86CodeManager) SendVerifyCode(_ context.Context, _ string, _ utils.Ve
 // issue86AdminDirectory 空实现 AdminDirectory。
 type issue86AdminDirectory struct{}
 
-func (issue86AdminDirectory) IsAdmin(_ context.Context, _ int) (bool, error)   { return false, nil }
-func (issue86AdminDirectory) AddAdmin(_ context.Context, _ int) error          { return nil }
-func (issue86AdminDirectory) RemoveAdmin(_ context.Context, _ int) error       { return nil }
-func (issue86AdminDirectory) ListAdmins(_ context.Context) ([]int, error)      { return nil, nil }
+func (issue86AdminDirectory) IsAdmin(_ context.Context, _ int) (bool, error)    { return false, nil }
+func (issue86AdminDirectory) AddAdmin(_ context.Context, _ int) error           { return nil }
+func (issue86AdminDirectory) RemoveAdmin(_ context.Context, _ int) error        { return nil }
+func (issue86AdminDirectory) ListAdmins(_ context.Context) ([]int, error)       { return nil, nil }
 func (issue86AdminDirectory) IsFounding(_ context.Context, _ int) (bool, error) { return false, nil }
-func (issue86AdminDirectory) AddFounding(_ context.Context, _ int) error       { return nil }
-func (issue86AdminDirectory) RemoveFounding(_ context.Context, _ int) error    { return nil }
+func (issue86AdminDirectory) AddFounding(_ context.Context, _ int) error        { return nil }
+func (issue86AdminDirectory) RemoveFounding(_ context.Context, _ int) error     { return nil }
 
 // newTestAuthUseCase 组装一个不依赖 Redis / session 的 AuthUseCase，
 // limiter 传 nil（改名路径不触发限流）。

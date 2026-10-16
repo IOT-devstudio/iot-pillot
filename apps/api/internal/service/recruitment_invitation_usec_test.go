@@ -220,6 +220,9 @@ func (s *userRepoStub) GetAll(ctx context.Context, page, pageSize int) ([]*domai
 	return nil, 0, nil
 }
 
+// SoftDelete 空实现（issue #142 加接口方法）：邀请测试不涉及注销。
+func (s *userRepoStub) SoftDelete(ctx context.Context, id int) error { return nil }
+
 type mailModelRepoStub struct {
 	models map[int]*domain.MailModel
 }
