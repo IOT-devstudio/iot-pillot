@@ -78,14 +78,20 @@ describe("useUserSettings", () => {
     expect(state.form.class).toBe("unsaved");
     expect(state.editing.value).toBe(true);
   });
-  it("starts read-only, resets drafts and exits editing on cancel or success", async () => {
+  it("starts read-only, clears editable fields on reset and restores the draft on cancel", async () => {
     const state = useUserSettings(makeDeps());
     await state.load();
     expect(state.editing.value).toBe(false);
     state.edit();
     state.form.class = "draft";
     state.reset();
-    expect(state.form.class).toBe("iot 2301");
+    // 重置 = 清空姓名/班级/学号/QQ（邮箱在只读区不受影响），
+    // 而非回到已保存值；方向与最新报名强绑定，重置不动
+    expect(state.form.class).toBe("");
+    expect(state.form.name).toBe("");
+    expect(state.form.studentId).toBe("");
+    expect(state.form.qq).toBe("");
+    expect(state.form.direction).toBe("front-end");
     expect(state.editing.value).toBe(true);
     state.form.class = "another draft";
     state.cancel();

@@ -138,22 +138,38 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     needsCompletion.value = missingRequiredProfile(next.detail).length > 0;
   }
 
-  function reset(): void {
+  /** 进入编辑态 / 取消：以已保存资料为草稿底稿 */
+  function restoreDraft(): void {
     if (saving.value || !profile.value) return;
     hydrate(profile.value, () => {});
     fieldErrors.value = {};
     saveError.value = "";
   }
 
+  /** 重置按钮：清空可自由编辑的字段（姓名/班级/学号/QQ），
+      用户重新填写而不是回到已保存值。
+      邮箱在只读区不受影响；方向对普通成员只读、与最新报名强绑定，
+      清空会让不一致校验永久卡住保存，因此不动 */
+  function reset(): void {
+    if (saving.value) return;
+    form.name = "";
+    form.class = "";
+    form.studentId = "";
+    form.qq = "";
+    fieldErrors.value = {};
+    nameError.value = "";
+    saveError.value = "";
+  }
+
   function edit(): void {
     if (loading.value || !profile.value || saving.value) return;
-    reset();
+    restoreDraft();
     editing.value = true;
   }
 
   function cancel(): void {
     if (saving.value) return;
-    reset();
+    restoreDraft();
     editing.value = false;
   }
 
