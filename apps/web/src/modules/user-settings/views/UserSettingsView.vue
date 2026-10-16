@@ -114,7 +114,10 @@ async function handleDeleteAccount(): Promise<void> {
   try {
     await deleteCurrentUser();
     clearAuthSession();
-    await router.replace("/?reason=account-deleted");
+    // 与退出登录同款的擦除转场（issue #159 后续，维护者拍板）：
+    // 会话已清，覆盖态下切到认证页再揭开；转场结束时
+    // ?reason=account-deleted 的提示条已在登录页上。
+    await transition(() => router.replace("/?reason=account-deleted"));
   } catch (error: unknown) {
     const message =
       error instanceof Error && error.message
