@@ -29,6 +29,7 @@ import {
   type ResetForm,
 } from "@/auth/form";
 import { clearAuthSession } from "@/auth/session";
+import { useDialogLock } from "@/composables/useDialogLock";
 import { CONFIG } from "@/modules/opener/config";
 import { mapResetError, passwordStrength } from "../passwordPolicy";
 
@@ -93,11 +94,13 @@ watch(
   },
 );
 
-/** 打开期间锁 body 滚动；Esc 关闭（提交中不给关，避免状态撕裂） */
+/** 打开期间锁整页滚动（html+body 双锁 + 滚动条宽度补偿，公共 composable）；
+    Esc 关闭（提交中不给关，避免状态撕裂）。 */
+useDialogLock(() => props.open);
+
 watch(
   () => props.open,
   (open) => {
-    document.body.style.overflow = open ? "hidden" : "";
     if (open) {
       document.addEventListener("keydown", onKeydown);
     } else {
@@ -109,7 +112,6 @@ watch(
 
 onBeforeUnmount(() => {
   document.removeEventListener("keydown", onKeydown);
-  document.body.style.overflow = "";
   if (cooldownTimer !== undefined) {
     clearInterval(cooldownTimer);
     cooldownTimer = undefined;
