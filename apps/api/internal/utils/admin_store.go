@@ -17,16 +17,36 @@ import (
 //   - 配置里的用户名白名单只在启动引导时用来查一次库，之后不再参与判定。
 const adminSetKey = "auth:admins"
 
+// adminFoundingSetKey 创始管理员集合在 Redis 里的 key（issue #120）。
+//
+// 与 auth:admins 并存的**并行标记**，不是第二套鉴权：
+//   - auth:admins 仍是权限判定的唯一真源，中间件只读它；
+//   - 本集合只回答「这个管理员是 ADMIN_USERS 种入的，还是后来晋升的」，
+//     供 /me 的 is_founding 字段做前端展示分流（创始管理员隐藏个人设置入口）。
+//
+// 与 auth:admins 一样是「可按配置重建」的状态（Redis 无持久化）：
+// 启动时 SeedAdmins 一并补种，清空 Redis 后随重启恢复。
+const adminFoundingSetKey = "auth:admins:founding"
+
 // AdminDirectory 是角色判定的全部契约。
 //
 // 刻意定义在实现旁边（而不是各消费者各写一份）：管理员名单只有这一个真源，
 // 中间件与管理员服务都依赖同一份契约，避免两处接口各自漂移后判定不一致。
 // 消费者拿接口做参数，测试即可注入桩实现，不必起 Redis。
+//
+// 创始相关三方法（issue #120）只做展示分流，不参与权限判定：
+// IsAdmin 的签名与语义保持零变化，创始集合永远不被中间件读取。
 type AdminDirectory interface {
 	IsAdmin(ctx context.Context, userID int) (bool, error)
 	AddAdmin(ctx context.Context, userID int) error
 	RemoveAdmin(ctx context.Context, userID int) error
 	ListAdmins(ctx context.Context) ([]int, error)
+	// IsFounding 判定某个用户是否为创始管理员（ADMIN_USERS 启动种入）。
+	IsFounding(ctx context.Context, userID int) (bool, error)
+	// AddFounding 把用户标记为创始管理员（幂等，仅启动引导调用）。
+	AddFounding(ctx context.Context, userID int) error
+	// RemoveFounding 移除创始标记（幂等，撤销管理员时一并清理）。
+	RemoveFounding(ctx context.Context, userID int) error
 }
 
 // AdminStore 基于 Redis SET 的管理员名单。
@@ -98,6 +118,42 @@ func (s *AdminStore) ListAdmins(ctx context.Context) ([]int, error) {
 	}
 
 	return ParseAdminIDs(members), nil
+}
+
+// IsFounding 判定某个用户是否为创始管理员（issue #120）。
+//
+// 与 IsAdmin 同样的取值理由（ToInt64 而非 ToBool，见上方注释）。
+// 只供 /me 的展示分流使用，不参与任何权限判定。
+func (s *AdminStore) IsFounding(ctx context.Context, userID int) (bool, error) {
+	cmd := s.redis.B().Sismember().Key(adminFoundingSetKey).Member(strconv.Itoa(userID)).Build()
+
+	member, err := s.redis.Do(ctx, cmd).ToInt64()
+	if err != nil {
+		return false, fmt.Errorf("读取创始管理员名单失败: %w", err)
+	}
+
+	return member == 1, nil
+}
+
+// AddFounding 把用户标记为创始管理员（幂等，仅启动引导调用）。
+func (s *AdminStore) AddFounding(ctx context.Context, userID int) error {
+	cmd := s.redis.B().Sadd().Key(adminFoundingSetKey).Member(strconv.Itoa(userID)).Build()
+	if err := s.redis.Do(ctx, cmd).Error(); err != nil {
+		return fmt.Errorf("写入创始管理员名单失败: %w", err)
+	}
+	return nil
+}
+
+// RemoveFounding 移除创始标记（幂等，撤销管理员时一并清理）。
+//
+// 撤销时必须一并移除（issue #120 Q1 裁决）：不清的话被撤销者重新晋升后
+// 会残留 is_founding=true，创始特权复活且与配置无关。
+func (s *AdminStore) RemoveFounding(ctx context.Context, userID int) error {
+	cmd := s.redis.B().Srem().Key(adminFoundingSetKey).Member(strconv.Itoa(userID)).Build()
+	if err := s.redis.Do(ctx, cmd).Error(); err != nil {
+		return fmt.Errorf("移除创始管理员失败: %w", err)
+	}
+	return nil
 }
 
 // SeedAdmins 启动引导：把给定 userID 幂等补种进 Redis。

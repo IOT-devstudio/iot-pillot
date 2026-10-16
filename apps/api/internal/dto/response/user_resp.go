@@ -52,6 +52,11 @@ type MeResp struct {
 	UserID   int    `json:"user_id"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
+	// IsFounding 创始管理员标记（issue #120）：ADMIN_USERS 启动种入的账号为 true，
+	// 管理端晋升与普通成员为 false。仅作前端展示分流（隐藏个人设置入口、
+	// 抑制补全提示），不参与权限判定；GET 与 PUT /me 都必须返回——
+	// 前端保存资料后会用 PUT 响应覆盖本地 profile，缺字段会让补全提示复活。
+	IsFounding bool `json:"is_founding"`
 	// Name 是姓名（domain.User.Name），与 username 同源但语义独立：
 	// 前端个人设置页把它当只读展示项。
 	Name   string            `json:"name"`

@@ -104,10 +104,13 @@ func (issue86CodeManager) SendVerifyCode(_ context.Context, _ string, _ utils.Ve
 // issue86AdminDirectory 空实现 AdminDirectory。
 type issue86AdminDirectory struct{}
 
-func (issue86AdminDirectory) IsAdmin(_ context.Context, _ int) (bool, error) { return false, nil }
-func (issue86AdminDirectory) AddAdmin(_ context.Context, _ int) error        { return nil }
-func (issue86AdminDirectory) RemoveAdmin(_ context.Context, _ int) error     { return nil }
-func (issue86AdminDirectory) ListAdmins(_ context.Context) ([]int, error)    { return nil, nil }
+func (issue86AdminDirectory) IsAdmin(_ context.Context, _ int) (bool, error)   { return false, nil }
+func (issue86AdminDirectory) AddAdmin(_ context.Context, _ int) error          { return nil }
+func (issue86AdminDirectory) RemoveAdmin(_ context.Context, _ int) error       { return nil }
+func (issue86AdminDirectory) ListAdmins(_ context.Context) ([]int, error)      { return nil, nil }
+func (issue86AdminDirectory) IsFounding(_ context.Context, _ int) (bool, error) { return false, nil }
+func (issue86AdminDirectory) AddFounding(_ context.Context, _ int) error       { return nil }
+func (issue86AdminDirectory) RemoveFounding(_ context.Context, _ int) error    { return nil }
 
 // newTestAuthUseCase 组装一个不依赖 Redis / session 的 AuthUseCase，
 // limiter 传 nil（改名路径不触发限流）。

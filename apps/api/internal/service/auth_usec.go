@@ -135,6 +135,19 @@ func (auc *AuthUseCase) roleFor(ctx context.Context, userID int) (string, error)
 	return middleware.RoleMember, nil
 }
 
+// FoundingOf 返回用户是否为创始管理员（ADMIN_USERS 启动种入，issue #120）。
+//
+// 与 RoleOf 对称，同为 /me 的现查字段：创始标记只做前端展示分流
+// （隐藏个人设置入口、抑制补全提示），不参与任何权限判定。
+// Redis 读失败时错误外传，与 roleFor 的取舍一致——不静默降级成 false。
+func (auc *AuthUseCase) FoundingOf(ctx context.Context, userID int) (bool, error) {
+	isFounding, err := auc.admins.IsFounding(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("无法确认创始管理员标记: %w", err)
+	}
+	return isFounding, nil
+}
+
 /* ------------------------------------------------------------------ *
  * 个人资料（issue #57）
  * ------------------------------------------------------------------ */

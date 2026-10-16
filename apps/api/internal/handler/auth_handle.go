@@ -340,13 +340,20 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
+	// 创始标记（issue #120）：与 role 同为现查 Redis 的展示分流字段
+	isFounding, err := h.authService.FoundingOf(c.Request.Context(), userID)
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+
 	user, err := h.authService.GetProfile(c.Request.Context(), userID)
 	if err != nil {
 		failMeLookup(c, err)
 		return
 	}
 
-	response.OK(c, meRespOf(user, username, role))
+	response.OK(c, meRespOf(user, username, role, isFounding))
 }
 
 // UpdateMe 更新当前登录用户的资料
@@ -392,25 +399,34 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		return
 	}
 
-	// MeResp 要求带角色；更新资料不动角色，现查一次即可（与 GET /me 同源）
+	// MeResp 要求带角色与创始标记；更新资料不动两者，现查一次即可（与 GET /me 同源）。
+	// 创始标记必须随 PUT 一起返回（issue #120）：前端保存后用 PUT 响应覆盖本地
+	// profile，缺 is_founding 会让创始管理员的补全提示复活。
 	role, err := h.authService.RoleOf(c.Request.Context(), userID)
 	if err != nil {
 		failInternal(c, err)
 		return
 	}
 
-	response.OK(c, meRespOf(user, username, role))
+	isFounding, err := h.authService.FoundingOf(c.Request.Context(), userID)
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+
+	response.OK(c, meRespOf(user, username, role, isFounding))
 }
 
 // meRespOf 组装 /me 的统一响应（GET 与 PUT 共用）。
 // 显式逐字段映射，保证 domain.User 的 password 永远不会被序列化出去。
-func meRespOf(user *domain.User, username string, role string) response.MeResp {
+func meRespOf(user *domain.User, username string, role string, isFounding bool) response.MeResp {
 	return response.MeResp{
-		UserID:   user.ID,
-		Username: username,
-		Role:     role,
-		Name:     user.Name,
-		Detail:   response.NewUserProfileDetail(user.Detail),
+		UserID:     user.ID,
+		Username:   username,
+		Role:       role,
+		IsFounding: isFounding,
+		Name:       user.Name,
+		Detail:     response.NewUserProfileDetail(user.Detail),
 	}
 }
 
