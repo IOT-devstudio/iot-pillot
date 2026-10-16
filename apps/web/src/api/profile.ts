@@ -11,7 +11,7 @@
  */
 import type { Direction } from "@iot-pillot/shared-types";
 
-import { requestWithSession } from "./session-request";
+import { type SessionRequester, requestWithSession } from "./session-request";
 import type { UserRole } from "./admin";
 
 /**
@@ -59,8 +59,10 @@ export interface MyProfileUpdate {
 }
 
 /** 读取自己的完整资料。 */
-export function fetchMyProfile(): Promise<MyProfile> {
-  return requestWithSession<MyProfile>("/api/v1/me");
+export function fetchMyProfile(
+  request: SessionRequester = requestWithSession,
+): Promise<MyProfile> {
+  return request<MyProfile>("/api/v1/me");
 }
 
 /**

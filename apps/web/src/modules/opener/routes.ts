@@ -1,3 +1,4 @@
+import { PUBLIC } from "@/router/route-specs";
 /**
  * opener 模块的路由。
  *
@@ -13,6 +14,6 @@ export const openerRoutes: RouteRecordRaw[] = [
     path: "/",
     name: "opener",
     component: AuthView,
-    meta: { title: "登录" },
+    meta: { title: "登录", allowRoles: PUBLIC },
   },
 ];

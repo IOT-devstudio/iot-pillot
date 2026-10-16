@@ -12,7 +12,8 @@
  * el-popover trigger="click"：hover 在 sticky header 上容易误触，且要支持触屏。
  */
 import { computed, inject, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { requestForPublicPage } from "@/api/public-page-request";
 
 import { AuthRequestError } from "@/api/auth";
 import { fetchMyProfile } from "@/api/profile";
@@ -21,6 +22,7 @@ import { signOut } from "@/auth/session";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 
 const router = useRouter();
+const route = useRoute();
 /**
  * 壳层的擦除过渡（issue #94）：进入个人设置与「返回用户首页」共用同一款
  * 登录转场动画。壳外使用（理论上不会发生）时降级为直接跳转。
@@ -44,7 +46,9 @@ const popoverVisible = ref(false);
 async function loadUser(): Promise<void> {
   const publish = beginProfileLoad();
   try {
-    publish(await fetchMyProfile());
+    const isPublicPage =
+      Array.isArray(route.meta.allowRoles) && route.meta.allowRoles.length === 0;
+    publish(await fetchMyProfile(isPublicPage ? requestForPublicPage : undefined));
     loadError.value = "";
   } catch (error: unknown) {
     loadError.value =

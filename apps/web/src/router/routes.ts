@@ -1,3 +1,4 @@
+import { PUBLIC } from "@/router/route-specs";
 import type { RouteRecordRaw } from "vue-router";
 import { aboutRoutes } from "@/modules/about/routes";
 import { dashboardRoutes } from "@/modules/dashboard/routes";
@@ -34,5 +35,5 @@ export const routes: RouteRecordRaw[] = [
   // 内容首页已并入管理台，保留旧路径重定向，避免收藏夹与旧链接 404
   { path: "/home", redirect: "/dashboard" },
   // 兼容登录路径：与根路径复用同一认证组件，保留 redirect 与 fallback 参数。
-  { path: "/login", name: "login", component: AuthView, meta: { title: "登录" } },
+  { path: "/login", name: "login", component: AuthView, meta: { title: "登录", allowRoles: PUBLIC } },
 ];

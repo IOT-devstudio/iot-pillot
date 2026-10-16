@@ -2,8 +2,8 @@
  * 招新接口封装（issue #89 / FE-03，对应后端 #88/#97）。
  *
  * 契约来源 apps/api/internal/dto/{request,response}/recruitment_*.go：
- *   用户端（需登录，归属一律由令牌决定，body 不含 user_id）：
- *     GET  /api/v1/recruitment/directions            开放方向列表
+ *   用户端（除方向列表外需登录，归属由令牌决定，body 不含 user_id）：
+ *     GET  /api/v1/recruitment/directions            公开方向列表
  *     POST /api/v1/recruitment/applications          报名 {direction_code}
  *     GET  /api/v1/recruitment/applications          本人申请列表
  *     GET  /api/v1/recruitment/applications/:id      本人申请详情（含时间线）
@@ -14,12 +14,14 @@
  *     GET   /api/v1/admin/recruitment/applications        全量申请（?status=）
  *     PATCH /api/v1/admin/recruitment/applications/:id/review  审核 {target}
  *
- * 令牌与刷新交给 session-requester（统一 401 处理），本文件只关心路径与 DTO。
+ * 默认用 session-requester 管理令牌；公开页可注入原地降为游客的请求器。
  */
 import {
   requestMessageWithSession,
   requestWithSession,
+  type SessionRequester,
 } from "./session-request";
+import { AuthRequestError, requestBackend, UNAVAILABLE_MESSAGE } from "./auth";
 
 /** 申请状态机（与后端 domain.ApplicationStatus 一致） */
 export type ApplicationStatus = "applied" | "reviewing" | "accepted" | "rejected";
@@ -91,8 +93,15 @@ export interface RecruitmentRound {
 // ── 用户端 ──
 
 /** 开放方向列表（含开放状态，按 sort_order 排序由后端保证） */
-export function fetchDirections(): Promise<{ items: RecruitmentDirection[] }> {
-  return requestWithSession("/api/v1/recruitment/directions");
+export async function fetchDirections(): Promise<{ items: RecruitmentDirection[] }> {
+  const { body, status } = await requestBackend<{ items: RecruitmentDirection[] }>(
+    "/api/v1/recruitment/directions",
+    {},
+  );
+  if (body.data === undefined) {
+    throw new AuthRequestError(UNAVAILABLE_MESSAGE, status);
+  }
+  return body.data;
 }
 
 /**
@@ -101,24 +110,29 @@ export function fetchDirections(): Promise<{ items: RecruitmentDirection[] }> {
  */
 export function submitApplication(
   directionCode: string,
+  request: SessionRequester = requestWithSession,
+  expectedUserId?: number,
 ): Promise<RecruitmentApplication> {
-  return requestWithSession("/api/v1/recruitment/applications", {
+  return request("/api/v1/recruitment/applications", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ direction_code: directionCode }),
-  });
+  }, expectedUserId);
 }
 
 /** 本人申请列表（最新在前由后端保证） */
-export function fetchMyApplications(): Promise<ApplicationListPage> {
-  return requestWithSession("/api/v1/recruitment/applications");
+export function fetchMyApplications(
+  request: SessionRequester = requestWithSession,
+): Promise<ApplicationListPage> {
+  return request("/api/v1/recruitment/applications");
 }
 
 /** 本人申请详情，含状态时间线（仅归属申请人，越权 403） */
 export function fetchMyApplication(
   id: number,
+  request: SessionRequester = requestWithSession,
 ): Promise<RecruitmentApplicationDetail> {
-  return requestWithSession(`/api/v1/recruitment/applications/${id}`);
+  return request(`/api/v1/recruitment/applications/${id}`);
 }
 
 // ── 管理端 ──
