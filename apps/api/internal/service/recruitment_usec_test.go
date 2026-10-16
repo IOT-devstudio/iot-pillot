@@ -146,6 +146,17 @@ func (s *stubRecruitmentRepo) GetApplicationByID(_ context.Context, id int) (*do
 	return nil, s.errAppNotFound
 }
 
+// GetApplicationByUserRoundDirection 复刻三元组查询（#135）：
+// 三元组是唯一约束的完整键，命中最多一条；不存在返回 ErrApplicationNotFound。
+func (s *stubRecruitmentRepo) GetApplicationByUserRoundDirection(_ context.Context, userID int, roundID int, directionCode string) (*domain.Application, error) {
+	for _, a := range s.applications {
+		if a.UserID == userID && a.RoundID == roundID && a.DirectionCode == directionCode {
+			return a, nil
+		}
+	}
+	return nil, repository.ErrApplicationNotFound
+}
+
 func (s *stubRecruitmentRepo) ListApplications(_ context.Context, _ repository.ApplicationListFilter, page int, pageSize int) ([]*domain.Application, int64, error) {
 	var apps []*domain.Application
 	for _, a := range s.applications {

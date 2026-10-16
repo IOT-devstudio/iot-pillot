@@ -27,6 +27,12 @@ var ErrFormConfig = errors.New("表单配置不合法")
 // ErrAnswerInvalid 提交内容不合法（消息里带具体原因，指出是哪个字段）。
 var ErrAnswerInvalid = errors.New("提交内容不合法")
 
+// ErrApplicationFinal 申请已到终态（accepted / rejected），不能再补交面试材料。
+//
+// 场景：用户先报名、之后申请已被审核出结果，此时再提交面试表单没有业务含义
+// （#135 §3.3）。仅 applied / reviewing 允许补交。
+var ErrApplicationFinal = errors.New("该申请已结束，无法再提交面试材料")
+
 /* ------------------------------------------------------------------ *
  * 上限（防滥用，不是产品规则）
  * ------------------------------------------------------------------ */
@@ -54,13 +60,20 @@ var emailAnswerRe = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
  * 消费者声明的窄接口
  * ------------------------------------------------------------------ */
 
-// ApplicationCreator 表单提交对统一申请模型（#88）的全部依赖：按**指定轮次**建申请。
+// ApplicationCreator 表单提交对统一申请模型（#88）的全部依赖。
 //
 // 实现方是 *RecruitmentUseCase。接口由消费者声明、装配层按"返回值就是接口"
 // 连线 —— 与 ApplicationStore / BusinessMailer 同一模式：
 // 表单模块不重复实现报名规则（方向白名单、方向开关、轮次开放、资料快照、初始时间线）。
+//
+// 两个方法对应「先查、有则复用、无则建」（#135）：GetApplicationByUserRoundDirection
+// 是复用路径的查询，SubmitToRound 是新建路径。刻意不让 SubmitToRound 自己变成
+// get-or-create —— 直接报名入口必须继续"只创建"（recruitment_usec_test.go 守住）。
 type ApplicationCreator interface {
 	SubmitToRound(ctx context.Context, userID int, roundID int, directionCode string) (*domain.Application, error)
+	// GetApplicationByUserRoundDirection 查该用户在本轮本方向的既有申请；
+	// 不存在返回 repository.ErrApplicationNotFound。
+	GetApplicationByUserRoundDirection(ctx context.Context, userID int, roundID int, directionCode string) (*domain.Application, error)
 }
 
 // NewApplicationCreator 把招新用例作为 ApplicationCreator 提供给装配层。
@@ -342,12 +355,24 @@ func (u *FormUseCase) ReadShareForm(ctx context.Context, token string, userID in
 //  1. 令牌 → 表单；表单关闭直接拒绝（不落任何记录）
 //  2. 服务端校验答案（必填 / 类型 / select 选项合法性 / 未知字段）
 //  3. 查该用户是否已提交过 → 直接返回 ErrDuplicateSubmission，此时零副作用
-//  4. 走统一申请模型建申请（同轮同方向已报名会拿到重复报名错误）
+//  4. 查该用户在本轮本方向是否已有申请：
+//     有 → 复用那条申请（且必须是未出结果的状态，否则 ErrApplicationFinal）
+//     无 → 走统一申请模型建申请（同轮同方向已报名会拿到重复报名错误）
 //  5. 落提交记录，application_id 指回第 4 步的申请
 //
-// 第 4 步失败时不会有提交记录，第 5 步失败时数据库唯一约束仍挡住重复 ——
-// 两道唯一索引（(form_id, submitter_id) 与 (user_id, round_id, direction_code)）
-// 是防重的最终依据，第 3 步只是为了给出干净的错误而不是让用户看到约束冲突。
+// 第 4 步的「先查后建」是 #135 的变更：产品要求允许「先报名、后补面试」，
+// 两条路径共用同一条申请。此前无条件 SubmitToRound，已有申请时必撞唯一约束
+// 整笔失败，用户看到"你已报过这个方向"，而他要的其实是补交面试材料。
+//
+// 并发窗口（#135 D4 拍板：不包事务）：第 4 步与第 5 步之间没有事务。两个并发的
+// 补交请求可能都通过"查无申请"，后者撞唯一约束报重复报名 —— 降级行为对用户可
+// 理解（他确实报过），且数据库唯一约束兜底，不会产生脏数据或第二条申请。
+// 不为此扩大 FormRepo / RecruitmentRepo 的接口签名：那会破坏与 SubmitToRound
+// 一致的"只创建"语义，收益不抵复杂度。
+//
+// 防重依据仍是两道唯一索引（(form_id, submitter_id) 与
+// (user_id, round_id, direction_code)）：第 3、4 步只是为了给出干净的错误，
+// 而不是让用户看到约束冲突。
 func (u *FormUseCase) SubmitByShareToken(ctx context.Context, token string, userID int, values map[string]any) (*domain.FormSubmission, *domain.Application, error) {
 	form, err := u.forms.GetFormByShareToken(ctx, strings.TrimSpace(token))
 	if err != nil {
@@ -373,7 +398,7 @@ func (u *FormUseCase) SubmitByShareToken(ctx context.Context, token string, user
 		return nil, nil, err
 	}
 
-	application, err := u.applications.SubmitToRound(ctx, userID, form.RoundID, form.DirectionCode)
+	application, err := u.reuseOrCreateApplication(ctx, userID, form)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -389,6 +414,64 @@ func (u *FormUseCase) SubmitByShareToken(ctx context.Context, token string, user
 	}
 
 	return submission, application, nil
+}
+
+// reuseOrCreateApplication 取「本轮本方向」的既有申请复用，没有才新建一条。
+//
+// 这是 #135 变更二的落点：把"填表"从"必然建申请"改成"复用或建申请"。
+// 只在 applied / reviewing 上复用 —— 已出结果的申请（accepted / rejected）
+// 补交材料没有业务含义，直接拒绝且零副作用。
+//
+// 不复用 SubmitToRound 的重复报名错误：那个入口（直接报名）必须继续"只创建"，
+// 由 recruitment_usec_test.go 的既有断言守住，本函数只在表单入口生效。
+func (u *FormUseCase) reuseOrCreateApplication(ctx context.Context, userID int, form *domain.Form) (*domain.Application, error) {
+	existing, err := u.applications.GetApplicationByUserRoundDirection(ctx, userID, form.RoundID, form.DirectionCode)
+	switch {
+	case err == nil:
+		if !existing.Status.AllowsInterviewSupplement() {
+			return nil, ErrApplicationFinal
+		}
+		return existing, nil
+	case errors.Is(err, repository.ErrApplicationNotFound):
+		return u.applications.SubmitToRound(ctx, userID, form.RoundID, form.DirectionCode)
+	default:
+		return nil, err
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 用户端：方向 → 面试表单（#135）
+ * ------------------------------------------------------------------ */
+
+// OpenFormsByRound 返回某轮次下「方向 code → 该方向的开放表单」。
+//
+// 供方向列表组装用（#135 §2.2：跨域组装在 handler 层，这里只提供表单域的读能力，
+// 不让招新用例反向依赖表单仓储）。同一方向多张开放表单时取仓储排序的第一张 ——
+// 取表规则（is_open 且 updated_at 最新，id DESC 兜底）由仓储的排序承担，
+// 这里不再重复判断，避免两处规则漂移。
+//
+// 无开放表单时返回空 map（不是 nil），调用方据此把 form 置 null。
+func (u *FormUseCase) OpenFormsByRound(ctx context.Context, roundID int) (map[string]*domain.Form, error) {
+	out := make(map[string]*domain.Form)
+	if roundID <= 0 {
+		// 没有开放轮次：不查库，直接空结果（方向列表照常返回，form 全为 null）
+		return out, nil
+	}
+
+	forms, err := u.forms.ListOpenFormsByRound(ctx, roundID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, f := range forms {
+		// 仓储已按 direction_code 分组、组内 updated_at DESC, id DESC，
+		// 因此首次出现的就是该方向该用的那张，后出现的同方向表直接跳过。
+		if _, seen := out[f.DirectionCode]; seen {
+			continue
+		}
+		out[f.DirectionCode] = f
+	}
+	return out, nil
 }
 
 /* ------------------------------------------------------------------ *

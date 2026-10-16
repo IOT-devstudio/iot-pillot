@@ -96,6 +96,32 @@ func (h httpCreator) SubmitToRound(_ context.Context, userID int, roundID int, d
 	}, nil
 }
 
+// GetApplicationByUserRoundDirection 默认「没有既有申请」→ 走新建路径。
+// 验证复用与终态分支的用例改用 httpCreatorWithApp。
+func (h httpCreator) GetApplicationByUserRoundDirection(_ context.Context, _ int, _ int, _ string) (*domain.Application, error) {
+	return nil, repository.ErrApplicationNotFound
+}
+
+// httpCreatorWithApp 预置一条既有申请，用来验证 #135 的复用与终态拒绝分支。
+type httpCreatorWithApp struct {
+	service.ApplicationCreator
+	existing *domain.Application
+}
+
+func (h httpCreatorWithApp) SubmitToRound(_ context.Context, userID int, roundID int, directionCode string) (*domain.Application, error) {
+	return &domain.Application{
+		ID:            900,
+		UserID:        userID,
+		RoundID:       roundID,
+		DirectionCode: directionCode,
+		Status:        domain.ApplicationApplied,
+	}, nil
+}
+
+func (h httpCreatorWithApp) GetApplicationByUserRoundDirection(_ context.Context, _ int, _ int, _ string) (*domain.Application, error) {
+	return h.existing, nil
+}
+
 // stubValidator 满足 middleware.TokenValidator。
 type stubValidator struct {
 	accept string
@@ -128,6 +154,14 @@ func (s stubAdminChecker) IsAdmin(_ context.Context, _ int) (bool, error) { retu
 // "未登录被拒绝"必须验证真实鉴权链，否则测的是我自己的桩。
 func newFormTestEngine(t *testing.T) (*gin.Engine, *httpFormRepo) {
 	t.Helper()
+	r, repo, _ := newFormTestEngineWithCreator(t, httpCreator{})
+	return r, repo
+}
+
+// newFormTestEngineWithCreator 允许替换 ApplicationCreator，
+// 用于验证 #135 的复用与终态拒绝分支。
+func newFormTestEngineWithCreator(t *testing.T, creator service.ApplicationCreator) (*gin.Engine, *httpFormRepo, *service.FormUseCase) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	repo := newHTTPFormRepo()
@@ -140,7 +174,7 @@ func newFormTestEngine(t *testing.T) (*gin.Engine, *httpFormRepo) {
 		{ID: 12, FormID: 1, Type: domain.FieldEmail, Label: "邮箱", Required: true},
 	}
 
-	uc := service.NewFormUseCase(repo, httpDirectory{}, httpCreator{})
+	uc := service.NewFormUseCase(repo, httpDirectory{}, creator)
 	h := NewFormHandler(uc)
 
 	r := gin.New()
@@ -150,7 +184,7 @@ func newFormTestEngine(t *testing.T) (*gin.Engine, *httpFormRepo) {
 	r.POST("/api/v1/forms/public/:shareToken/submit", authRequired, h.SubmitForm)
 	r.GET("/api/v1/forms/public/:shareToken", authRequired, h.ReadShareForm)
 	r.POST("/api/v1/forms", authRequired, requireAdmin, h.CreateForm)
-	return r, repo
+	return r, repo, uc
 }
 
 func doJSON(r *gin.Engine, method string, path string, body string, token string) *httptest.ResponseRecorder {
@@ -307,6 +341,74 @@ func TestSubmitForm_SuccessPersists(t *testing.T) {
 		t.Errorf("应恰有 1 条提交记录，实际 %d 条", len(repo.submissions))
 	}
 }
+
+/* ------------------------------------------------------------------ *
+ * 验收项：终态申请补交 → 400 + 可读原因，零副作用（#135）
+ * ------------------------------------------------------------------ */
+
+func TestSubmitForm_FinalApplicationRejected(t *testing.T) {
+	existing := &domain.Application{
+		ID: 555, UserID: 1, RoundID: 1, DirectionCode: "front-end",
+		Status: domain.ApplicationAccepted,
+	}
+	r, repo, _ := newFormTestEngineWithCreator(t, httpCreatorWithApp{existing: existing})
+
+	w := doJSON(r, http.MethodPost, "/api/v1/forms/public/valid-token/submit",
+		`{"values":{"11":"张三","12":"a@b.com"}}`, "good-token")
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("终态申请补交应返回 400，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "已结束") {
+		t.Errorf("应给出「申请已结束」的可读原因，实际 %s", w.Body.String())
+	}
+	if len(repo.submissions) != 0 {
+		t.Errorf("零副作用：不应留下提交记录，实际 %d 条", len(repo.submissions))
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 验收项：已有 applied 申请 → 复用同一条申请，只落一条提交（#135）
+ * ------------------------------------------------------------------ */
+
+func TestSubmitForm_ReusesExistingApplication(t *testing.T) {
+	existing := &domain.Application{
+		ID: 555, UserID: 1, RoundID: 1, DirectionCode: "front-end",
+		Status: domain.ApplicationApplied,
+	}
+	r, repo, _ := newFormTestEngineWithCreator(t, httpCreatorWithApp{existing: existing})
+
+	w := doJSON(r, http.MethodPost, "/api/v1/forms/public/valid-token/submit",
+		`{"values":{"11":"张三","12":"a@b.com"}}`, "good-token")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("已有 applied 申请时补交应成功，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Submission struct {
+				ApplicationID int `json:"application_id"`
+			} `json:"submission"`
+			ApplicationID int `json:"application_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("响应不是合法 JSON: %v，body=%s", err, w.Body.String())
+	}
+
+	if resp.Data.ApplicationID != existing.ID {
+		t.Errorf("应复用既有申请 %d，实际 %d", existing.ID, resp.Data.ApplicationID)
+	}
+	if resp.Data.Submission.ApplicationID != existing.ID {
+		t.Errorf("提交记录应回指既有申请 %d，实际 %d", existing.ID, resp.Data.Submission.ApplicationID)
+	}
+	if len(repo.submissions) != 1 {
+		t.Errorf("应恰有 1 条提交记录，实际 %d 条", len(repo.submissions))
+	}
+}
+
 
 /* ------------------------------------------------------------------ *
  * 验收项：服务端拒绝缺必填 / 已关闭表单

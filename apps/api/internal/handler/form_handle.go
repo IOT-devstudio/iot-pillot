@@ -60,6 +60,11 @@ func failForm(c *gin.Context, err error) {
 		response.FailInvalidParam(c, err.Error())
 	case errors.Is(err, service.ErrNoActiveRound):
 		response.FailInvalidParam(c, err.Error())
+	case errors.Is(err, service.ErrApplicationFinal):
+		// 申请已到终态（accepted / rejected）不能补交面试材料（#135 §3.3 / D3）。
+		// 沿用"业务错误一律 400"的口径，不新增业务码 —— 前端对终态的置灰是纯前端
+		// 判断，正常路径打不到这里，这条只是服务端兜底，调用方不需要区分错误码。
+		response.FailInvalidParam(c, err.Error())
 	default:
 		failInternal(c, err)
 	}

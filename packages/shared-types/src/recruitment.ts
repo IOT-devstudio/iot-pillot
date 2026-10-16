@@ -16,6 +16,20 @@ import type { ID, ISODateTime } from "./common";
 export type AppliedApplicationStatus =
   "applied" | "reviewing" | "accepted" | "rejected";
 
+/**
+ * 方向的面试表单定位信息（后端 #135 交付）。
+ *
+ * 只给三个值：点「面试」跳哪张表（share_token）、该表当前开不开放（is_open）。
+ * 表单定义本身由填写页按 share_token 自己读，不在这里重复下发。
+ *
+ * share_token 是定位符、不是凭据：读取与提交都要求登录（#92 裁决）。
+ */
+export interface RecruitmentDirectionForm {
+  id: number;
+  share_token: string;
+  is_open: boolean;
+}
+
 /** 招新方向（可报名白名单：front-end / back-end / agent） */
 export interface RecruitmentDirection {
   id: number;
@@ -23,6 +37,13 @@ export interface RecruitmentDirection {
   name: string;
   open: boolean;
   sort_order: number;
+  /**
+   * 该方向的面试表单；无开放表单时为 null。
+   *
+   * 后端序列化的是 JSON null（不是空对象），消费方必须按 null 分支降级：
+   * 面试按钮置灰并给出原因文案，不能直接读 form.share_token。
+   */
+  form: RecruitmentDirectionForm | null;
 }
 
 /** 招新轮次 */

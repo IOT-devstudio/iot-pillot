@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 
@@ -155,6 +156,28 @@ func (s *stubFormRepo) CountSubmissions(_ context.Context, formIDs []int) (map[i
 	return counts, nil
 }
 
+// ListOpenFormsByRound 复刻仓储的取表规则（#135）：
+// 只取该轮 is_open 的表，按 (direction_code, updated_at DESC, id DESC) 排序。
+// 排序在此实现而不是让调用方兜底，测试才能验证"同方向取最新一张"这条验收标准。
+func (s *stubFormRepo) ListOpenFormsByRound(_ context.Context, roundID int) ([]*domain.Form, error) {
+	out := make([]*domain.Form, 0)
+	for _, f := range s.forms {
+		if f.RoundID == roundID && f.IsOpen {
+			out = append(out, f)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].DirectionCode != out[j].DirectionCode {
+			return out[i].DirectionCode < out[j].DirectionCode
+		}
+		if !out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].UpdatedAt.After(out[j].UpdatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+	return out, nil
+}
+
 func (s *stubFormRepo) CreateSubmission(_ context.Context, submission *domain.FormSubmission) error {
 	if s.duplicateOnCreateSubmission {
 		return repository.ErrDuplicateSubmission
@@ -243,6 +266,9 @@ type stubApplicationCreator struct {
 	nextID  int
 	// seen 是最新申请的键集合：等价于 (user_id, round_id, direction_code) 唯一约束
 	seen map[string]bool
+	// byKey 是同一键 → 申请对象，供复用路径（#135）查询。
+	// 与 seen 同步维护：唯一约束既挡住重复创建，也让"已有申请"可被查回来。
+	byKey map[string]*domain.Application
 	// errRoundClosed 模拟表单绑定轮次未开放
 	roundClosed map[int]bool
 	calls       int
@@ -254,8 +280,13 @@ func newStubApplicationCreator(profile *domain.User) *stubApplicationCreator {
 		apps:        make(map[int]*domain.Application),
 		nextID:      900,
 		seen:        make(map[string]bool),
+		byKey:       make(map[string]*domain.Application),
 		roundClosed: make(map[int]bool),
 	}
+}
+
+func applicationKey(userID int, roundID int, directionCode string) string {
+	return fmt.Sprintf("%d|%d|%s", userID, roundID, directionCode)
 }
 
 func (s *stubApplicationCreator) SubmitToRound(_ context.Context, userID int, roundID int, directionCode string) (*domain.Application, error) {
@@ -263,7 +294,7 @@ func (s *stubApplicationCreator) SubmitToRound(_ context.Context, userID int, ro
 	if s.roundClosed[roundID] {
 		return nil, ErrRoundClosed
 	}
-	key := fmt.Sprintf("%d|%d|%s", userID, roundID, directionCode)
+	key := applicationKey(userID, roundID, directionCode)
 	if s.seen[key] {
 		return nil, repository.ErrDuplicateApplication
 	}
@@ -284,7 +315,40 @@ func (s *stubApplicationCreator) SubmitToRound(_ context.Context, userID int, ro
 	}
 	s.nextID++
 	s.apps[app.ID] = app
+	s.byKey[key] = app
 	return app, nil
+}
+
+// GetApplicationByUserRoundDirection 复刻三元组查询（#135 的复用路径）。
+// 不存在返回 repository.ErrApplicationNotFound，与真实仓储一致。
+func (s *stubApplicationCreator) GetApplicationByUserRoundDirection(_ context.Context, userID int, roundID int, directionCode string) (*domain.Application, error) {
+	if app, ok := s.byKey[applicationKey(userID, roundID, directionCode)]; ok {
+		return app, nil
+	}
+	return nil, repository.ErrApplicationNotFound
+}
+
+// seedApplication 预置一条既有申请（模拟"用户先走报名、之后来补面试"）。
+// 同时登记唯一约束键，保证后续直接创建同键仍会拿到重复报名错误。
+func (s *stubApplicationCreator) seedApplication(userID int, roundID int, directionCode string, status domain.ApplicationStatus) *domain.Application {
+	app := &domain.Application{
+		ID:            s.nextID,
+		UserID:        userID,
+		RoundID:       roundID,
+		DirectionCode: directionCode,
+		Status:        status,
+		Name:          s.profile.Name,
+		Email:         s.profile.Detail.Email,
+		Class:         s.profile.Detail.Class,
+		StudentID:     int64(s.profile.Detail.StudentID),
+		QQ:            s.profile.Detail.QQ,
+	}
+	s.nextID++
+	s.apps[app.ID] = app
+	key := applicationKey(userID, roundID, directionCode)
+	s.seen[key] = true
+	s.byKey[key] = app
+	return app
 }
 
 /* ------------------------------------------------------------------ *
@@ -730,30 +794,202 @@ func TestSubmit_RoundClosed(t *testing.T) {
 	}
 }
 
-// 已有同轮同方向申请（例如先走 /recruitment/applications 报过）→ 不新增申请、不新增提交。
-func TestSubmit_DuplicateApplicationBubblesUp(t *testing.T) {
+// 已有同轮同方向申请（先走 /recruitment/applications 报过）→ #135 起改为复用：
+// 不新增申请，只落一条提交，且提交的 application_id 指向那条既有申请。
+//
+// 这条用例的前身断言的是"冒泡 ErrDuplicateApplication"（旧行为）。行为按 #135
+// 刻意改了，断言随之改写，不是删除 —— 旧语义由下面
+// TestSubmit_NoApplicationStillCreates 与直接报名入口的测试继续守住。
+func TestSubmit_ReusesExistingApplication(t *testing.T) {
 	uc, repo, creator := formFixture()
 	form, ids := openForm(t, uc)
 
 	// 用户先通过普通报名入口报过同一轮同一方向
-	if _, err := creator.SubmitToRound(context.Background(), 1, form.RoundID, form.DirectionCode); err != nil {
-		t.Fatalf("预置申请应当成功: %v", err)
-	}
+	existing := creator.seedApplication(1, form.RoundID, form.DirectionCode, domain.ApplicationApplied)
 	before := len(creator.apps)
 
-	_, _, err := uc.SubmitByShareToken(context.Background(), form.ShareToken, 1, map[string]any{
+	submission, application, err := uc.SubmitByShareToken(context.Background(), form.ShareToken, 1, map[string]any{
 		ids["姓名"]:   "张三",
 		ids["联系邮箱"]: "zhangsan@example.com",
 		ids["投入时长"]: "每周 5 小时",
 	})
-	if !errors.Is(err, repository.ErrDuplicateApplication) {
-		t.Fatalf("应冒泡 ErrDuplicateApplication，实际: %v", err)
+	if err != nil {
+		t.Fatalf("已有申请时补交面试应当成功，实际: %v", err)
+	}
+
+	if application.ID != existing.ID {
+		t.Errorf("应复用既有申请 %d，实际拿到 %d", existing.ID, application.ID)
+	}
+	if submission.ApplicationID != existing.ID {
+		t.Errorf("提交记录的 application_id 应指向既有申请 %d，实际 %d", existing.ID, submission.ApplicationID)
 	}
 	if len(creator.apps) != before {
 		t.Errorf("不应新增申请：之前 %d 条，现在 %d 条", before, len(creator.apps))
 	}
-	if len(repo.submissions) != 0 {
-		t.Error("申请已存在时不应留下提交记录")
+	if len(repo.submissions) != 1 {
+		t.Errorf("应恰有 1 条提交记录，实际 %d 条", len(repo.submissions))
+	}
+	if creator.calls != 0 {
+		t.Errorf("复用路径不应调用 SubmitToRound，实际调用 %d 次", creator.calls)
+	}
+}
+
+// 已有 reviewing 申请同样允许补交（仅 applied / reviewing 可补交）。
+func TestSubmit_ReusesReviewingApplication(t *testing.T) {
+	uc, repo, creator := formFixture()
+	form, ids := openForm(t, uc)
+
+	existing := creator.seedApplication(1, form.RoundID, form.DirectionCode, domain.ApplicationReviewing)
+
+	_, application, err := uc.SubmitByShareToken(context.Background(), form.ShareToken, 1, map[string]any{
+		ids["姓名"]:   "张三",
+		ids["联系邮箱"]: "zhangsan@example.com",
+		ids["投入时长"]: "每周 5 小时",
+	})
+	if err != nil {
+		t.Fatalf("reviewing 申请补交应当成功，实际: %v", err)
+	}
+	if application.ID != existing.ID {
+		t.Errorf("应复用 reviewing 申请 %d，实际 %d", existing.ID, application.ID)
+	}
+	if len(repo.submissions) != 1 {
+		t.Errorf("应恰有 1 条提交记录，实际 %d 条", len(repo.submissions))
+	}
+}
+
+// 用户**无**申请时提交表单：新建一条申请 + 一条提交记录（行为同现状，不能因 #135 回归）。
+func TestSubmit_NoApplicationStillCreates(t *testing.T) {
+	uc, repo, creator := formFixture()
+	form, ids := openForm(t, uc)
+
+	submission, application, err := uc.SubmitByShareToken(context.Background(), form.ShareToken, 1, map[string]any{
+		ids["姓名"]:   "张三",
+		ids["联系邮箱"]: "zhangsan@example.com",
+		ids["投入时长"]: "每周 5 小时",
+	})
+	if err != nil {
+		t.Fatalf("无申请时提交应当成功，实际: %v", err)
+	}
+
+	if creator.calls != 1 {
+		t.Errorf("无申请时应调用一次 SubmitToRound 新建，实际 %d 次", creator.calls)
+	}
+	if len(creator.apps) != 1 {
+		t.Errorf("应新增 1 条申请，实际 %d 条", len(creator.apps))
+	}
+	if len(repo.submissions) != 1 {
+		t.Errorf("应恰有 1 条提交记录，实际 %d 条", len(repo.submissions))
+	}
+	if submission.ApplicationID != application.ID {
+		t.Errorf("提交应关联到新建的申请：submission=%d application=%d", submission.ApplicationID, application.ID)
+	}
+}
+
+// 申请已到终态（accepted / rejected）→ 拒绝补交，且零副作用。
+func TestSubmit_RejectsFinalApplication(t *testing.T) {
+	for _, status := range []domain.ApplicationStatus{domain.ApplicationAccepted, domain.ApplicationRejected} {
+		t.Run(string(status), func(t *testing.T) {
+			uc, repo, creator := formFixture()
+			form, ids := openForm(t, uc)
+
+			creator.seedApplication(1, form.RoundID, form.DirectionCode, status)
+			before := len(creator.apps)
+
+			_, _, err := uc.SubmitByShareToken(context.Background(), form.ShareToken, 1, map[string]any{
+				ids["姓名"]:   "张三",
+				ids["联系邮箱"]: "zhangsan@example.com",
+				ids["投入时长"]: "每周 5 小时",
+			})
+			if !errors.Is(err, ErrApplicationFinal) {
+				t.Fatalf("终态申请补交应返回 ErrApplicationFinal，实际: %v", err)
+			}
+			if len(creator.apps) != before {
+				t.Errorf("零副作用：不应新增申请，之前 %d 条现在 %d 条", before, len(creator.apps))
+			}
+			if len(repo.submissions) != 0 {
+				t.Errorf("零副作用：不应留下提交记录，实际 %d 条", len(repo.submissions))
+			}
+		})
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 方向 → 面试表单的组装（#135 变更一）
+ * ------------------------------------------------------------------ */
+
+// OpenFormsByRound 只收 is_open 的表，且同方向取"最新一张"。
+func TestOpenFormsByRound_PicksNewestPerDirection(t *testing.T) {
+	uc, repo, _ := formFixture()
+
+	// 同方向两张开放表：updated_at 较新的必须胜出（id 更大的更新）
+	repo.forms[1] = &domain.Form{
+		ID: 1, Title: "旧表", RoundID: 1, DirectionCode: "front-end",
+		ShareToken: "old-token", IsOpen: true,
+	}
+	repo.forms[2] = &domain.Form{
+		ID: 2, Title: "新表", RoundID: 1, DirectionCode: "front-end",
+		ShareToken: "new-token", IsOpen: true,
+	}
+	// 关闭的表不参与
+	repo.forms[3] = &domain.Form{
+		ID: 3, Title: "关掉的表", RoundID: 1, DirectionCode: "back-end",
+		ShareToken: "closed-token", IsOpen: false,
+	}
+	// 别的轮次不参与
+	repo.forms[4] = &domain.Form{
+		ID: 4, Title: "下一轮的表", RoundID: 2, DirectionCode: "front-end",
+		ShareToken: "next-round-token", IsOpen: true,
+	}
+
+	forms, err := uc.OpenFormsByRound(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("组装应当成功: %v", err)
+	}
+
+	if len(forms) != 1 {
+		t.Fatalf("本轮应只有 front-end 一张开放表，实际 %d 个方向", len(forms))
+	}
+	got, ok := forms["front-end"]
+	if !ok {
+		t.Fatal("应包含 front-end")
+	}
+	if got.ShareToken != "new-token" {
+		t.Errorf("同方向多张开放表应取最新一张（new-token），实际 %q", got.ShareToken)
+	}
+	if _, ok := forms["back-end"]; ok {
+		t.Error("关闭的表不应出现在结果里")
+	}
+}
+
+// 没有开放轮次（roundID = 0）→ 空结果且不报错，方向列表照常返回。
+func TestOpenFormsByRound_NoActiveRound(t *testing.T) {
+	uc, repo, _ := formFixture()
+	repo.forms[1] = &domain.Form{
+		ID: 1, RoundID: 1, DirectionCode: "front-end", ShareToken: "t", IsOpen: true,
+	}
+
+	forms, err := uc.OpenFormsByRound(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("无开放轮次不应报错，实际: %v", err)
+	}
+	if len(forms) != 0 {
+		t.Errorf("无开放轮次应返回空结果，实际 %d 个方向", len(forms))
+	}
+}
+
+// 该轮没有任何开放表单 → 空结果且不报错（handler 据此把 form 置 null）。
+func TestOpenFormsByRound_NoOpenForm(t *testing.T) {
+	uc, repo, _ := formFixture()
+	repo.forms[1] = &domain.Form{
+		ID: 1, RoundID: 1, DirectionCode: "front-end", ShareToken: "t", IsOpen: false,
+	}
+
+	forms, err := uc.OpenFormsByRound(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("无开放表单不应报错，实际: %v", err)
+	}
+	if len(forms) != 0 {
+		t.Errorf("应返回空结果，实际 %d 个方向", len(forms))
 	}
 }
 
