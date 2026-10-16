@@ -163,6 +163,7 @@ const BODY_PLACEHOLDER = "Dear {{name}}，…";
             <el-option label="录用通知 offer" value="offer" />
             <el-option label="感谢信 rejection" value="rejection" />
             <el-option label="自定义 custom" value="custom" />
+            <el-option label="注销通知 deletion" value="deletion" />
           </el-select>
           <p v-if="errOf('type')" class="field__error">{{ errOf("type") }}</p>
         </div>

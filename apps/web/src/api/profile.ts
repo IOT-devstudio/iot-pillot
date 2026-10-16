@@ -63,6 +63,15 @@ export function fetchMyProfile(): Promise<MyProfile> {
   return requestWithSession<MyProfile>("/api/v1/me");
 }
 
+/**
+ * 自助注销账号（issue #159，DELETE /me）。
+ * 成功后后端已踢掉全部会话（含当前令牌）；调用方负责清本地会话并跳登录页。
+ * 创始管理员会被后端拒绝（400），入口在前端本就隐藏——此函数仍透传错误。
+ */
+export function deleteCurrentUser(): Promise<void> {
+  return requestWithSession<void>("/api/v1/me", { method: "DELETE" });
+}
+
 /** 更新自己的资料。body 不允许带 user_id，由后端从令牌取本人。 */
 export function updateMyProfile(input: MyProfileUpdate, expectedUserId?: number): Promise<MyProfile> {
   return requestWithSession<MyProfile>("/api/v1/me", {
