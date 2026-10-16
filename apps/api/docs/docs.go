@@ -3556,7 +3556,7 @@ const docTemplate = `{
                     "example": "front-end"
                 },
                 "name": {
-                    "description": "姓名；null 清除，缺省不动（issue #86 新增可改字段）",
+                    "description": "姓名；2–20 个中文汉字，不允许 null，缺省不动",
                     "type": "string",
                     "example": "张三"
                 },

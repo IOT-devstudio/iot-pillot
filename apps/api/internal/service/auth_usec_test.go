@@ -89,7 +89,7 @@ func (issue86TokenManager) ValidateRefreshToken(_ context.Context, _ string) (in
 }
 
 func (issue86TokenManager) RevokeSession(_ context.Context, _, _ string) error { return nil }
-func (issue86TokenManager) RevokeUserSessions(_ context.Context, _ int) error { return nil }
+func (issue86TokenManager) RevokeUserSessions(_ context.Context, _ int) error  { return nil }
 
 // issue86CodeManager 空实现 VerifyCodeChecker。
 type issue86CodeManager struct{}
@@ -104,13 +104,13 @@ func (issue86CodeManager) SendVerifyCode(_ context.Context, _ string, _ utils.Ve
 // issue86AdminDirectory 空实现 AdminDirectory。
 type issue86AdminDirectory struct{}
 
-func (issue86AdminDirectory) IsAdmin(_ context.Context, _ int) (bool, error)   { return false, nil }
-func (issue86AdminDirectory) AddAdmin(_ context.Context, _ int) error          { return nil }
-func (issue86AdminDirectory) RemoveAdmin(_ context.Context, _ int) error       { return nil }
-func (issue86AdminDirectory) ListAdmins(_ context.Context) ([]int, error)      { return nil, nil }
+func (issue86AdminDirectory) IsAdmin(_ context.Context, _ int) (bool, error)    { return false, nil }
+func (issue86AdminDirectory) AddAdmin(_ context.Context, _ int) error           { return nil }
+func (issue86AdminDirectory) RemoveAdmin(_ context.Context, _ int) error        { return nil }
+func (issue86AdminDirectory) ListAdmins(_ context.Context) ([]int, error)       { return nil, nil }
 func (issue86AdminDirectory) IsFounding(_ context.Context, _ int) (bool, error) { return false, nil }
-func (issue86AdminDirectory) AddFounding(_ context.Context, _ int) error       { return nil }
-func (issue86AdminDirectory) RemoveFounding(_ context.Context, _ int) error    { return nil }
+func (issue86AdminDirectory) AddFounding(_ context.Context, _ int) error        { return nil }
+func (issue86AdminDirectory) RemoveFounding(_ context.Context, _ int) error     { return nil }
 
 // newTestAuthUseCase 组装一个不依赖 Redis / session 的 AuthUseCase，
 // limiter 传 nil（改名路径不触发限流）。
@@ -183,8 +183,7 @@ func TestUpdateProfile_NameAbsentNoOp(t *testing.T) {
 	}
 }
 
-// 解析阶段姓名校验：中文按 UTF-8 码点计，<3 或 >20 触发可读错误；
-// 超过 20 码点的上限检查先于 rune 区间检查触发，文案为"不能超过 20 个字符"。
+// 个人资料姓名校验：仅允许 2–20 个中文汉字。
 // 校验实际发生在 ParseUpdateMe（auth_usec.go 的 UpdateProfile 不再重复校验）。
 func TestParseUpdateMe_NameValidation(t *testing.T) {
 	cases := []struct {
@@ -193,15 +192,15 @@ func TestParseUpdateMe_NameValidation(t *testing.T) {
 		wantErr string // 期望的错误文案；空串表示合法
 	}{
 		{"缺省_不动", `{"class":"c"}`, ""},
-		{"null_清除合法", `{"name":null}`, ""},
+		{"null_不可清除", `{"name":null}`, "姓名须为 2–20 个中文汉字"},
 		{"边界_正好三中文", `{"name":"张三丰"}`, ""},
-		{"边界_正好三ASCII", `{"name":"abc"}`, ""},
+		{"ASCII_拒绝", `{"name":"abc"}`, "姓名须为 2–20 个中文汉字"},
 		{"正常_四中文", `{"name":"李四王"}`, ""},
 		{"边界_正好二十中文", `{"name":"一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾"}`, ""},
-		{"太短_两中文", `{"name":"张丰"}`, "name 长度需在 3 到 20 个字符之间"},
-		{"太短_单字", `{"name":"张"}`, "name 长度需在 3 到 20 个字符之间"},
-		{"超长_二十一ASCII", `{"name":"aaaaaaaaaaaaaaaaaaaaa"}`, "name 不能超过 20 个字符"},
-		{"超长_二十一中文", `{"name":"一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾壹"}`, "name 不能超过 20 个字符"},
+		{"边界_两中文", `{"name":"张丰"}`, ""},
+		{"太短_单字", `{"name":"张"}`, "姓名须为 2–20 个中文汉字"},
+		{"超长_二十一ASCII", `{"name":"aaaaaaaaaaaaaaaaaaaaa"}`, "姓名须为 2–20 个中文汉字"},
+		{"超长_二十一中文", `{"name":"一二三四五六七八九十壹贰叁肆伍陆柒捌玖拾壹"}`, "姓名须为 2–20 个中文汉字"},
 		{"非法JSON", `{bad`, "请求体必须是 JSON 对象"},
 	}
 	for _, c := range cases {
@@ -222,7 +221,7 @@ func TestParseUpdateMe_NameValidation(t *testing.T) {
 	}
 }
 
-// 解析阶段：姓名键缺省 / null / 有值 三态语义正确。
+// 解析阶段：姓名缺省保留、null 拒绝、有值校验。
 func TestParseUpdateMe_NameThreeState(t *testing.T) {
 	// 缺省
 	req, err := request.ParseUpdateMe([]byte(`{"class":"c"}`))
@@ -233,13 +232,9 @@ func TestParseUpdateMe_NameThreeState(t *testing.T) {
 		t.Fatal("缺省姓名应为 Present=false")
 	}
 
-	// null = 清除
-	req, err = request.ParseUpdateMe([]byte(`{"name":null}`))
-	if err != nil {
-		t.Fatalf("解析失败: %v", err)
-	}
-	if !req.Name.Present || !req.Name.Clear {
-		t.Fatalf("null 姓名应为 Present=true,Clear=true，got Present=%v Clear=%v", req.Name.Present, req.Name.Clear)
+	// null 不允许清除姓名。
+	if _, err = request.ParseUpdateMe([]byte(`{"name":null}`)); err == nil {
+		t.Fatal("null 姓名应被拒绝")
 	}
 
 	// 有值

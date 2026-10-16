@@ -54,8 +54,8 @@ export interface MyProfileUpdate {
   student_id?: number | null;
   qq?: string | null;
   direction?: Direction | null;
-  /** 姓名；issue #86 起可改，3~20 字符；null 清空，未传不动。 */
-  name?: string | null;
+  /** 姓名；修改时须为 2–20 个中文汉字，不可清空，未传不动。 */
+  name?: string;
 }
 
 /** 读取自己的完整资料。 */
@@ -98,7 +98,7 @@ export function detailToForm(detail: UserDetail = {}): FormShape {
 }
 
 /**
- * 把表单反向摊平回 update payload。空串 → null（清空），非空 → 原值。
+ * 把表单反向摊平回 update payload。资料空串 → null；姓名保留原值，由调用方校验。
  *
  * 学号做一次「必须是正整数」的兜底：input type=number 已经能挡住大部分非法字符，
  * 但粘贴仍可能塞进来 0 / 负数 / 小数 —— 后端契约里 student_id 是非负整数，
@@ -119,7 +119,7 @@ export function formToUpdate(form: FormShape): MyProfileUpdate {
   }
 
   return {
-    ...(form.name === undefined ? {} : { name: form.name.trim() || null }),
+    ...(form.name === undefined ? {} : { name: form.name }),
     class: form.class.trim() === "" ? null : form.class.trim(),
     student_id: studentId,
     qq: form.qq.trim() === "" ? null : form.qq.trim(),

@@ -3,6 +3,7 @@ package request
 import (
 	"encoding/json"
 	"fmt"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
@@ -14,22 +15,21 @@ const (
 	maxClassLen = 64
 	maxQQLen    = 20
 
-	// 姓名长度边界，复用 RegisterReq.Name 的约束（user_req.go），
-	// 保证注册时与改名时完全一致（issue #86）。
-	minNameLen = 3
+	// 个人资料姓名长度边界（#154）；注册规则独立。
+	minNameLen = 2
 	maxNameLen = 20
 )
 
 // UpdateMePatch PUT /me 的 body 文档形状（swag 注解引用）。
 //
 // 实际解析走 ParseUpdateMe —— 这里的指针字段只为在 OpenAPI 里表达
-// 「可选且可为 null」；请求体的三态语义见 ParseUpdateMe。
+// 「可选」及资料字段的 null；姓名不允许 null，请求语义见 ParseUpdateMe。
 type UpdateMePatch struct {
 	Class     *string `json:"class" example:"物联网工程 2301"`                                                    // 班级；null 清除，缺省不动
 	StudentID *int    `json:"student_id" example:"2023114514"`                                               // 学号；null 清除（0 视为未填），缺省不动
 	QQ        *string `json:"qq" example:"1044696157"`                                                       // QQ；null 清除，缺省不动
 	Direction *string `json:"direction" example:"front-end" enums:"front-end,back-end,agent,all,game,other"` // 方向；null/空串清除，缺省不动
-	Name      *string `json:"name" example:"张三"`                                                            // 姓名；null 清除，缺省不动（issue #86 新增可改字段）
+	Name      *string `json:"name" example:"张三"`                                                             // 姓名；2–20 个中文汉字，不允许 null，缺省不动
 }
 
 // PatchField 白名单字段的三态值。
@@ -61,12 +61,11 @@ type UpdateMeReq struct {
 //
 // 三态语义：
 //   - 键缺失      → Present=false，更新时不动该字段
-//   - 值为 null   → Present=true, Clear=true，清除该字段
+//   - 值为 null   → 资料字段 Present=true, Clear=true；姓名拒绝清除
 //   - 有值        → Present=true，覆盖（校验失败返回中文错误）
 //
 // 校验规则与前端表单一致：class ≤ 64 字符、qq ≤ 20 字符、student_id
-// 为非负整数、direction 必须是 domain.Direction 枚举之一、name 为 3~20 字符
-// （复用注册时的姓名约束，issue #86）。
+// 为非负整数、direction 必须是 domain.Direction 枚举之一、name 为 2–20 个中文汉字。
 // 返回的 error 文案直接外发给调用方，措辞必须是用户能看懂的中文。
 func ParseUpdateMe(body []byte) (*UpdateMeReq, error) {
 	var raw map[string]json.RawMessage
@@ -112,16 +111,20 @@ func ParseUpdateMe(body []byte) (*UpdateMeReq, error) {
 	}
 	req.Direction = direction
 
-	// name（issue #86 新增）：3~20 个字符，使用 UTF-8 码点计数，
-	// 与 RegisterReq.Name 的 min=3/max=20 完全一致。
+	// 姓名仅在提交该字段时校验，缺省保留历史姓名。
 	name, err := parsePatchString(raw, "name", maxNameLen)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("姓名须为 2–20 个中文汉字")
 	}
-	if name.Present && !name.Clear {
+	if name.Present {
 		n := utf8.RuneCountInString(name.Value)
-		if n < minNameLen || n > maxNameLen {
-			return nil, fmt.Errorf("name 长度需在 3 到 20 个字符之间")
+		if name.Clear || n < minNameLen || n > maxNameLen {
+			return nil, fmt.Errorf("姓名须为 2–20 个中文汉字")
+		}
+		for _, r := range name.Value {
+			if !unicode.Is(unicode.Han, r) {
+				return nil, fmt.Errorf("姓名须为 2–20 个中文汉字")
+			}
 		}
 	}
 	req.Name = name
