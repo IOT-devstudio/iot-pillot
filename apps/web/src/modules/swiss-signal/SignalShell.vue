@@ -127,9 +127,9 @@ watch(
     :data-view="isUserPage() ? 'home' : mode"
   >
     <header class="masthead">
-      <RouterLink class="wordmark" to="/" aria-label="IoT Studio 首页"
+      <RouterLink class="wordmark" to="/" aria-label="IOT studio 首页"
         ><span class="logo">⌁</span
-        ><span>IoT STUDIO<small>物联网工作室</small></span></RouterLink
+        ><span>IOT studio</span></RouterLink
       >
       <span class="masthead-note">A PLACE FOR CURIOUS MINDS.</span>
       <nav
