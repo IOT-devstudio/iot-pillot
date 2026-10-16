@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthRequestError } from "@/api/auth";
 import type { AdminUser } from "@/api/admin";
 
-// ElMessageBox.confirm 会弹真实对话框，helper 里必须打桩；ElMessage 同理只是个通知。
+// ElMessageBox.confirm/prompt 会弹真实对话框，helper 里必须打桩；ElMessage 同理只是个通知。
 vi.mock("element-plus", () => ({
   ElMessage: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-  ElMessageBox: { confirm: vi.fn() },
+  ElMessageBox: { confirm: vi.fn(), prompt: vi.fn() },
 }));
 
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -21,6 +21,7 @@ import {
 } from "./useAdminPermissions";
 
 const CONFIRM = vi.mocked(ElMessageBox.confirm);
+const PROMPT = vi.mocked(ElMessageBox.prompt);
 const SUCCESS = vi.mocked(ElMessage.success);
 const ERROR = vi.mocked(ElMessage.error);
 const WARNING = vi.mocked(ElMessage.warning);
