@@ -19,14 +19,28 @@
    是居中的，于是整页横向抖 7.5px。
 
    scrollbar-gutter: stable 保留槽位但**不强制常显**（比 overflow-y: scroll
-   更贴合原意：短页不该硬塞一条滚动条）。关键收益在弹窗场景：ElMessageBox /
-   el-dialog 锁滚动会把 overflow:hidden 打在 body 上、并按滚动条宽度补
-   padding-right——槽位常驻时这个补偿恰好抵消，页面不再横向跳变；
-   槽位若随 overflow 消失，补偿就成了多出来的 15px，整页会抖一下。
+   更贴合原意：短页不该硬塞一条滚动条）。
    浏览器级设置（Chrome 的覆盖式滚动条 / macOS 默认）会忽略这条规则，
    那种情况下本就没有槽位，也就没有这个问题。 */
 html {
   scrollbar-gutter: stable;
+}
+
+/* 中和 Element 自带的锁滚动宽度收缩。
+   EP 的 useLockscreen（el-dialog / MessageBox / drawer 共用）在弹窗打开时
+   除了给 body 打 overflow:hidden，还会把 body 宽度收窄成
+   calc(100% - 滚动条宽)（见 hooks/use-lockscreen）——那是为「滚动条随
+   overflow 消失」准备的补偿。但上面 scrollbar-gutter: stable 已让滚动条
+   槽位常驻、宽度本来就不变，EP 再收窄一次就成了**双重收缩**，弹窗一开
+   内容整体向左跳 ~15px。
+
+   用 !important 压掉内联的 width 收缩即可：槽位常驻已经保证宽度稳定，
+   这个收缩纯属多余。邮件中心的弹窗因为带 :lock-scroll="false" 不走这段
+   逻辑，所以此前不跳；此规则把其余所有 EP 弹窗一次性拉齐。
+   浏览器级覆盖式滚动条下 gutter 不生效，但 EP 的 getScrollBarWidth 返回
+   0，本来就不会触发收窄，规则无副作用。 */
+body.el-popup-parent--hidden {
+  width: auto !important;
 }
 
 :root {
