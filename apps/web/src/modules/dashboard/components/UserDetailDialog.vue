@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 用户详情弹窗（issue #58 验收项 /dashboard/admins 「详情」按钮）。
+ * 用户详情弹窗（issue #58 验收项 /settings/users 「详情」按钮）。
  *
  * 只读：编辑入口只在个人设置页（/user/settings），弹窗里**不**放任何编辑控件。
  * 这是契约要求：「仅本人可改」—— 管理员不能在这里代改他人。

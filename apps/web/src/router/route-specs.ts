@@ -16,13 +16,7 @@ export const MEMBER_ONLY = ["admin"] as const;
  */
 export const ANY_SIGNED_IN = ["admin", "member"] as const;
 
-/**
- * 后台管理页的占位路由清单。
- *
- * 这些页面都属于「工作室成员」功能区；普通用户会被守卫带到自己的落点
- * （见 router/guards.ts 的 landingFor）。
- */
-export const placeholderRouteSpecs = [
-  { path: "/dashboard", name: "dashboard", title: "控制台" },
-  { path: "/settings", name: "settings", title: "系统设置" },
-] as const;
+// 占位路由清单（placeholderRouteSpecs）已随 issue #59 退役：
+// /dashboard 与 /settings 都有了真实页面，PlaceholderView 不再被任何路由引用。
+// 将来的占位需求（设置中心新区块等）按票内教训**不做占位导航**，
+// 等内容 issue 就绪再加真实路由。

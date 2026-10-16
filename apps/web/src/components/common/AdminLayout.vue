@@ -63,13 +63,10 @@ const navGroups: AdminNavGroup[] = [
   },
   {
     label: "管理",
+    // 「用户与权限」不再单列（issue #59）：它并入「系统设置」成为第一个
+    // 区块（/settings/users）。侧栏不设 exact，/settings 前缀匹配
+    // 覆盖其全部子区块，设置中心内任意子页下「系统设置」保持高亮。
     items: [
-      {
-        label: "用户与权限",
-        to: "/dashboard/admins",
-        exact: true,
-        icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4.5 20a7.5 7.5 0 0 1 15 0 M18 8h3 M19.5 6.5v3",
-      },
       {
         label: "系统设置",
         to: "/settings",

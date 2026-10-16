@@ -7,10 +7,9 @@ import { mailRoutes } from "@/modules/mail/routes";
 import { openerRoutes } from "@/modules/opener/routes";
 import { openerEditorRoutes } from "@/modules/opener-editor/routes";
 import { recruitmentRoutes } from "@/modules/recruitment/routes";
+import { settingsRoutes } from "@/modules/settings/routes";
 import { userSettingsRoutes } from "@/modules/user-settings/routes";
 import AuthView from "@/views/AuthView.vue";
-import PlaceholderView from "@/views/PlaceholderView.vue";
-import { MEMBER_ONLY, placeholderRouteSpecs } from "./route-specs";
 
 export const routes: RouteRecordRaw[] = [
   // 根路径 = 瑞士信号 2D 认证页（保持既有路由名称）
@@ -27,6 +26,8 @@ export const routes: RouteRecordRaw[] = [
   ...recruitmentRoutes,
   // 管理台（dashboard 模块自带 meta.allowRoles）
   ...dashboardRoutes,
+  // 管理设置中心（issue #59）：用户与权限并入的第一个真实区块
+  ...settingsRoutes,
   // 邮件中心（模板 + 发信记录，mail 模块自带 meta.allowRoles）
   ...mailRoutes,
   ...formRoutes,
@@ -34,14 +35,4 @@ export const routes: RouteRecordRaw[] = [
   { path: "/home", redirect: "/dashboard" },
   // 兼容登录路径：与根路径复用同一认证组件，保留 redirect 与 fallback 参数。
   { path: "/login", name: "login", component: AuthView, meta: { title: "登录" } },
-  // 后台管理页统一为成员专属；普通用户会被守卫带到 /user/home。
-  // /dashboard 已有真实页面，必须从占位清单里剔除。
-  ...placeholderRouteSpecs
-    .filter(({ path }) => path !== "/dashboard")
-    .map(({ path, name, title }) => ({
-    path,
-    name,
-    component: PlaceholderView,
-    meta: { title, allowRoles: MEMBER_ONLY, adminShell: true },
-    })),
 ];

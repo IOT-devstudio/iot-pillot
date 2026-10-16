@@ -18,9 +18,6 @@ vi.mock("@/modules/dashboard/views/DashboardView.vue", () => ({
 vi.mock("@/modules/dashboard/views/AdminMembersView.vue", () => ({
   default: { name: "AdminMembersView" },
 }));
-vi.mock("@/views/PlaceholderView.vue", () => ({
-  default: { name: "PlaceholderView" },
-}));
 vi.mock("@/views/AuthView.vue", () => ({ default: { name: "AuthView" } }));
 // opener 视图会在模块作用域引入 three / gsap 并操作 WebGL，测试里必须打桩
 vi.mock("@/modules/opener/views/StudioOpener.vue", () => ({
@@ -95,18 +92,34 @@ describe("application routes", () => {
     expect(dashboardRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
   });
 
-  it("mounts the admin members page as a member-only dashboard child", () => {
+  it("mounts the admin members page in the settings center (issue #59)", () => {
     const adminRoutes = routes.filter(
-      (route) => route.path === "/dashboard/admins",
+      (route) => route.path === "/settings/users",
     );
 
     expect(adminRoutes).toHaveLength(1);
-    expect(adminRoutes[0]?.name).toBe("dashboard-admins");
+    expect(adminRoutes[0]?.name).toBe("settings-users");
     expect(adminRoutes[0]?.component).toMatchObject({
       name: "AdminMembersView",
     });
     // 用户与权限页能改角色，漏标 allowRoles 就等于对普通用户敞开
     expect(adminRoutes[0]?.meta?.allowRoles).toEqual(["admin"]);
+    // 设置中心子页同样挂统一管理外壳
+    expect(adminRoutes[0]?.meta?.adminShell).toBe(true);
+  });
+
+  it("redirects the settings index and the retired admins path (issue #59)", () => {
+    // /settings 索引落到第一个真实区块，避免空落点
+    const settingsIndex = routes.filter((route) => route.path === "/settings");
+    expect(settingsIndex).toHaveLength(1);
+    expect(settingsIndex[0]?.redirect).toBe("/settings/users");
+
+    // 旧路径 /dashboard/admins 保留重定向，收藏夹与旧链接不能变死链
+    const retiredAdmins = routes.filter(
+      (route) => route.path === "/dashboard/admins",
+    );
+    expect(retiredAdmins).toHaveLength(1);
+    expect(retiredAdmins[0]?.redirect).toBe("/settings/users");
   });
 
   it("keeps the fallback login page public and retires the old home path", () => {
@@ -149,54 +162,42 @@ describe("application routes", () => {
     expect(mailRoutes[0]?.meta?.adminShell).toBe(true);
   });
 
-  it("registers each planned placeholder page as member-only", () => {
-    const reservedPaths = [
-      "/",
-      "/home",
-      "/login",
-      "/admin/buildings",
-      "/dashboard",
-      "/dashboard/admins",
-      "/templates",
-      "/user/home",
-      "/user/about",
-      "/user/settings",
-      "/user/invitations",
-      "/recruitment/invitations",
-      "/recruitment/candidates",
-      "/recruitment/candidates/:id",
-      "/recruitment",
-      "/recruitment/applications",
-      "/recruitment/prospects",
-      "/recruitment/prospects/:id",
-      "/forms",
-      "/forms/new",
-      "/forms/:id/edit",
-      "/forms/:id/submissions",
-      "/f/:shareToken",
-    ];
+  it("leaves no placeholder pages behind (issue #59 retired the placeholder system)", () => {
+    // /dashboard 与 /settings 都有了真实页面（或重定向），
+    // PlaceholderView 已删除；任何回归成占位页的路由都会在这里暴露。
     const placeholderRoutes = routes.filter(
-      (route) => !reservedPaths.includes(route.path),
+      (route) =>
+        typeof route.component === "object" &&
+        route.component !== null &&
+        "name" in route.component &&
+        (route.component as { name?: string }).name === "PlaceholderView",
     );
+    expect(placeholderRoutes).toEqual([]);
+  });
 
-    expect(
-      placeholderRoutes.map(({ path, name, meta }) => ({
-        path,
-        name,
-        title: meta?.title,
-      })),
-    ).toEqual([
-      { path: "/settings", name: "settings", title: "系统设置" },
-    ]);
-    expect(
-      new Set(placeholderRoutes.map(({ component }) => component)).size,
-    ).toBe(1);
-    // 后台占位页全部只对成员开放，任何一页漏标都会让普通用户直接走进去
-    expect(
-      placeholderRoutes.every(
-        ({ meta }) => JSON.stringify(meta?.allowRoles) === '["admin"]',
-      ),
-    ).toBe(true);
+  it("keeps every real admin page inside the member-only shell", () => {
+    // 管理页统一带 adminShell + ["admin"]；漏标任一项都会让
+    // 页面脱出管理外壳或对普通用户敞开（守卫只认 allowRoles）。
+    // /admin/buildings 是例外：全屏布局编辑器，刻意不挂管理外壳
+    // （它有自己的成员专属断言用例），只锁 allowRoles。
+    const adminPages = routes.filter(
+      (route) =>
+        route.component !== undefined &&
+        typeof route.path === "string" &&
+        (route.path.startsWith("/dashboard") ||
+          route.path.startsWith("/settings") ||
+          route.path.startsWith("/recruitment") ||
+          route.path.startsWith("/forms") ||
+          route.path === "/templates" ||
+          route.path === "/admin/buildings"),
+    );
+    expect(adminPages.length).toBeGreaterThan(0);
+    for (const page of adminPages) {
+      expect(page.meta?.allowRoles).toEqual(["admin"]);
+      if (page.path !== "/admin/buildings") {
+        expect(page.meta?.adminShell).toBe(true);
+      }
+    }
   });
 
   it("mounts real forms pages with admin permissions and authenticated share access", () => {

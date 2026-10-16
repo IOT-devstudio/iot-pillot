@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 管理台 → 用户与权限 `/dashboard/admins`。
+ * 设置中心 → 用户与权限 `/settings/users`（issue #59 迁入；旧路径 /dashboard/admins 重定向）。
  *
  * 两块内容：
  *  用户列表   服务端分页（/api/v1/admin/users），可本地筛选当前页
