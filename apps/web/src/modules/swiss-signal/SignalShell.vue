@@ -148,7 +148,7 @@ watch(
         </button>
       </nav>
       <span v-if="isUserPage() && !isUserSettings()" class="masthead__user">
-        <UserMenu v-if="currentSession" />
+        <UserMenu v-if="currentSession" :key="currentSession.user_id" />
         <SignInCta v-else />
       </span>
     </header>

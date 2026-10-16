@@ -215,6 +215,13 @@ async function assertGuest(page) {
       await other.evaluate(s => localStorage.setItem("iot-pillot.auth", JSON.stringify(s)), session);
       await page.locator(".user-menu").waitFor();
       await page.waitForFunction(() => !document.querySelector(".guest-journey"));
+      await page.goto(base + "/user/about");
+      await page.locator(".user-menu__name").filter({ hasText: "测试姓名" }).waitFor({ state: "attached" });
+      const reloadProfile = page.waitForRequest("**/api/v1/me");
+      await other.evaluate(() => localStorage.setItem("iot-pillot.auth", JSON.stringify({ user_id: 8, access_token: "new-account", refresh_token: "new-refresh" })));
+      await reloadProfile;
+      await page.locator(".user-menu__name").filter({ hasText: "测试姓名" }).waitFor({ state: "attached" });
+      await page.goto(base + "/user/home");
       await other.evaluate(() => localStorage.clear());
       await assertGuest(page);
       assert.deepEqual(errors, []);
