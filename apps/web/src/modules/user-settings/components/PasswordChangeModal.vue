@@ -447,26 +447,10 @@ async function handleSubmit(): Promise<void> {
   position: absolute;
   inset: 0;
   background: rgba(16, 22, 44, 0.38);
-  /* blur 不宜过大：全屏 backdrop-filter 是打开瞬间卡顿的主因，
-     10px + 图层提升已足够营造「背景失焦」感 */
-  backdrop-filter: blur(10px) saturate(1.1);
-  -webkit-backdrop-filter: blur(10px) saturate(1.1);
-  transform: translateZ(0);
-}
-
-/* 全屏 blur 随进场从 0 长到 10px：
-   若首帧就要求 10px blur，浏览器要先栅格化整屏模糊层才能出画，
-   表现为「停顿半拍 → 模糊和卡片一起跳出来」；从 blur(0) 起步
-   首帧零成本，模糊成本摊到后续每帧，与卡片缩放同步浮现 */
-.pwd-modal-enter-active .pwd-modal__overlay,
-.pwd-modal-leave-active .pwd-modal__overlay {
-  transition: backdrop-filter 0.26s ease, -webkit-backdrop-filter 0.26s ease;
-}
-
-.pwd-modal-enter-from .pwd-modal__overlay,
-.pwd-modal-leave-to .pwd-modal__overlay {
-  backdrop-filter: blur(0) saturate(1.1);
-  -webkit-backdrop-filter: blur(0) saturate(1.1);
+  /* 遮罩不做全屏 backdrop-filter：整屏模糊要么首帧栅格化卡一下
+     （blur 直接给值），要么每帧重算整屏模糊卡一路（blur 做过渡），
+     两条路都是「弹窗跳出来卡顿」的来源。压暗 + 卡片自身的小面积
+     玻璃（.liquid-glass）已足够营造失焦感，打开即出画零卡顿 */
 }
 
 /* 卡片玻璃质感来自全局 .liquid-glass（通透底 + 流光边缘）；

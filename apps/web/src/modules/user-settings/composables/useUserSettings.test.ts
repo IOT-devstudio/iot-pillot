@@ -86,7 +86,7 @@ describe("useUserSettings", () => {
     state.form.class = "draft";
     state.reset();
     // 重置 = 清空姓名/班级/学号/QQ（邮箱在只读区不受影响），
-    // 而非回到已保存值；方向与最新报名强绑定，重置不动
+    // 而非回到已保存值；成员方向只读、与最新报名强绑定，重置不动
     expect(state.form.class).toBe("");
     expect(state.form.name).toBe("");
     expect(state.form.studentId).toBe("");
@@ -100,6 +100,20 @@ describe("useUserSettings", () => {
     state.edit();
     expect(await state.save()).toBe(true);
     expect(state.editing.value).toBe(false);
+  });
+
+  it("clears the direction select on reset for admins (editable dropdown)", async () => {
+    const state = useUserSettings(makeDeps({
+      fetchMyProfile: async () => profile({ role: "admin" }),
+    }));
+    await state.load();
+    state.edit();
+    expect(state.form.direction).toBe("front-end");
+    state.form.class = "draft";
+    state.reset();
+    expect(state.form.direction).toBe("");
+    expect(state.form.class).toBe("");
+    expect(state.editing.value).toBe(true);
   });
 
   it("blocks invalid class/student ID without submitting and keeps the draft", async () => {
