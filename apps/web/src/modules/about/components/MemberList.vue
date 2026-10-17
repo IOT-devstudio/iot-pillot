@@ -1,119 +1,40 @@
 <script setup lang="ts">
-/**
- * 成员（纯展示组件）。
- *
- * 未经本人与工作室确认的姓名不展示（issue #94）：fixtures 为空数组时
- * 渲染「成员待补充」空态。头像用**姓名首字**做文字标记，不引图片。
- *
- * 注意 `member.title` 是工作室内部职能（「前端负责人」），**不是**系统的
- * RBAC 角色 `Role`（admin / member）—— 详见 ../fixtures.ts 的字段注释。
- */
 import type { StudioMember } from "../fixtures";
-
-defineProps<{
-  members: StudioMember[];
-}>();
+defineProps<{ members: StudioMember[] }>();
 </script>
 
 <template>
-  <section class="members liquid-glass" aria-labelledby="about-members-title">
-    <h2 id="about-members-title" class="members__title">成员</h2>
-
-    <p v-if="!members.length" class="members__empty">
-      成员待补充：正式成员名单确认后展示。
-    </p>
-
+  <div class="members">
+    <header class="members__head"><div><span class="members__eyebrow">OUR PEOPLE</span><h2>一起动手的人。</h2></div><span aria-hidden="true">04</span></header>
+    <div v-if="!members.length" class="members__empty">
+      <span class="members__icon" aria-hidden="true">○</span>
+      <div><h3>成员资料待补充</h3><p>正式成员名单确认后展示。</p><small>PEOPLE BEHIND THE WORK</small></div>
+    </div>
     <ul v-else class="members__list">
-      <li v-for="member in members" :key="member.id" class="members__item">
-        <span class="members__avatar" aria-hidden="true">
-          {{ member.name.slice(0, 1) }}
-        </span>
-
-        <div class="members__body">
-          <h3 class="members__name">{{ member.name }}</h3>
-          <p class="members__role">{{ member.title }}</p>
-          <p class="members__bio">{{ member.bio }}</p>
-        </div>
+      <li v-for="member in members" :key="member.id">
+        <span class="members__avatar" aria-hidden="true">{{ member.name.slice(0, 1) }}</span>
+        <div><h3>{{ member.name }}</h3><b>{{ member.title }}</b><p>{{ member.bio }}</p></div>
       </li>
     </ul>
-  </section>
+  </div>
 </template>
 
 <style scoped>
-/* 玻璃质感来自全局 .liquid-glass（issue #85 改造）；
-   卡内小卡（方向/成果/成员项）保持实底描边，保证内容可读 */
-.members {
-  padding: 18px 20px;
-}
-
-.members__title {
-  margin: 0 0 14px;
-  color: var(--about-ink);
-  font-size: 15px;
-}
-
-.members__empty {
-  margin: 0;
-  padding: 14px 16px;
-  color: var(--about-muted);
-  border: 1px dashed var(--about-border);
-  border-radius: 8px;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.members__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.members__item {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 14px 16px;
-  border: 1px solid var(--about-border);
-  border-radius: 8px;
-}
-
-.members__avatar {
-  display: flex;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  align-items: center;
-  justify-content: center;
-  color: var(--about-accent);
-  border: 1px solid var(--about-border);
-  border-radius: 50%;
-  background: #f4f7fa;
-  font-size: 14px;
-}
-
-.members__body {
-  min-width: 0;
-}
-
-.members__name {
-  margin: 0 0 4px;
-  color: var(--about-ink);
-  font-size: 14px;
-}
-
-.members__role {
-  margin: 0 0 6px;
-  color: var(--about-accent);
-  font-size: 12px;
-}
-
-.members__bio {
-  margin: 0;
-  color: var(--about-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
+.members { min-height: 540px; padding: 32px 36px; border: 1px solid white; border-radius: 24px; background: #ffffff91; box-shadow: 0 18px 48px -32px #0a102038, inset 0 1px 0 white; }
+.members__head { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+.members__eyebrow { display: block; margin-bottom: 14px; color: var(--about-blue); font: 10px/1.6 var(--about-mono); letter-spacing: 2px; }
+.members__head h2 { margin: 0; color: var(--about-ink); font-size: 30px; line-height: 1.5; }
+.members__head > span { color: var(--about-blue); font-size: 44px; font-weight: 300; }
+.members__empty { display: flex; align-items: center; gap: 25px; margin-top: 36px; padding: 42px 0; border-block: 1px solid var(--about-line); }
+.members__icon { display: grid; flex: 0 0 70px; place-items: center; width: 70px; height: 86px; background: var(--about-yellow); color: var(--about-blue); font-size: 30px; }
+.members__empty h3 { margin: 0 0 10px; font-size: 23px; }
+.members__empty p { margin: 0; color: var(--about-muted); font-size: 13px; }
+.members__empty small { display: block; margin-top: 16px; color: var(--about-blue); font: 9px/1.6 var(--about-mono); letter-spacing: 1px; }
+.members__list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 36px 0 0; padding: 0; list-style: none; }
+.members__list li { display: flex; gap: 12px; padding: 24px 0; border-top: 1px solid var(--about-line); }
+.members__avatar { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; background: var(--about-yellow); color: var(--about-blue); font-size: 18px; }
+.members__list h3 { margin: 0; font-size: 21px; }
+.members__list b { color: var(--about-blue); font-size: 11px; }
+.members__list p { margin: 10px 0 0; color: var(--about-muted); font-size: 13px; }
+@media (max-width: 540px) { .members { min-height: 450px; padding: 26px 24px; } .members__head h2 { font-size: 25px; } .members__head > span { font-size: 34px; } .members__empty { align-items: start; gap: 16px; } .members__icon { flex-basis: 44px; width: 44px; height: 60px; font-size: 23px; } .members__empty h3 { font-size: 20px; } }
 </style>

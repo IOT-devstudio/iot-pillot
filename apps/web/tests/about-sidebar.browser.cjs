@@ -5,8 +5,8 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
 (async () => {
   const browser = await chromium.launch({channel:"msedge",headless:true});
   try {
-    for (const width of [1440,390]) {
-      const context = await browser.newContext({viewport:{width,height:1000},hasTouch:width===390});
+    for (const width of [1440,320,375,390,430]) {
+      const context = await browser.newContext({viewport:{width,height:1000},hasTouch:width<541});
       await context.addInitScript(() => localStorage.setItem("iot-pillot.auth", JSON.stringify({user_id:7,access_token:"test-only",refresh_token:"test-only"})));
       const page = await context.newPage();
       const errors = [];
@@ -19,45 +19,80 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
       await page.goto(base+"/user/about",{waitUntil:"networkidle"});
       const tabs = page.getByRole("tab");
       assert.equal(await tabs.count(),4);
+      assert.equal(await page.locator(".about__inner").evaluate(el=>getComputedStyle(el).zoom),"1.2");
+      assert.equal(await page.getByRole("tablist").getAttribute("aria-orientation"),width<541?"horizontal":"vertical");
       const expectPanel = async (id,title) => {
         await page.waitForFunction(({id,title}) => {
-          const panel=document.querySelector('[role="tabpanel"]');
-          const content = panel?.querySelector(`[data-section="${id}"]`);
-          return panel?.getAttribute("aria-labelledby") === "about-tab-"+id && content?.textContent.includes(title)
-            && !content.classList.contains("about-panel-enter-active") && !content.classList.contains("about-panel-leave-active")
-            && getComputedStyle(content).opacity === "1";
+          const panel=document.querySelector("#about-content-"+id);
+          return panel?.getAttribute("aria-labelledby") === "about-tab-"+id
+            && panel?.textContent.includes(title) && !panel.hidden
+            && getComputedStyle(panel).opacity === "1";
         },{id,title});
+        assert.equal(await page.locator('[role="tabpanel"]:visible').count(),1);
       };
-      const entries=[["intro","工作室简介"],["focus","方向 / 定位"],["works","成果"],["members","成员"]];
+      const entries=[["intro","从界面到服务"],["focus","前端开发"],["works","成果资料待补充"],["members","成员资料待补充"]];
       for(const [id,title] of entries){
         const tab=page.locator("#about-tab-"+id);
         if(width===1440) await tab.hover(); else await tab.tap();
         await expectPanel(id,title);
         assert.equal(await tab.getAttribute("aria-selected"),"true");
+        assert.equal(await tab.getAttribute("aria-controls"),"about-content-"+id);
+        assert.equal(await page.locator(".about__content .liquid-glass").count(),0,"Cards have no edge-flow treatment");
+      }
+      await page.locator("#about-tab-intro").click();
+      await page.locator(".intro__stats").getByText("成立").waitFor();
+      assert.equal(await page.locator(".intro__stats").innerText(),"成立\n待补充\n成员\n待补充\n在做项目\n待补充");
+      if(width===1440){
+        await page.locator("#about-tab-intro").focus();
+        await page.locator("#about-tab-works").hover();
+        assert.equal(await page.locator("#about-tab-intro").getAttribute("aria-selected"),"true");
       }
       await page.locator("#about-tab-focus").focus();
       await page.keyboard.press("End");
-      await expectPanel("members","成员");
+      await expectPanel("members","成员资料待补充");
       await page.keyboard.press("Home");
-      await expectPanel("intro","工作室简介");
+      await expectPanel("intro","从界面到服务");
       await page.keyboard.press("ArrowDown");
-      await expectPanel("focus","方向 / 定位");
+      await expectPanel("focus","前端开发");
+      await page.keyboard.press("ArrowLeft");
+      await expectPanel("intro","从界面到服务");
+      await page.keyboard.press("ArrowUp");
+      await expectPanel("members","成员资料待补充");
+      await page.locator("#about-tab-focus").click();
+      await expectPanel("focus","前端开发");
+      assert.match(await page.locator("#about-content-focus").evaluate(el=>getComputedStyle(el).animationName),/^about-panel-reveal/);
       if(width===1440){
         await page.getByRole("tabpanel").hover();
         assert.equal(await page.locator("#about-tab-focus").getAttribute("aria-selected"),"true");
       }
       const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
       assert.equal(overflow,false,"No horizontal page overflow");
-      const beam=await page.locator(".about__panel .liquid-glass").evaluate(el=>getComputedStyle(el,"::after").animationName);
-      assert.equal(beam,"glass-beam-flow","Original glass animation is preserved");
+      const glow=await page.locator(".glass-backdrop").evaluate(el=>({
+        pointerEvents:getComputedStyle(el).pointerEvents,
+        position:getComputedStyle(el).position,
+        blue:getComputedStyle(el,"::before").backgroundImage,
+        yellow:getComputedStyle(el,"::after").backgroundImage,
+      }));
+      assert.equal(glow.pointerEvents,"none");
+      assert.equal(glow.position,"fixed");
+      assert.match(glow.blue,/radial-gradient.*23, 57, 245/);
+      assert.match(glow.yellow,/radial-gradient.*233, 255, 108/);
       if(process.env.SCREENSHOT_DIR)await page.screenshot({path:process.env.SCREENSHOT_DIR+"/about-sidebar-"+width+".png",fullPage:true});
       await page.emulateMedia({reducedMotion:"reduce"});
       await tabs.first().click();
-      await expectPanel("intro","工作室简介");
-      assert.equal(await page.locator(".about__panel .liquid-glass").evaluate(el=>getComputedStyle(el,"::after").animationName),"none");
+      await expectPanel("intro","从界面到服务");
+      assert.equal(await tabs.first().evaluate(el=>getComputedStyle(el).transitionDuration),"0s");
+      assert.equal(await page.locator("#about-content-intro").evaluate(el=>getComputedStyle(el).animationName),"none");
       assert.deepEqual(errors,[]);
-      console.log("PASS "+width+"px: hover/tap, keyboard, content access, glass animation, reduced motion, no overflow");
+      console.log("PASS "+width+"px: hover/tap, keyboard, content access, glow, reduced motion, no overflow");
       await context.close();
     }
+    const guest=await browser.newPage();
+    await guest.goto(base+"/user/about",{waitUntil:"networkidle"});
+    assert.match(guest.url(),/\/user\/about$/);
+    assert.equal(await guest.getByRole("tab").count(),4);
+    assert.equal(await guest.locator('[role="tabpanel"]:visible').count(),1);
+    await guest.getByText("从界面到服务").waitFor();
+    await guest.close();
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -1,11 +1,13 @@
-# 关于我们侧边栏
+# 关于我们侧栏页面
 
-现有工作室简介、方向/定位、成果、成员四个展示组件保持内容和液态玻璃流光样式，页面改为左侧栏目导航、右侧内容面板。
+Issue #179 将 `/user/about` 的内容布局迁移到 `docs/demos/about/sidebar.html` 的侧栏方案。正式页面复用 SignalShell 顶栏、返回入口和页脚；页面内部使用 Demo 的编号导航、蓝色简介首屏、SVG 结构图、三段工作流程、技术方向列表和成果/成员空态。
 
-鼠标悬停栏目时切换内容；移到右侧面板后保持选中。触摸设备点击切换。键盘 Tab 可进入选中栏目，方向键循环选择，Home/End 到首尾，后续 Tab 可进入关联内容区域。栏目和面板通过 tab/tabpanel 语义关联。
+页面继续使用 `apps/web/src/modules/about/fixtures.ts` 的已确认文案和数据。长期技术方向独立于当轮招新方向；成果与成员数组为空时展示待补充状态。没有新增业务请求或身份副作用。
 
-保留全局 glass-beam-flow 动画及其 prefers-reduced-motion 降级；内容面板仅增加相邻展开切换，减少动态效果时禁用过渡。没有新增依赖和业务请求，也没有新增未经确认的工作室事实。
+全局 `liquid-glass.css` 中的 `.glass-backdrop` 保持原有固定定位和蓝、黄径向渐变，始终位于侧栏与内容下方，且不拦截指针事件。内容面板采用 Demo 的半透明纸白底，不复制全局 CSS 选择器或 Demo 独立顶栏。
 
-浏览器回归：启动 Vite，设置 PLAYWRIGHT_MODULE 指向已安装 Playwright 后运行 `node apps/web/tests/about-sidebar.browser.cjs`。支持 TEST_BASE_URL、SCREENSHOT_DIR。使用模拟身份并拦截所有业务请求，验证 1440px/390px 的悬停、触摸、键盘、内容访问、动画和水平溢出。
+页面主体按 Demo 初始尺寸的 120% 展示，宽度随容器收缩，避免放大后产生横向溢出。桌面鼠标悬停预览栏目，点击后保持选中；移入内容区不会重置。键盘方向键循环切换，Home/End 跳到首尾。手机端四栏排成顶部横向导航，点击或触摸切换。每个 tab 关联自己的 tabpanel；栏目内容按 Demo 渐入，减少动态效果时动画与过渡关闭。
 
-需求提及五张卡片，但当前主线只有上述四个组件；第五块内容需维护者确认，未虚构新增内容。
+验证：启动 Vite，设置 `PLAYWRIGHT_MODULE` 指向已安装的 Playwright，然后运行 `node apps/web/tests/about-sidebar.browser.cjs`。可设置 `TEST_BASE_URL` 和 `SCREENSHOT_DIR`。脚本使用模拟身份和 `/me` 响应，检查 1440px 桌面与 320/375/390/430px 手机宽度的栏目交互、键盘、关联关系、光晕、减少动态效果和横向溢出；另以无会话浏览器验证游客可访问简介。生产环境与真实 iOS/微信浏览器需另行验收。
+
+页面对比截图：桌面 [改动前](issues/assets/about-sidebar-before-1440.png) / [改动后](issues/assets/about-sidebar-after-1440.png)，手机 [改动前](issues/assets/about-sidebar-before-390.png) / [改动后](issues/assets/about-sidebar-after-390.png)。
