@@ -30,7 +30,7 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
         },{id,title});
         assert.equal(await page.locator('[role="tabpanel"]:visible').count(),1);
       };
-      const entries=[["intro","从界面到服务"],["focus","前端开发"],["works","成果资料待补充"],["members","成员资料待补充"]];
+      const entries=[["intro","从界面到服务"],["focus","前端开发"],["works","成果统计"],["roles","总负责人"]];
       for(const [id,title] of entries){
         const tab=page.locator("#about-tab-"+id);
         if(width===1440) await tab.hover(); else await tab.tap();
@@ -41,7 +41,12 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
       }
       await page.locator("#about-tab-intro").click();
       await page.locator(".intro__stats").getByText("成立").waitFor();
-      assert.equal(await page.locator(".intro__stats").innerText(),"成立\n待补充\n成员\n待补充\n在做项目\n待补充");
+      const stats=await page.locator(".intro__stats > div").evaluateAll(items=>items.map(el=>[el.querySelector("dt").textContent,el.querySelector("dd").textContent]));
+      assert.deepEqual(stats,[["成立","2018"],["地点","第十教学楼 B413"],["累计实战项目","50 余个"]]);
+      assert.match(await page.locator(".intro__stats-note").innerText(),/截至 2022 级/);
+      // #181：占位口径与「在做项目」这类未经确认的数字不应再出现在页面上
+      assert.equal(await page.getByText("待补充").count(),0);
+      assert.equal(await page.locator("#about-content-intro").getByText("在做项目").count(),0);
       if(width===1440){
         await page.locator("#about-tab-intro").focus();
         await page.locator("#about-tab-works").hover();
@@ -49,7 +54,7 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
       }
       await page.locator("#about-tab-focus").focus();
       await page.keyboard.press("End");
-      await expectPanel("members","成员资料待补充");
+      await expectPanel("roles","总负责人");
       await page.keyboard.press("Home");
       await expectPanel("intro","从界面到服务");
       await page.keyboard.press("ArrowDown");
@@ -57,13 +62,31 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
       await page.keyboard.press("ArrowLeft");
       await expectPanel("intro","从界面到服务");
       await page.keyboard.press("ArrowUp");
-      await expectPanel("members","成员资料待补充");
+      await expectPanel("roles","总负责人");
       await page.locator("#about-tab-focus").click();
       await expectPanel("focus","前端开发");
       assert.match(await page.locator("#about-content-focus").evaluate(el=>getComputedStyle(el).animationName),/^about-panel-reveal/);
+      // #181：Agent 必须带可见的宣讲来源；技术标签不能冒充正式技术栈
+      const agent=page.locator("#about-content-focus .focus__row").filter({hasText:"Agent 开发"});
+      assert.match(await agent.innerText(),/2025 年宣讲主题/);
+      const tags=await page.locator("#about-content-focus .focus__tags li").allInnerTexts();
+      for(const forbidden of ["Vue 3","Vite","Go","Gin","PostgreSQL","LLM API"]) assert.equal(tags.includes(forbidden),false,forbidden+" 不是学习内容标签");
+      await page.locator("#about-tab-works").click();
+      await expectPanel("works","成果统计");
+      assert.match(await page.locator("#about-content-works .works__scope").innerText(),/截至 2022 级/);
+      const achievementValues=await page.locator("#about-content-works .works__stats dd").allInnerTexts();
+      assert.deepEqual(achievementValues,["8 项","25 项","5 项","50 余个"]);
+      assert.equal(await page.locator("#about-content-works .works__list > li").count(),4);
+      const workSources=await page.locator("#about-content-works .works__source").allInnerTexts();
+      for(const source of workSources) assert.match(source,/资料来源：.*2025 年宣讲资料/);
+      await page.locator("#about-tab-roles").click();
+      await expectPanel("roles","总负责人");
+      assert.equal(await page.locator("#about-content-roles .roles__list > li").count(),3);
+      // 没有可公开名册时不生成姓名头像
+      assert.equal(await page.locator("#about-content-roles img").count(),0);
       if(width===1440){
         await page.getByRole("tabpanel").hover();
-        assert.equal(await page.locator("#about-tab-focus").getAttribute("aria-selected"),"true");
+        assert.equal(await page.locator("#about-tab-roles").getAttribute("aria-selected"),"true");
       }
       const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
       assert.equal(overflow,false,"No horizontal page overflow");

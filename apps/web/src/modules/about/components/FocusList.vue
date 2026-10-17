@@ -11,14 +11,23 @@ const englishById: Record<string, string> = {
 <template>
   <div class="focus">
     <header class="focus__head"><div><span class="focus__eyebrow">OUR FOCUS</span><h2>以全栈视野，持续探索。</h2></div><span aria-hidden="true">02</span></header>
-    <p class="focus__intro">从用户界面到服务，再到智能体的工具与工作流。</p>
+    <p class="focus__intro">资料里讲到的三个技术主题：界面、服务，以及后端 AI 开发。</p>
     <ol class="focus__list">
       <li v-for="(item, index) in focuses" :key="item.id" class="focus__row">
         <span class="focus__number">{{ String(index + 1).padStart(2, "0") }}</span>
-        <div><h3>{{ item.title }}</h3><small class="focus__english">{{ englishById[item.id] }}</small><p>{{ item.summary }}</p><ul class="focus__tags"><li v-for="tech in item.stack" :key="tech">{{ tech }}</li></ul></div>
+        <div>
+          <h3>{{ item.title }}</h3>
+          <small class="focus__english">{{ englishById[item.id] }}</small>
+          <p>{{ item.summary }}</p>
+          <p v-if="item.source" class="focus__source">{{ item.source }}</p>
+          <div class="focus__topics">
+            <small>学习内容</small>
+            <ul class="focus__tags"><li v-for="topic in item.topics" :key="topic">{{ topic }}</li></ul>
+          </div>
+        </div>
       </li>
     </ol>
-    <p class="focus__note">以上为工作室长期技术定位。</p>
+    <p class="focus__note">技术主题依据工作室知识库与 2025 年宣讲资料整理。标签是学习内容，不是工作室的正式技术栈；本轮可报名的方向以招新页面为准。</p>
   </div>
 </template>
 
@@ -35,7 +44,10 @@ const englishById: Record<string, string> = {
 .focus__row h3 { margin: 0; color: var(--about-ink); font-size: 22px; }
 .focus__english { color: var(--about-muted); font: 10px var(--about-mono); letter-spacing: 1px; }
 .focus__row p { margin: 10px 0 0; color: var(--about-muted); font-size: 13px; line-height: 1.8; }
-.focus__tags { display: flex; flex-wrap: wrap; gap: 7px; margin: 16px 0 0; padding: 0; list-style: none; }
+.focus__row .focus__source { margin-top: 8px; color: var(--about-blue); font: 10px/1.7 var(--about-mono); letter-spacing: .5px; }
+.focus__topics { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px 10px; margin-top: 16px; }
+.focus__topics small { color: var(--about-muted); font-size: 10px; }
+.focus__tags { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .focus__tags li { padding: 2px 9px; border: 1px solid var(--about-line); background: var(--about-paper); color: var(--about-ink); font-size: 10px; }
 .focus__note { margin: 22px 0 0; color: var(--about-muted); font-size: 10px; }
 @media (max-width: 540px) { .focus { min-height: 450px; padding: 26px 24px; } .focus__head h2 { font-size: 25px; } .focus__head > span { font-size: 34px; } .focus__row { grid-template-columns: 24px minmax(0, 1fr); gap: 8px; } }

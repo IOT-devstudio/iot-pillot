@@ -13,7 +13,7 @@ describe("profile check after login", () => {
     const next = { user_id: 2, username: "new", role: "member", detail: { class: "iot", student_id: 123 } };
     setCurrentProfile({ user_id: 1, username: "old", role: "member" });
     vi.mocked(fetchMyProfile).mockResolvedValue(next);
-    await checkProfileAfterLogin();
+    await expect(checkProfileAfterLogin()).resolves.toEqual(next);
     expect(currentProfile.value).toEqual(next);
     await checkProfileAfterLogin();
     expect(fetchMyProfile).toHaveBeenCalledTimes(2);
@@ -32,7 +32,7 @@ describe("profile check after login", () => {
     const pending = checkProfileAfterLogin();
     setCurrentProfile(null);
     resolve({ user_id: 1, username: "old", role: "member" });
-    await pending;
+    await expect(pending).resolves.toBeUndefined();
     expect(currentProfile.value).toBeNull();
   });
 });

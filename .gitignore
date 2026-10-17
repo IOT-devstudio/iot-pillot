@@ -69,9 +69,13 @@ temp/
 AGENTS.md
 # 本地视觉工具（截图/取色等）在仓库根留下的产物目录
 .dsh-vision-router/
+# 本机 Agent 的项目记忆与会话记录（.workbuddy-ai/memory 等），属本地数据，不入库
+.workbuddy-ai/
 
-# Local Issue #81 screenshots, recordings and verification artifacts
-outputs/issue-81/
+# 本地验证产物：浏览器回归的截图、录屏、临时导出等中间产物只留在工作区，不入库。
+# （此前按票号写成 outputs/issue-81/、outputs/issue-93/，逐个补条目容易漏，
+#  这里按目录整体忽略；需要长期引用的图请放进 docs/issues/assets/，该目录照常追踪。）
+outputs/
 
-# Local Issue #93 screenshots and verification artifacts（浏览器回归产物）
-outputs/issue-93/
+# 本地临时脚本、运行日志与编译缓存（vite / vitest 会往里写 node-compile-cache）
+.tmp/

@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import { STUDIO_FOCUS, STUDIO_INTRO, STUDIO_MEMBERS, STUDIO_WORKS } from "../fixtures";
+import {
+  STUDIO_ACHIEVEMENTS,
+  STUDIO_FOCUS,
+  STUDIO_INTRO,
+  STUDIO_ROLES,
+  STUDIO_WORKS,
+} from "../fixtures";
 import FocusList from "../components/FocusList.vue";
-import MemberList from "../components/MemberList.vue";
+import RoleList from "../components/RoleList.vue";
 import StudioIntroCard from "../components/StudioIntroCard.vue";
 import WorksList from "../components/WorksList.vue";
 
 const sections = [
   { id: "intro", label: "工作室简介", english: "THE STUDIO" },
-  { id: "focus", label: "技术方向", english: "OUR FOCUS" },
+  { id: "focus", label: "技术主题", english: "OUR FOCUS" },
   { id: "works", label: "项目成果", english: "SELECTED WORK" },
-  { id: "members", label: "工作室成员", english: "OUR PEOPLE" },
+  { id: "roles", label: "团队分工", english: "TEAM ROLES" },
 ] as const;
 type SectionId = typeof sections[number]["id"];
 const active = ref<SectionId>("intro");
@@ -95,10 +101,10 @@ function move(event: KeyboardEvent, index: number): void {
           >
             <StudioIntroCard v-if="section.id === 'intro'" :profile="STUDIO_INTRO" />
             <FocusList v-else-if="section.id === 'focus'" :focuses="STUDIO_FOCUS" />
-            <WorksList v-else-if="section.id === 'works'" :works="STUDIO_WORKS" />
-            <MemberList v-else :members="STUDIO_MEMBERS" />
+            <WorksList v-else-if="section.id === 'works'" :works="STUDIO_WORKS" :achievements="STUDIO_ACHIEVEMENTS" />
+            <RoleList v-else :roles="STUDIO_ROLES" />
           </section>
-          <p class="about__note">关于工作室 / 正式成果与成员资料待补充。</p>
+          <p class="about__note">关于工作室 / 内容依据工作室知识库与 2025 年宣讲资料整理，最新口径以工作室确认为准。</p>
         </div>
       </div>
     </div>

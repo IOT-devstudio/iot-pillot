@@ -11,6 +11,10 @@
 `SignInPrompt`；确认登录后回跳地址保留当前路径、查询参数及 hash。
 顶栏游客入口独立于已登录用户菜单。
 
+管理员从访客首页或关于页登录后进入 `/dashboard`，身份取自本次登录的
+`/me` 资料检查。普通用户保留原页、查询参数和 hash；分享表单与个人设置等
+具体业务目标继续按原链接返回，并由路由守卫检查权限。
+
 公开页面读取个人数据使用 `requestForPublicPage`：401/403 时清理会话并留在当前页面。
 网络或服务异常保留会话并允许重试。其他受保护页面继续使用原有的令牌刷新与跳转策略。
 失效会话之前发出的异步响应不能重新填入个人区；其他标签页登录/退出也会同步会话信号。
@@ -32,6 +36,7 @@ pnpm --filter @iot-pillot/web dev --host 127.0.0.1 --port 5186
 # 若 playwright 不在模块查找路径，设置 PLAYWRIGHT_MODULE 为其绝对路径。
 $env:TEST_BASE_URL = 'http://127.0.0.1:5186'
 node apps/web/tests/guest-mode.browser.cjs
+node apps/web/tests/login-redirect.browser.cjs
 ```
 
 测试会拦截全部业务 API 请求，使用夹具，不连接真实业务数据。

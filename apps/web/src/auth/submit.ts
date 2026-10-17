@@ -24,7 +24,7 @@ export interface AuthSubmitDeps {
   login: (payload: LoginPayload) => Promise<AuthSession>;
   register: (payload: RegisterPayload) => Promise<AuthSession>;
   saveSession: (session: AuthSession) => void;
-  checkProfile?: () => Promise<void>;
+  checkProfile?: () => Promise<{ user_id: number; role: string } | void>;
   navigate: (path: string) => Promise<unknown> | unknown;
 }
 
@@ -35,21 +35,20 @@ export type AuthSubmitResult =
 /**
  * 登录成功后的默认落点。
  *
- * 这里**只做最基础的跳转**，不按角色分流：目标页由路由守卫按 meta.allowRoles
- * 把关，普通用户走到这里会被守卫带到自己的页面。
- *
- * 为什么不在这里查角色再决定：
- *   1. 守卫每次导航都必须查角色，这里再查一次就是重复请求；
- *   2. 分流逻辑集中在一处（guards.ts），比散落在登录流程里更难写错。
- *
- * Vue Router 的异步守卫在目标组件渲染前完成，用户看不到中间跳转。
+ * 默认进入受保护的管理台，由守卫按角色分流。
+ * 访客首页与 About 页是公开路由，守卫不会查询身份；管理员从这些入口
+ * 登录时，复用登录后的资料检查结果将其送到管理台。具体业务链接仍保留。
  */
 export const DEFAULT_LANDING = "/dashboard";
 
-export function defaultNavigateTarget(redirect?: string): string {
+export function defaultNavigateTarget(redirect?: string, role?: string): string {
   // 只接受站内绝对路径：redirect 可能来自 URL，放行 "//evil.com" 这类
   // 协议相对地址会让登录变成一个开放重定向漏洞。
   if (redirect && redirect.startsWith("/") && !redirect.startsWith("//")) {
+    const pathname = redirect.split(/[?#]/, 1)[0].replace(/\/+$/, "");
+    if (role === "admin" && ["/user/home", "/user/about"].includes(pathname)) {
+      return DEFAULT_LANDING;
+    }
     return redirect;
   }
 
@@ -77,8 +76,9 @@ export async function submitAuth(
       : await deps.register(toRegisterPayload(form as RegisterForm));
 
   deps.saveSession(session);
-  await deps.checkProfile?.();
-  await deps.navigate(defaultNavigateTarget(redirect));
+  const profile = await deps.checkProfile?.();
+  const role = profile?.user_id === session.user_id ? profile?.role : undefined;
+  await deps.navigate(defaultNavigateTarget(redirect, role));
 
   return { ok: true, session };
 }
