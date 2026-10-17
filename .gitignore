@@ -69,6 +69,8 @@ temp/
 AGENTS.md
 # 本地视觉工具（截图/取色等）在仓库根留下的产物目录
 .dsh-vision-router/
+# 本机 Agent 的项目记忆与会话记录（.workbuddy-ai/memory 等），属本地数据，不入库
+.workbuddy-ai/
 
 # 本地验证产物：浏览器回归的截图、录屏、临时导出等中间产物只留在工作区，不入库。
 # （此前按票号写成 outputs/issue-81/、outputs/issue-93/，逐个补条目容易漏，
