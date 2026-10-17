@@ -198,6 +198,7 @@ function handleSubmit(event: Event): void {
             v-if="!isAdmin && !directionError && directionUnset"
             type="button"
             class="settings__pick-link"
+            aria-label="去首页选择方向"
             :disabled="saving"
             @click="emit('pick-direction')"
           >
@@ -284,10 +285,15 @@ function handleSubmit(event: Event): void {
   font-size: 12px;
 }
 
-/* 方向未定时的「去选择」链接：紧跟「未选择」值旁的蓝色文字链（review：简洁） */
+/* 方向未定时的「去选择」链接：紧跟「未选择」值旁的蓝色文字链（review：简洁）。
+   margin-left 2px + padding-left 8px 仍是原来的 10px，文字位置不变，
+   但可点区域不再只有文字大小；触屏设备再撑到 44px 高，手机上也能稳定点到（issue #150）。 */
 .settings__pick-link {
-  margin-left: 10px;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-left: 2px;
+  padding: 0 8px;
   border: 0;
   background: none;
   color: var(--blue);
@@ -295,6 +301,12 @@ function handleSubmit(event: Event): void {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
+}
+
+@media (pointer: coarse) {
+  .settings__pick-link {
+    min-height: 44px;
+  }
 }
 
 .settings__pick-link:hover:not(:disabled) {
