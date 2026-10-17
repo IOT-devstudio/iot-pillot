@@ -37,6 +37,15 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
         await expectPanel(id,title);
         assert.equal(await tab.getAttribute("aria-selected"),"true");
         assert.equal(await tab.getAttribute("aria-controls"),"about-content-"+id);
+        assert.equal(await page.locator(".about__content .liquid-glass").count(),0,"Cards have no edge-flow treatment");
+      }
+      await page.locator("#about-tab-intro").click();
+      await page.locator(".intro__stats").getByText("成立").waitFor();
+      assert.equal(await page.locator(".intro__stats").innerText(),"成立\n待补充\n成员\n待补充\n在做项目\n待补充");
+      if(width===1440){
+        await page.locator("#about-tab-intro").focus();
+        await page.locator("#about-tab-works").hover();
+        assert.equal(await page.locator("#about-tab-intro").getAttribute("aria-selected"),"true");
       }
       await page.locator("#about-tab-focus").focus();
       await page.keyboard.press("End");
@@ -78,5 +87,12 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
       console.log("PASS "+width+"px: hover/tap, keyboard, content access, glow, reduced motion, no overflow");
       await context.close();
     }
+    const guest=await browser.newPage();
+    await guest.goto(base+"/user/about",{waitUntil:"networkidle"});
+    assert.match(guest.url(),/\/user\/about$/);
+    assert.equal(await guest.getByRole("tab").count(),4);
+    assert.equal(await guest.locator('[role="tabpanel"]:visible').count(),1);
+    await guest.getByText("从界面到服务").waitFor();
+    await guest.close();
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -8,6 +8,6 @@ Issue #179 将 `/user/about` 的内容布局迁移到 `docs/demos/about/sidebar.
 
 页面主体按 Demo 初始尺寸的 120% 展示，宽度随容器收缩，避免放大后产生横向溢出。桌面鼠标悬停预览栏目，点击后保持选中；移入内容区不会重置。键盘方向键循环切换，Home/End 跳到首尾。手机端四栏排成顶部横向导航，点击或触摸切换。每个 tab 关联自己的 tabpanel；栏目内容按 Demo 渐入，减少动态效果时动画与过渡关闭。
 
-验证：启动 Vite，设置 `PLAYWRIGHT_MODULE` 指向已安装的 Playwright，然后运行 `node apps/web/tests/about-sidebar.browser.cjs`。可设置 `TEST_BASE_URL` 和 `SCREENSHOT_DIR`。脚本使用模拟身份和 `/me` 响应，检查 1440px 桌面与 320/375/390/430px 手机宽度的栏目交互、键盘、关联关系、光晕、减少动态效果和横向溢出。生产环境与真实 iOS/微信浏览器需另行验收。
+验证：启动 Vite，设置 `PLAYWRIGHT_MODULE` 指向已安装的 Playwright，然后运行 `node apps/web/tests/about-sidebar.browser.cjs`。可设置 `TEST_BASE_URL` 和 `SCREENSHOT_DIR`。脚本使用模拟身份和 `/me` 响应，检查 1440px 桌面与 320/375/390/430px 手机宽度的栏目交互、键盘、关联关系、光晕、减少动态效果和横向溢出；另以无会话浏览器验证游客可访问简介。生产环境与真实 iOS/微信浏览器需另行验收。
 
 页面对比截图：桌面 [改动前](issues/assets/about-sidebar-before-1440.png) / [改动后](issues/assets/about-sidebar-after-1440.png)，手机 [改动前](issues/assets/about-sidebar-before-390.png) / [改动后](issues/assets/about-sidebar-after-390.png)。

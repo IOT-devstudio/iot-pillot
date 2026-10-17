@@ -26,7 +26,7 @@ onMounted(() => {
 onUnmounted(() => mobileQuery?.removeEventListener("change", syncMobile));
 
 function preview(event: PointerEvent, id: SectionId): void {
-  if (event.pointerType === "mouse") active.value = id;
+  if (event.pointerType === "mouse" && !navigation.value?.contains(document.activeElement)) active.value = id;
 }
 
 function move(event: KeyboardEvent, index: number): void {

@@ -24,6 +24,12 @@ defineProps<{ profile: StudioProfile }>();
     </div>
     <div class="intro__body">
       <p class="intro__description">{{ profile.description }}</p>
+      <dl class="intro__stats">
+        <div v-for="stat in profile.stats" :key="stat.label">
+          <dt>{{ stat.label }}</dt>
+          <dd>{{ stat.value }}</dd>
+        </div>
+      </dl>
       <div class="intro__principles">
         <div><small>01 / DEFINE</small><h3>理解问题</h3><p>从真实需求出发，明确问题与目标。</p></div>
         <div><small>02 / BUILD</small><h3>动手构建</h3><p>写代码、联调服务，让想法逐步成形。</p></div>
@@ -50,6 +56,10 @@ defineProps<{ profile: StudioProfile }>();
 .intro__hero-bottom span:first-child { color: var(--about-yellow); }
 .intro__body { padding: 32px 36px; border: 1px solid white; background: #ffffff91; box-shadow: 0 18px 48px -32px #0a102038, inset 0 1px 0 white; }
 .intro__description { max-width: 680px; margin: 0; color: var(--about-muted); font-size: 14px; line-height: 2.1; }
+.intro__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 24px 0 0; padding: 18px 0; border-block: 1px solid var(--about-line); }
+.intro__stats > div { min-width: 0; }
+.intro__stats dt { color: var(--about-muted); font-size: 11px; }
+.intro__stats dd { margin: 4px 0 0; color: var(--about-ink); font-size: 16px; font-weight: 600; }
 .intro__principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 28px; border-top: 1px solid var(--about-line); }
 .intro__principles > div { padding-top: 22px; }
 .intro__principles small { color: var(--about-blue); font: 9px var(--about-mono); letter-spacing: 1px; }
