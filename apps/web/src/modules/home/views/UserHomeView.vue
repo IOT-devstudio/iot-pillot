@@ -43,6 +43,11 @@ import {
   interviewBlockReason as interviewBlockReasonOf,
   presentationOf,
 } from "../directionPresentation";
+import {
+  directionsSettled,
+  documentOffsetTop,
+  waitUntil,
+} from "../hashScroll";
 import { formatISODate } from "../format";
 
 /** 申请状态的中文标签（与后端状态机一致） */
@@ -259,6 +264,18 @@ onMounted(() => {
 });
 
 /**
+ * 同页 hash 变化也要重新定位（issue #150）：组件已挂载时再 push 到
+ * /user/home#directions 不会触发 onMounted，只靠挂载那次会漏掉。
+ * 清空 hash（如创始管理员提示后 replace）不触发滚动。
+ */
+watch(
+  () => route.hash,
+  (hash) => {
+    if (hash) void scrollToHashSection();
+  },
+);
+
+/**
  * 创始管理员被守卫从 /user/settings 弹回时的解释（issue #138）。
  *
  * 守卫重定向带 ?notice=founding-settings；这里出一条提示说明原因，
@@ -272,37 +289,51 @@ function notifyIfRedirectedFromSettings(): void {
   void router.replace({ query: {} });
 }
 
+/** 新的定位请求会作废还在等待中的旧请求（重复点击/连续跳转不打架）。 */
+let hashScrollRun = 0;
+
 /**
- * 外链 hash 滚动（个人设置「去选择方向」→ /user/home#directions）。
+ * 外链 hash 滚动（个人设置「去选择方向」→ /user/home#directions，issue #150）。
  *
  * Vue Router 不会为 SPA 内跳转自动滚到锚点；且方向/进度区的骨架在接口
  * 数据回来前就有高度，先滚再撑高会把版块顶下去（review 实测差了 200px）。
- * 所以先等三块数据加载完再滚，目标找不到时轮询最多 1.5s 兜底。
+ * 所以：
+ *   1. 等三块数据请求结束（骨架 → 内容会改变版块高度）；
+ *   2. 方向区再等卡片真正渲染进 DOM（接口结束 ≠ 已渲染，早滚会落在空白）；
+ *   3. 显式滚文档容器到版块顶部。方向 rail 只是内部横向滚动容器，
+ *      桌面和手机共用同一条纵向页面滚动，不交给 scrollIntoView 猜祖先。
+ * 落点用 offsetTop 链计算，避开入场动画未结束时的 transform 位移，
+ * 否则停稳后会越过版块顶部十来像素。
  * 系统开了「减少动态效果」时退回瞬时跳转，与 scrollToSection 口径一致。
  */
 async function scrollToHashSection(): Promise<void> {
   const id = route.hash.replace(/^#/, "");
   if (!id) return;
+  const run = ++hashScrollRun;
   await nextTick();
-  // 等数据加载完：骨架→内容的切换会改变版块高度，早滚会偏
-  const dataDeadline = Date.now() + 3000;
-  while (
-    (directionsLoading.value || applicationsLoading.value) &&
-    Date.now() < dataDeadline
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
+  await waitUntil(
+    () => !directionsLoading.value && !applicationsLoading.value,
+    { timeoutMs: 3000, intervalMs: 50 },
+  );
+  if (id === "directions") {
+    await waitUntil(
+      () =>
+        directionsSettled({
+          loading: directionsLoading.value,
+          error: directionsError.value,
+          count: directions.value.length,
+          rendered: document.querySelectorAll(".direction-panel").length,
+        }),
+      { timeoutMs: 1500, intervalMs: 50 },
+    );
   }
-  const deadline = Date.now() + 1500;
-  let target = document.getElementById(id);
-  while (!target && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    target = document.getElementById(id);
-  }
+  if (run !== hashScrollRun) return;
+  const target = document.getElementById(id);
   if (!target) return;
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  target.scrollIntoView({
+  window.scrollTo({
+    top: Math.max(0, documentOffsetTop(target)),
     behavior: reduced ? "auto" : "smooth",
-    block: "start",
   });
 }
 
