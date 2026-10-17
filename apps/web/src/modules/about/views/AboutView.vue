@@ -91,6 +91,7 @@ function move(event: KeyboardEvent, index: number): void {
             :aria-labelledby="`about-tab-${section.id}`"
             :tabindex="active === section.id ? 0 : -1"
             :hidden="active !== section.id"
+            :class="{ 'about__panel--enter': active === section.id }"
           >
             <StudioIntroCard v-if="section.id === 'intro'" :profile="STUDIO_INTRO" />
             <FocusList v-else-if="section.id === 'focus'" :focuses="STUDIO_FOCUS" />
@@ -118,9 +119,9 @@ function move(event: KeyboardEvent, index: number): void {
   padding: 44px clamp(16px, 5vw, 70px) 64px;
   color: var(--about-ink);
   background: var(--about-paper);
-  font-family: Bahnschrift, "Microsoft YaHei", "PingFang SC", sans-serif;
+  font: 14px/1.85 Bahnschrift, "Microsoft YaHei", "PingFang SC", sans-serif;
 }
-.about__inner { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; }
+.about__inner { position: relative; z-index: 1; width: 100%; max-width: 1240px; margin: 0 auto; zoom: 1.2; }
 .about__heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 32px; }
 .about__eyebrow { display: flex; align-items: center; gap: 12px; color: var(--about-blue); font: 10px/1.6 var(--about-mono); letter-spacing: 2px; }
 .about__eyebrow::before { content: ""; width: 24px; height: 2px; background: currentColor; }
@@ -142,6 +143,8 @@ function move(event: KeyboardEvent, index: number): void {
 .about__side-note b { display: block; margin-bottom: 14px; color: var(--about-blue); font: 9px/1.6 var(--about-mono); letter-spacing: 1px; }
 .about__content { min-width: 0; }
 .about__panel[hidden] { display: none; }
+.about__panel--enter { animation: about-panel-reveal .3s ease both; }
+@keyframes about-panel-reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .about__note { margin: 22px 0 0; color: var(--about-muted); font-size: 10px; }
 @media (max-width: 900px) { .about__workspace { grid-template-columns: 175px minmax(0, 1fr); gap: 24px; } .about__heading p { display: none; } }
 @media (max-width: 540px) {
@@ -155,5 +158,5 @@ function move(event: KeyboardEvent, index: number): void {
   .about__tab-copy strong { font-size: 12px; line-height: 1.4; }
   .about__tab-copy small, .about__tab-arrow, .about__side-note { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .about__tab { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .about__tab { transition: none; } .about__panel--enter { animation: none; } }
 </style>

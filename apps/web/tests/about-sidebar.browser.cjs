@@ -19,12 +19,14 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
       await page.goto(base+"/user/about",{waitUntil:"networkidle"});
       const tabs = page.getByRole("tab");
       assert.equal(await tabs.count(),4);
+      assert.equal(await page.locator(".about__inner").evaluate(el=>getComputedStyle(el).zoom),"1.2");
       assert.equal(await page.getByRole("tablist").getAttribute("aria-orientation"),width<541?"horizontal":"vertical");
       const expectPanel = async (id,title) => {
         await page.waitForFunction(({id,title}) => {
           const panel=document.querySelector("#about-content-"+id);
           return panel?.getAttribute("aria-labelledby") === "about-tab-"+id
-            && panel?.textContent.includes(title) && !panel.hidden;
+            && panel?.textContent.includes(title) && !panel.hidden
+            && getComputedStyle(panel).opacity === "1";
         },{id,title});
         assert.equal(await page.locator('[role="tabpanel"]:visible').count(),1);
       };
@@ -49,6 +51,7 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
       await expectPanel("members","成员资料待补充");
       await page.locator("#about-tab-focus").click();
       await expectPanel("focus","前端开发");
+      assert.match(await page.locator("#about-content-focus").evaluate(el=>getComputedStyle(el).animationName),/^about-panel-reveal/);
       if(width===1440){
         await page.getByRole("tabpanel").hover();
         assert.equal(await page.locator("#about-tab-focus").getAttribute("aria-selected"),"true");
@@ -70,6 +73,7 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5173";
       await tabs.first().click();
       await expectPanel("intro","从界面到服务");
       assert.equal(await tabs.first().evaluate(el=>getComputedStyle(el).transitionDuration),"0s");
+      assert.equal(await page.locator("#about-content-intro").evaluate(el=>getComputedStyle(el).animationName),"none");
       assert.deepEqual(errors,[]);
       console.log("PASS "+width+"px: hover/tap, keyboard, content access, glow, reduced motion, no overflow");
       await context.close();

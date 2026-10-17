@@ -56,5 +56,5 @@ defineProps<{ profile: StudioProfile }>();
 .intro__principles h3 { margin: 12px 0 10px; color: var(--about-ink); font-size: 20px; }
 .intro__principles p { margin: 0; color: var(--about-muted); font-size: 12px; line-height: 1.8; }
 @media (max-width: 900px) { .intro__grid { grid-template-columns: 1fr; } .intro__art { display: none; } .intro__hero-copy { padding: 34px; } .intro__principles { grid-template-columns: 1fr; gap: 0; } .intro__principles > div { padding-top: 18px; } }
-@media (max-width: 540px) { .intro__hero-copy { padding: 30px 24px; } .intro__hero h2 { font-size: clamp(25px, 7.8vw, 34px); } .intro__grid { min-height: 330px; } .intro__hero-bottom { margin: 0 24px; gap: 12px; font-size: 7px; } .intro__body { padding: 26px 24px; } .intro__principles > div { padding: 18px 0; border-bottom: 1px solid var(--about-line); } }
+@media (max-width: 540px) { .intro__hero-copy { padding: 30px 24px; } .intro__hero h2 { font-size: clamp(20px, 6vw, 26px); white-space: nowrap; } .intro__grid { min-height: 330px; } .intro__hero-bottom { margin: 0 24px; gap: 12px; font-size: 7px; } .intro__body { padding: 26px 24px; } .intro__principles > div { padding: 18px 0; border-bottom: 1px solid var(--about-line); } }
 </style>
