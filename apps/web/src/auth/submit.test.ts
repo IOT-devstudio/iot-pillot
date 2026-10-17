@@ -4,6 +4,44 @@ import { defaultNavigateTarget, submitAuth } from "./submit";
 const session = { access_token: "a", refresh_token: "r", user_id: 9 };
 
 describe("submitAuth", () => {
+  it.each(["/user/home", "/user/home?source=guest#directions", "/user/about"])(
+    "sends an admin returning from %s to the dashboard",
+    async (redirect) => {
+      const deps = {
+        login: vi.fn().mockResolvedValue(session), register: vi.fn(),
+        saveSession: vi.fn(),
+        checkProfile: vi.fn().mockResolvedValue({ user_id: session.user_id, role: "admin" }),
+        navigate: vi.fn(),
+      };
+      await submitAuth("login", { username: "admin", password: "123456" }, deps, redirect);
+      expect(deps.navigate).toHaveBeenCalledWith("/dashboard");
+    },
+  );
+
+  it.each([
+    ["member", "/user/home?source=guest#directions"],
+    ["admin", "/f/shared-form?source=invite"],
+    ["admin", "/user/settings"],
+  ])("preserves the explicit return target for %s: %s", async (role, redirect) => {
+    const deps = {
+      login: vi.fn().mockResolvedValue(session), register: vi.fn(), saveSession: vi.fn(),
+      checkProfile: vi.fn().mockResolvedValue({ user_id: session.user_id, role }),
+      navigate: vi.fn(),
+    };
+    await submitAuth("login", { username: "ada", password: "123456" }, deps, redirect);
+    expect(deps.navigate).toHaveBeenCalledWith(redirect);
+  });
+
+  it("does not use a different account's profile for the return target", async () => {
+    const deps = {
+      login: vi.fn().mockResolvedValue(session), register: vi.fn(), saveSession: vi.fn(),
+      checkProfile: vi.fn().mockResolvedValue({ user_id: session.user_id + 1, role: "admin" }),
+      navigate: vi.fn(),
+    };
+    await submitAuth("login", { username: "ada", password: "123456" }, deps, "/user/home");
+    expect(deps.navigate).toHaveBeenCalledWith("/user/home");
+  });
+
   it("checks the profile after storing each login session, including repeated logins", async () => {
     const calls: string[] = [];
     const deps = {
