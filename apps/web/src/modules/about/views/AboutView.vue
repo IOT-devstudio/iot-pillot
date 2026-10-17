@@ -1,6 +1,5 @@
 <script setup lang="ts">
-/** 关于我们：侧栏选择内容，复用原有玻璃卡与流光动画，不新增事实数据。 */
-import { ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { STUDIO_FOCUS, STUDIO_INTRO, STUDIO_MEMBERS, STUDIO_WORKS } from "../fixtures";
 import FocusList from "../components/FocusList.vue";
 import MemberList from "../components/MemberList.vue";
@@ -8,14 +7,23 @@ import StudioIntroCard from "../components/StudioIntroCard.vue";
 import WorksList from "../components/WorksList.vue";
 
 const sections = [
-  { id: "intro", label: "工作室简介", detail: "我们是谁" },
-  { id: "focus", label: "方向 / 定位", detail: "我们在探索什么" },
-  { id: "works", label: "成果", detail: "把想法做成作品" },
-  { id: "members", label: "成员", detail: "一起动手的人" },
+  { id: "intro", label: "工作室简介", english: "THE STUDIO" },
+  { id: "focus", label: "技术方向", english: "OUR FOCUS" },
+  { id: "works", label: "项目成果", english: "SELECTED WORK" },
+  { id: "members", label: "工作室成员", english: "OUR PEOPLE" },
 ] as const;
 type SectionId = typeof sections[number]["id"];
 const active = ref<SectionId>("intro");
 const navigation = ref<HTMLElement | null>(null);
+const isMobile = ref(false);
+let mobileQuery: MediaQueryList | undefined;
+function syncMobile(): void { isMobile.value = mobileQuery?.matches ?? false; }
+onMounted(() => {
+  mobileQuery = window.matchMedia("(max-width: 540px)");
+  syncMobile();
+  mobileQuery.addEventListener("change", syncMobile);
+});
+onUnmounted(() => mobileQuery?.removeEventListener("change", syncMobile));
 
 function preview(event: PointerEvent, id: SectionId): void {
   if (event.pointerType === "mouse") active.value = id;
@@ -35,118 +43,117 @@ function move(event: KeyboardEvent, index: number): void {
 </script>
 
 <template>
-  <div class="about">
+  <main class="about">
     <div class="glass-backdrop" aria-hidden="true"></div>
     <div class="about__inner">
-      <header class="about__header">
-        <h1 class="about__title">关于我们</h1>
-        <p class="about__subtitle">{{ STUDIO_INTRO.name }} · 招新项目手册</p>
+      <header class="about__heading">
+        <div>
+          <span class="about__eyebrow">THE STUDIO / 关于我们</span>
+          <h1>以技术，回应真实问题。</h1>
+        </div>
+        <p>认识工作室，了解我们的探索方向。</p>
       </header>
 
       <div class="about__workspace">
-        <nav ref="navigation" class="about__sidebar" aria-label="关于我们栏目" role="tablist" aria-orientation="vertical">
-          <button
-            v-for="(section, index) in sections"
-            :id="`about-tab-${section.id}`"
-            :key="section.id"
-            type="button"
-            role="tab"
-            class="about__tab liquid-glass"
-            :class="{ 'about__tab--active': active === section.id }"
-            :aria-selected="active === section.id"
-            aria-controls="about-content"
-            :tabindex="active === section.id ? 0 : -1"
-            @pointerenter="preview($event, section.id)"
-            @focus="active = section.id"
-            @click="active = section.id"
-            @keydown="move($event, index)"
-          >
-            <span class="about__tab-label">{{ section.label }}</span>
-            <span class="about__tab-detail">{{ section.detail }}</span>
-            <span class="about__tab-arrow" aria-hidden="true">↗</span>
-          </button>
-        </nav>
+        <aside class="about__aside">
+          <nav ref="navigation" class="about__sidebar" aria-label="关于我们栏目" role="tablist" :aria-orientation="isMobile ? 'horizontal' : 'vertical'">
+            <button
+              v-for="(section, index) in sections"
+              :id="`about-tab-${section.id}`"
+              :key="section.id"
+              type="button"
+              role="tab"
+              class="about__tab"
+              :aria-selected="active === section.id"
+              :aria-controls="`about-content-${section.id}`"
+              :tabindex="active === section.id ? 0 : -1"
+              @pointerenter="preview($event, section.id)"
+              @focus="active = section.id"
+              @click="active = section.id"
+              @keydown="move($event, index)"
+            >
+              <span class="about__tab-num">{{ String(index + 1).padStart(2, "0") }}</span>
+              <span class="about__tab-copy"><strong>{{ section.label }}</strong><small>{{ section.english }}</small></span>
+              <span class="about__tab-arrow" aria-hidden="true">↗</span>
+            </button>
+          </nav>
+          <p class="about__side-note"><b>IDEAS INTO REALITY.</b>从理解一个问题开始，<br>到完成一件作品。</p>
+        </aside>
 
-        <div
-          id="about-content"
-          class="about__content"
-          role="tabpanel"
-          :aria-labelledby="`about-tab-${active}`"
-          tabindex="0"
-        >
-          <Transition name="about-panel" mode="out-in">
-            <div :key="active" class="about__panel" :data-section="active">
-              <StudioIntroCard v-if="active === 'intro'" :profile="STUDIO_INTRO" />
-              <FocusList v-else-if="active === 'focus'" :focuses="STUDIO_FOCUS" />
-              <WorksList v-else-if="active === 'works'" :works="STUDIO_WORKS" />
-              <MemberList v-else :members="STUDIO_MEMBERS" />
-            </div>
-          </Transition>
+        <div class="about__content">
+          <section
+            v-for="section in sections"
+            :id="`about-content-${section.id}`"
+            :key="section.id"
+            class="about__panel"
+            :data-section="section.id"
+            role="tabpanel"
+            :aria-labelledby="`about-tab-${section.id}`"
+            :tabindex="active === section.id ? 0 : -1"
+            :hidden="active !== section.id"
+          >
+            <StudioIntroCard v-if="section.id === 'intro'" :profile="STUDIO_INTRO" />
+            <FocusList v-else-if="section.id === 'focus'" :focuses="STUDIO_FOCUS" />
+            <WorksList v-else-if="section.id === 'works'" :works="STUDIO_WORKS" />
+            <MemberList v-else :members="STUDIO_MEMBERS" />
+          </section>
+          <p class="about__note">关于工作室 / 正式成果与成员资料待补充。</p>
         </div>
       </div>
-
-      <p class="about__disclaimer">以上为占位示例内容，待工作室提供正式资料。</p>
     </div>
-  </div>
+  </main>
 </template>
 
 <style scoped>
 .about {
-  --about-ink: #102b4e;
-  --about-muted: #5c6b7a;
-  --about-accent: #164d80;
-  --about-border: #d8dee4;
+  --about-blue: #1739f5;
+  --about-yellow: #e9ff6c;
+  --about-paper: #f3f4ed;
+  --about-ink: #141a32;
+  --about-muted: #666b62;
+  --about-line: #d2d5ca;
+  --about-mono: "Cascadia Code", Consolas, monospace;
+  position: relative;
   min-height: 100vh;
-  padding: 40px clamp(16px, 4vw, 48px) 64px;
+  padding: 44px clamp(16px, 5vw, 70px) 64px;
   color: var(--about-ink);
-  background: #f4f6f8;
-  font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--about-paper);
+  font-family: Bahnschrift, "Microsoft YaHei", "PingFang SC", sans-serif;
 }
-.about__inner { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; }
-.about__header { margin-bottom: 32px; }
-.about__title { margin: 0; font-size: 28px; }
-.about__subtitle { margin: 8px 0 0; color: var(--about-muted); font-size: 13px; }
-.about__workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 28px; min-height: 440px; }
-.about__sidebar { display: grid; gap: 12px; }
-.about__tab {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px 10px;
-  width: 100%;
-  min-height: 92px;
-  padding: 20px;
-  color: var(--about-ink);
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-  transition: color 240ms ease, box-shadow 240ms ease;
+.about__inner { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; }
+.about__heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 32px; }
+.about__eyebrow { display: flex; align-items: center; gap: 12px; color: var(--about-blue); font: 10px/1.6 var(--about-mono); letter-spacing: 2px; }
+.about__eyebrow::before { content: ""; width: 24px; height: 2px; background: currentColor; }
+.about__heading h1 { margin: 12px 0 0; font-size: clamp(25px, 3vw, 32px); line-height: 1.4; }
+.about__heading p { margin: 0; color: var(--about-muted); font-size: 11px; }
+.about__workspace { display: grid; grid-template-columns: 205px minmax(0, 1fr); gap: 36px; align-items: start; }
+.about__sidebar { display: flex; flex-direction: column; border-top: 1px solid var(--about-line); }
+.about__tab { display: grid; grid-template-columns: 24px minmax(0, 1fr) 15px; align-items: center; gap: 10px; width: 100%; padding: 24px 10px 24px 0; border: 0; border-bottom: 1px solid var(--about-line); background: transparent; color: var(--about-muted); text-align: left; font: inherit; cursor: pointer; transition: background .2s, color .2s; }
+.about__tab:hover { background: var(--about-yellow); color: var(--about-ink); }
+.about__tab[aria-selected="true"] { padding-left: 12px; background: var(--about-blue); color: white; }
+.about__tab-num { color: var(--about-blue); font: 12px var(--about-mono); }
+.about__tab[aria-selected="true"] .about__tab-num { color: var(--about-yellow); }
+.about__tab-copy strong { display: block; font-size: 14px; font-weight: 600; }
+.about__tab-copy small { display: block; margin-top: 6px; font: 9px/1.5 var(--about-mono); letter-spacing: 1px; }
+.about__tab-arrow { opacity: 0; }
+.about__tab[aria-selected="true"] .about__tab-arrow { color: var(--about-yellow); opacity: 1; }
+.about__tab:focus-visible, .about__panel:focus-visible { outline: 3px solid var(--about-blue); outline-offset: 3px; }
+.about__side-note { margin: 40px 0 0; color: var(--about-muted); font-size: 10px; line-height: 2; }
+.about__side-note b { display: block; margin-bottom: 14px; color: var(--about-blue); font: 9px/1.6 var(--about-mono); letter-spacing: 1px; }
+.about__content { min-width: 0; }
+.about__panel[hidden] { display: none; }
+.about__note { margin: 22px 0 0; color: var(--about-muted); font-size: 10px; }
+@media (max-width: 900px) { .about__workspace { grid-template-columns: 175px minmax(0, 1fr); gap: 24px; } .about__heading p { display: none; } }
+@media (max-width: 540px) {
+  .about { padding: 26px 16px 45px; }
+  .about__heading { margin-bottom: 22px; }
+  .about__eyebrow { font-size: 9px; letter-spacing: 1px; }
+  .about__workspace { display: block; }
+  .about__sidebar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 20px; }
+  .about__tab, .about__tab[aria-selected="true"] { display: block; min-width: 0; padding: 13px 2px; text-align: center; }
+  .about__tab-num { display: block; margin-bottom: 5px; font-size: 10px; }
+  .about__tab-copy strong { font-size: 12px; line-height: 1.4; }
+  .about__tab-copy small, .about__tab-arrow, .about__side-note { display: none; }
 }
-.about__tab--active { color: var(--about-accent); box-shadow: 0 18px 48px -22px rgba(10, 16, 40, 0.35), inset 3px 0 0 #1739f5; }
-.about__tab-label { font-size: 15px; font-weight: 600; }
-.about__tab-detail { grid-column: 1; color: var(--about-muted); font-size: 11px; line-height: 1.6; }
-.about__tab-arrow { grid-column: 2; grid-row: 1 / 3; align-self: center; font-size: 22px; transition: transform 240ms ease; }
-.about__tab--active .about__tab-arrow { transform: translateX(3px); }
-.about__tab:focus-visible, .about__content:focus-visible { outline: 2px solid #1739f5; outline-offset: 5px; }
-.about__content { min-width: 0; border-radius: 24px; }
-.about__panel { width: 100%; }
-.about-panel-enter-active, .about-panel-leave-active { transition: opacity 220ms ease, transform 320ms cubic-bezier(.22, 1, .36, 1); }
-.about-panel-enter-from { opacity: 0; transform: translateX(-16px); }
-.about-panel-leave-to { opacity: 0; transform: translateX(10px); }
-.about__disclaimer { margin: 24px 0 0 248px; color: var(--about-muted); font-size: 11px; line-height: 1.6; }
-@media (max-width: 640px) {
-  .about { padding-top: 28px; }
-  .about__header { margin-bottom: 24px; }
-  .about__workspace { grid-template-columns: 96px minmax(0, 1fr); gap: 14px; }
-  .about__tab { display: block; min-height: 80px; padding: 16px 12px; border-radius: 18px; }
-  .about__tab-label { font-size: 13px; line-height: 1.5; }
-  .about__tab-detail, .about__tab-arrow { display: none; }
-  .about__disclaimer { margin-left: 110px; }
-  .about__panel :deep(.liquid-glass) { padding: 18px 14px; }
-  .about__panel :deep(.intro__stats) { gap: 12px; }
-  .about__panel :deep(.focus__item) { padding: 12px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .about__tab, .about__tab-arrow, .about-panel-enter-active, .about-panel-leave-active { transition: none; }
-  .about-panel-enter-from, .about-panel-leave-to { transform: none; }
-}
+@media (prefers-reduced-motion: reduce) { .about__tab { transition: none; } }
 </style>
