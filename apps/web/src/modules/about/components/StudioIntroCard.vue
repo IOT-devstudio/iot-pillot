@@ -30,6 +30,7 @@ defineProps<{ profile: StudioProfile }>();
           <dd>{{ stat.value }}</dd>
         </div>
       </dl>
+      <p class="intro__stats-note">{{ profile.statsNote }}</p>
       <div class="intro__principles">
         <div><small>01 / DEFINE</small><h3>理解问题</h3><p>从真实需求出发，明确问题与目标。</p></div>
         <div><small>02 / BUILD</small><h3>动手构建</h3><p>写代码、联调服务，让想法逐步成形。</p></div>
@@ -60,11 +61,12 @@ defineProps<{ profile: StudioProfile }>();
 .intro__stats > div { min-width: 0; }
 .intro__stats dt { color: var(--about-muted); font-size: 11px; }
 .intro__stats dd { margin: 4px 0 0; color: var(--about-ink); font-size: 16px; font-weight: 600; }
+.intro__stats-note { margin: 12px 0 0; color: var(--about-muted); font-size: 10px; line-height: 1.7; }
 .intro__principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 28px; border-top: 1px solid var(--about-line); }
 .intro__principles > div { padding-top: 22px; }
 .intro__principles small { color: var(--about-blue); font: 9px var(--about-mono); letter-spacing: 1px; }
 .intro__principles h3 { margin: 12px 0 10px; color: var(--about-ink); font-size: 20px; }
 .intro__principles p { margin: 0; color: var(--about-muted); font-size: 12px; line-height: 1.8; }
 @media (max-width: 900px) { .intro__grid { grid-template-columns: 1fr; } .intro__art { display: none; } .intro__hero-copy { padding: 34px; } .intro__principles { grid-template-columns: 1fr; gap: 0; } .intro__principles > div { padding-top: 18px; } }
-@media (max-width: 540px) { .intro__hero-copy { padding: 30px 24px; } .intro__hero h2 { font-size: clamp(20px, 6vw, 26px); white-space: nowrap; } .intro__grid { min-height: 330px; } .intro__hero-bottom { margin: 0 24px; gap: 12px; font-size: 7px; } .intro__body { padding: 26px 24px; } .intro__principles > div { padding: 18px 0; border-bottom: 1px solid var(--about-line); } }
+@media (max-width: 540px) { .intro__hero-copy { padding: 30px 24px; } .intro__hero h2 { font-size: clamp(20px, 6vw, 26px); white-space: nowrap; } .intro__grid { min-height: 330px; } .intro__hero-bottom { margin: 0 24px; gap: 12px; font-size: 7px; } .intro__body { padding: 26px 24px; } .intro__stats { grid-template-columns: 1fr; gap: 0; padding: 10px 0; } .intro__stats > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--about-line); } .intro__stats > div:last-child { border-bottom: 0; } .intro__stats dd { margin: 0; font-size: 14px; text-align: right; } .intro__principles > div { padding: 18px 0; border-bottom: 1px solid var(--about-line); } }
 </style>
