@@ -216,10 +216,12 @@ async function main() {
       let data,
         status = 200;
       try {
-        assert.match(
-          request.headers.Authorization || request.headers.authorization || "",
-          /^Bearer /,
-        );
+        // 公开方向列表（#155）不带令牌，其余业务请求必须带 Bearer
+        if (new URL(request.url).pathname !== "/api/v1/recruitment/directions")
+          assert.match(
+            request.headers.Authorization || request.headers.authorization || "",
+            /^Bearer /,
+          );
         data = {
           code: 0,
           data: response(
@@ -330,13 +332,41 @@ async function main() {
     await wait(`!!document.getElementById('answer-11')`);
     await click("确认并提交 ↗");
     await wait(`document.activeElement.id === 'answer-11'`);
+    // issue #183：错误必须挂到控件上，不能只有红边框；邮箱说明也要能被读屏带出
+    assert.equal(
+      await evaluate(
+        `document.getElementById('answer-11').getAttribute('aria-invalid')`,
+      ),
+      "true",
+    );
+    assert.match(
+      await evaluate(
+        `document.getElementById('answer-12').getAttribute('aria-describedby') || ''`,
+      ),
+      /hint-12/,
+      "email hint must be described by the control",
+    );
+    assert.match(
+      await evaluate(`document.querySelector('.share-form-submit [role=alert]').textContent`),
+      /请检查上方标注的题目/,
+    );
+    // 正文与输入统一 16px，输入框与主操作至少 44px 高（§3 视觉规则）
+    assert.equal(
+      await evaluate(`getComputedStyle(document.getElementById('answer-11')).fontSize`),
+      "16px",
+    );
+    const controlBox = await evaluate(
+      `(() => { const r = document.getElementById('answer-11').getBoundingClientRect(); const b = document.querySelector('button[type=submit]').getBoundingClientRect(); return JSON.stringify({control: Math.round(r.height), submit: Math.round(b.height)}); })()`,
+    );
+    assert.ok(JSON.parse(controlBox).control >= 44, "control height " + controlBox);
+    assert.ok(JSON.parse(controlBox).submit >= 44, "submit height " + controlBox);
     await fill("answer-11", "https://example.cn/work");
     await fill("answer-12", "answer@example.cn");
     await fill("answer-13", "我参与的真实项目");
     await fill("answer-14", "Go");
     await evaluate(`document.getElementById('answer-15').click()`);
     assert.equal(
-      await evaluate(`document.querySelector('.form-identity a').target`),
+      await evaluate(`document.querySelector('.share-form-identity a').target`),
       "_blank",
     );
     await evaluate(`document.querySelector('.view-nav button').click()`);
@@ -365,8 +395,19 @@ async function main() {
         false,
         "User page overflow at " + width,
       );
-      if (width === 390 || width === 1440)
-        await screenshot("form-user-" + width);
+      if (width === 390) {
+        // 移动端主操作占满可用宽度（§3）
+        const box = await evaluate(
+          `(() => { const p = document.querySelector('.share-form-page').getBoundingClientRect(); const b = document.querySelector('button[type=submit]').getBoundingClientRect(); return JSON.stringify({page: Math.round(p.width), button: Math.round(b.width)}); })()`,
+        );
+        const { page: pageWidth, button: buttonWidth } = JSON.parse(box);
+        assert.ok(
+          pageWidth - buttonWidth <= 42,
+          "submit should fill the row on mobile: " + box,
+        );
+        await screenshot("share-form-390");
+      }
+      if (width === 1440) await screenshot("share-form-1440");
     }
     failSubmit = true;
     await click("确认并提交 ↗");
@@ -382,17 +423,54 @@ async function main() {
     );
     await wait(`document.body.innerText.includes('提交成功')`);
     assert.equal(submitCount, 2);
+    // 成功态只回显接口给的编号与时间，不硬编码申请状态（§5）
+    const successText = await evaluate(
+      `document.querySelector('.share-form-result').innerText`,
+    );
+    assert.match(successText, /申请编号/);
+    assert.match(successText, /提交时间/);
+    assert.equal(successText.includes("待审核"), false);
+    assert.equal(successText.includes("查看我的申请"), true);
+    await screenshot("share-form-success-1440");
     await navigate("/f/token");
     await wait(`document.body.innerText.includes('你已提交过')`);
     submission = null;
     await navigate("/f/closed");
-    await wait(`document.body.innerText.includes('本次报名已关闭')`);
+    await wait(`document.body.innerText.includes('当前表单暂不接受提交')`);
     assert.equal(
       await evaluate(`!!document.querySelector('button[type=submit]')`),
       false,
     );
     await navigate("/f/invalid");
     await wait(`document.body.innerText.includes('链接无效')`);
+    // 首个错误按页面题目顺序定位，不依赖错误对象键的枚举顺序（§4）：
+    // 把 id 最大的题排到最前面，旧实现会把焦点送进 id 最小的那题。
+    const originalFields = formFields.map((f) => ({ ...f }));
+    formFields = [
+      originalFields[4],
+      originalFields[0],
+      originalFields[2],
+      originalFields[1],
+      originalFields[3],
+    ];
+    await navigate("/f/token");
+    await wait(`!!document.getElementById('answer-15')`);
+    await click("确认并提交 ↗");
+    await wait(`document.activeElement.id === 'answer-15'`);
+    assert.equal(
+      await evaluate(
+        `document.getElementById('answer-15').getAttribute('aria-invalid')`,
+      ),
+      "true",
+    );
+    // 邮箱题是选填，空提交只有四题报错
+    assert.equal(
+      await evaluate(
+        `document.querySelectorAll('.share-form-questions [aria-invalid=true]').length`,
+      ),
+      4,
+    );
+    formFields = originalFields.map((f) => ({ ...f }));
     role = "admin";
     await navigate("/forms");
     await wait(`document.body.innerText.includes('编辑与预览')`);
@@ -547,6 +625,10 @@ async function main() {
           profileInNewTab: true,
           failurePreservesAnswers: true,
           duplicateGuard: true,
+          firstErrorInPageOrder: true,
+          ariaDescribedErrors: true,
+          signalTypography: true,
+          mobileSubmitFullWidth: true,
           closedAndInvalid: true,
           realRecordRendering: true,
           historicalValues: true,
