@@ -1,60 +1,44 @@
 <script setup lang="ts">
 /**
- * 个人设置表单（姓名及资料可编辑，绑定邮箱只读，issue #87）。
+ * 个人资料表单（issue #149：字段级直接编辑 + 自动保存）。
  *
- * 父组件 useUserSettings 提供响应式 form 与 profile，本组件只做接线。
- *
- * 姓名修改时必须为 2–20 个中文汉字，不允许清空。
- * 班级、学号必填；默认只读，方向取最新报名，无报名时保留资料方向（#101）。
- *
- * 方向选项的中文标签与后端枚举一一对应（见 packages/shared-types 的 Direction）。
+ * - 姓名/班级/学号/QQ 常驻 input，失焦后自动保存（父组件 runFieldSave）。
+ * - 每个字段下方显示状态：保存中… / 已保存 / 失败（保留输入 + 重试）。
+ * - 邮箱继续只读；普通成员方向只读（最新报名带出），管理员方向下拉失焦保存。
+ * - 校验错误直接显示在字段下；输入即清掉该字段的旧错误。
  */
 import { computed } from "vue";
 
 import type { Direction } from "@iot-pillot/shared-types";
 
 import type { FormShape, MyProfile } from "@/api/profile";
-import type { RequiredProfileErrors } from "../profileCompletion";
+import type { FieldErrors, FieldKey, FieldStatus } from "../composables/useUserSettings";
 
 const props = defineProps<{
   profile: MyProfile;
   form: FormShape;
-  /** 缺少班级或学号时提示补全。 */
   needsCompletion: boolean;
-  saving: boolean;
-  nameError: string;
-  editing: boolean;
-  fieldErrors: RequiredProfileErrors;
+  fieldStatuses: Record<FieldKey, FieldStatus>;
+  fieldErrors: FieldErrors;
   latestDirection: Direction | "";
   directionError: string;
 }>();
 
 const emit = defineEmits<{
-  (event: "submit"): void;
-  (event: "cancel"): void;
-  (event: "edit"): void;
-  (event: "reset"): void;
-  (event: "retry"): void;
+  (event: "save-field", key: FieldKey): void;
+  (event: "retry-field", key: FieldKey): void;
+  (event: "retry-direction"): void;
+  (event: "save-direction"): void;
   /** 成员方向未选择时点「去选择」——由父组件跳首页方向版块走真实报名 */
   (event: "pick-direction"): void;
 }>();
 
-/**
- * 管理员不走报名链路（review 裁决）：编辑态直接给方向下拉，
- * 走 PUT /me 保存；普通成员方向只读、由最新报名带出（#101）。
- */
 const isAdmin = computed(() => props.profile.role === "admin");
 
-/** 方向是否完全未定（无报名带出、资料里也没有） */
 const directionUnset = computed(
   () => !(props.latestDirection || props.form.direction),
 );
 
-/**
- * 方向枚举到中文标签。
- * 后端加新方向时必须同步补这里与 shared-types 的 Direction；
- * 漏一处会让用户提交非法值被 400 弹回。
- */
 const DIRECTION_OPTIONS: Array<{ value: Direction; label: string }> = [
   { value: "front-end", label: "前端" },
   { value: "back-end", label: "后端" },
@@ -64,20 +48,25 @@ const DIRECTION_OPTIONS: Array<{ value: Direction; label: string }> = [
   { value: "other", label: "其他" },
 ];
 
-/** 后端还没把邮箱挂到 detail 里时，给一句「未提供」比留空白更诚实。 */
 const emailDisplay = computed(
   () => props.profile.detail?.email || "未提供",
 );
 const directionLabel = (code: string) => DIRECTION_OPTIONS.find((item) => item.value === code)?.label || code || "未选择";
 
-function handleSubmit(event: Event): void {
-  event.preventDefault();
-  emit("submit");
+function onBlur(key: FieldKey): void {
+  emit("save-field", key);
+}
+
+function onInput(key: FieldKey): void {
+  // 用户正在改：状态从 saved/error 回到 idle，错误文案由父组件在校验通过后清除
+  if (props.fieldStatuses[key] === "saved" || props.fieldStatuses[key] === "error") {
+    props.fieldStatuses[key] = "idle";
+  }
 }
 </script>
 
 <template>
-  <form class="settings liquid-glass" novalidate @submit="handleSubmit">
+  <form class="settings liquid-glass" novalidate>
     <section class="settings__readonly">
       <h2 class="settings__section-title">账号邮箱</h2>
       <dl class="settings__readout">
@@ -87,35 +76,13 @@ function handleSubmit(event: Event): void {
         </div>
       </dl>
       <p class="settings__hint">
-        绑定邮箱不可修改。修改姓名不影响邮箱登录，也不会退出当前会话；建议使用邮箱登录。
+        绑定邮箱不可修改。修改姓名不影响邮箱登录，也不会退出当前会话。
       </p>
     </section>
 
-    <section class="settings__editable" :aria-busy="saving">
+    <section class="settings__editable">
       <h2 class="settings__section-title">个人资料</h2>
-
-      <dl v-if="!editing" class="settings__summary">
-        <div><dt>姓名</dt><dd>{{ profile.name || '未填写' }}</dd></div>
-        <div><dt>班级 · 必填</dt><dd>{{ profile.detail?.class || '未填写' }}</dd></div>
-        <div><dt>学号 · 必填</dt><dd>{{ profile.detail?.student_id || '未填写' }}</dd></div>
-        <div><dt>QQ · 选填</dt><dd>{{ profile.detail?.qq || '未填写' }}</dd></div>
-      </dl>
-
-      <label v-if="editing" class="settings__field">
-        <span id="settings-name-label" class="settings__label">姓名</span>
-        <input
-          v-model="form.name"
-          class="settings__input"
-          type="text"
-          autocomplete="name"
-          aria-labelledby="settings-name-label"
-          :disabled="saving"
-          :aria-invalid="Boolean(nameError)"
-          aria-describedby="settings-name-hint settings-name-error"
-        />
-        <span id="settings-name-hint" class="settings__hint">姓名须为 2–20 个中文汉字。</span>
-        <span id="settings-name-error" class="settings__field-error" role="alert">{{ nameError }}</span>
-      </label>
+      <p class="settings__hint settings__hint--top">直接编辑字段，失焦后自动保存。</p>
 
       <p
         v-if="needsCompletion"
@@ -126,7 +93,33 @@ function handleSubmit(event: Event): void {
         请补全班级和学号；QQ 为选填。完善后将不再显示登录补全提醒。
       </p>
 
-      <label v-if="editing" class="settings__field">
+      <!-- 姓名 -->
+      <label class="settings__field">
+        <span id="settings-name-label" class="settings__label">姓名</span>
+        <input
+          v-model="form.name"
+          class="settings__input"
+          type="text"
+          autocomplete="name"
+          aria-labelledby="settings-name-label"
+          :aria-invalid="Boolean(fieldErrors.name)"
+          aria-describedby="settings-name-hint settings-name-status"
+          @input="onInput('name')"
+          @blur="onBlur('name')"
+        />
+        <span id="settings-name-hint" class="settings__hint">姓名须为 2–20 个中文汉字。</span>
+        <span id="settings-name-status" class="settings__status" role="status" :data-status="fieldStatuses.name">
+          <template v-if="fieldStatuses.name === 'saving'">保存中…</template>
+          <template v-else-if="fieldStatuses.name === 'saved'">已保存</template>
+          <template v-else-if="fieldStatuses.name === 'error' && fieldErrors.name">
+            {{ fieldErrors.name }}
+            <button type="button" class="settings__retry" @click="emit('retry-field', 'name')">重试</button>
+          </template>
+        </span>
+      </label>
+
+      <!-- 班级 -->
+      <label class="settings__field">
         <span class="settings__label">班级 · 必填</span>
         <input
           v-model.trim="form.class"
@@ -135,15 +128,23 @@ function handleSubmit(event: Event): void {
           maxlength="64"
           autocomplete="off"
           placeholder="如：物联网 2301"
-          :disabled="saving"
           required
           :aria-invalid="Boolean(fieldErrors.class)"
-          aria-describedby="settings-class-error"
+          @input="onInput('class')"
+          @blur="onBlur('class')"
         />
-        <span id="settings-class-error" class="settings__field-error" role="alert">{{ fieldErrors.class }}</span>
+        <span class="settings__status" role="status" :data-status="fieldStatuses.class">
+          <template v-if="fieldStatuses.class === 'saving'">保存中…</template>
+          <template v-else-if="fieldStatuses.class === 'saved'">已保存</template>
+          <template v-else-if="fieldStatuses.class === 'error' && fieldErrors.class">
+            {{ fieldErrors.class }}
+            <button type="button" class="settings__retry" @click="emit('retry-field', 'class')">重试</button>
+          </template>
+        </span>
       </label>
 
-      <label v-if="editing" class="settings__field">
+      <!-- 学号 -->
+      <label class="settings__field">
         <span class="settings__label">学号 · 必填</span>
         <input
           v-model="form.studentId"
@@ -151,16 +152,25 @@ function handleSubmit(event: Event): void {
           type="text"
           inputmode="numeric"
           placeholder="如：2023114514"
-          :disabled="saving"
           required
           :aria-invalid="Boolean(fieldErrors.studentId)"
-          aria-describedby="settings-student-error settings-student-hint"
+          aria-describedby="settings-student-hint"
+          @input="onInput('studentId')"
+          @blur="onBlur('studentId')"
         />
         <span id="settings-student-hint" class="settings__hint">填写完整的整数学号；0 表示未填写。</span>
-        <span id="settings-student-error" class="settings__field-error" role="alert">{{ fieldErrors.studentId }}</span>
+        <span class="settings__status" role="status" :data-status="fieldStatuses.studentId">
+          <template v-if="fieldStatuses.studentId === 'saving'">保存中…</template>
+          <template v-else-if="fieldStatuses.studentId === 'saved'">已保存</template>
+          <template v-else-if="fieldStatuses.studentId === 'error' && fieldErrors.studentId">
+            {{ fieldErrors.studentId }}
+            <button type="button" class="settings__retry" @click="emit('retry-field', 'studentId')">重试</button>
+          </template>
+        </span>
       </label>
 
-      <label v-if="editing" class="settings__field">
+      <!-- QQ -->
+      <label class="settings__field">
         <span class="settings__label">QQ · 选填</span>
         <input
           v-model.trim="form.qq"
@@ -170,14 +180,23 @@ function handleSubmit(event: Event): void {
           maxlength="20"
           autocomplete="off"
           placeholder="如：1044696157"
-          :disabled="saving"
+          @input="onInput('qq')"
+          @blur="onBlur('qq')"
         />
+        <span class="settings__status" role="status" :data-status="fieldStatuses.qq">
+          <template v-if="fieldStatuses.qq === 'saving'">保存中…</template>
+          <template v-else-if="fieldStatuses.qq === 'saved'">已保存</template>
+          <template v-else-if="fieldStatuses.qq === 'error' && fieldErrors.qq">
+            {{ fieldErrors.qq }}
+            <button type="button" class="settings__retry" @click="emit('retry-field', 'qq')">重试</button>
+          </template>
+        </span>
       </label>
 
-      <!-- 管理员：编辑态直接下拉选择方向（不走报名链路，保存走 PUT /me） -->
-      <label v-if="editing && isAdmin" class="settings__field">
+      <!-- 管理员：下拉选择方向 -->
+      <label v-if="isAdmin" class="settings__field">
         <span class="settings__label">方向</span>
-        <select v-model="form.direction" class="settings__select" :disabled="saving">
+        <select v-model="form.direction" class="settings__select" @change="emit('save-direction')">
           <option value="">未选择</option>
           <option v-for="option in DIRECTION_OPTIONS" :key="option.value" :value="option.value">
             {{ option.label }}
@@ -186,59 +205,31 @@ function handleSubmit(event: Event): void {
         <span class="settings__hint">管理员不参与报名，方向在此直接选择并保存。</span>
       </label>
 
-      <!-- 普通成员：方向只读（最新报名带出），未选择时值旁给蓝色「去选择」链接 -->
+      <!-- 普通成员：方向只读 -->
       <div v-else class="settings__field">
         <span class="settings__label">方向</span>
         <span class="settings__value">
           {{ directionLabel(latestDirection || form.direction) }}
-          <!-- 「去选择」只给普通成员：跳首页方向版块走真实报名。
-               管理员不走报名链路，只读态隐藏此入口（review 反馈），
-               点「更改」进编辑态用下拉直接选 -->
           <button
-            v-if="!isAdmin && !directionError && directionUnset"
+            v-if="!directionError && directionUnset"
             type="button"
             class="settings__pick-link"
             aria-label="去首页选择方向"
-            :disabled="saving"
             @click="emit('pick-direction')"
           >
             去选择
           </button>
         </span>
-        <span class="settings__hint">{{ isAdmin ? '管理员不参与报名，方向可在编辑态通过下拉更改。' : latestDirection ? '根据最新一条报名记录自动带出，无需重复填写。' : '暂无报名记录，保留当前资料方向。' }}</span>
+        <span class="settings__hint">{{ latestDirection ? '根据最新一条报名记录自动带出，无需重复填写。' : '暂无报名记录，保留当前资料方向。' }}</span>
         <span v-if="latestDirection && profile.detail?.direction && profile.detail.direction !== latestDirection" class="settings__hint">当前资料方向：{{ directionLabel(profile.detail.direction) }}</span>
         <p v-if="directionError" class="settings__field-error" role="alert">{{ directionError }}</p>
-        <button v-if="directionError" type="button" class="settings__btn settings__btn--ghost" :disabled="saving" @click="emit('retry')">重新核对方向</button>
+        <button v-if="directionError" type="button" class="settings__btn settings__btn--ghost" @click="emit('retry-direction')">重新核对方向</button>
       </div>
     </section>
-
-    <footer class="settings__actions">
-      <button v-if="!editing" type="button" class="settings__btn settings__btn--primary" @click="emit('edit')">更改</button>
-      <template v-else>
-      <button
-        type="button"
-        class="settings__btn settings__btn--ghost"
-        :disabled="saving"
-        @click="emit('reset')"
-      >
-        重置
-      </button>
-      <button type="button" class="settings__btn settings__btn--ghost" :disabled="saving" @click="emit('cancel')">取消</button>
-      <button
-        type="submit"
-        class="settings__btn settings__btn--primary"
-        :disabled="saving"
-      >
-        {{ saving ? "保存中…" : "保存" }}
-      </button>
-      </template>
-    </footer>
   </form>
 </template>
 
 <style scoped>
-/* 卡片玻璃质感来自全局 .liquid-glass（issue #85 改造）；
-   输入控件保持实底，保证表单可读性 */
 .settings {
   display: flex;
   flex-direction: column;
@@ -254,6 +245,11 @@ function handleSubmit(event: Event): void {
   font-weight: 600;
 }
 
+.settings__readonly {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+
 .settings__readout {
   display: flex;
   flex-wrap: wrap;
@@ -261,9 +257,7 @@ function handleSubmit(event: Event): void {
   margin: 0 0 8px;
 }
 
-.settings__row {
-  min-width: 180px;
-}
+.settings__row { min-width: 180px; }
 
 .settings__term {
   margin: 0 0 4px;
@@ -280,67 +274,12 @@ function handleSubmit(event: Event): void {
   overflow-wrap: anywhere;
 }
 
-.settings__field-error {
-  color: #a33d32;
-  font-size: 12px;
-}
-
-/* 方向未定时的「去选择」链接：紧跟「未选择」值旁的蓝色文字链（review：简洁）。
-   margin-left 2px + padding-left 8px 仍是原来的 10px，文字位置不变，
-   但可点区域不再只有文字大小；触屏设备再撑到 44px 高，手机上也能稳定点到（issue #150）。 */
-.settings__pick-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  margin-left: 2px;
-  padding: 0 8px;
-  border: 0;
-  background: none;
-  color: var(--blue);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-@media (pointer: coarse) {
-  .settings__pick-link {
-    min-height: 44px;
-  }
-}
-
-.settings__pick-link:hover:not(:disabled) {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.settings__pick-link:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.settings__hint {
-  margin: 8px 0 0;
-  color: var(--ink-faint);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.settings__completion {
-  margin: 0 0 4px;
-  padding: 10px 14px;
-  color: #1c6b45;
-  border-left: 3px solid #2e8b57;
-  border-radius: 8px;
-  background: #e9f6ef;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 .settings__editable {
   display: grid;
   gap: 14px;
 }
+
+.settings__hint--top { margin-top: -6px; }
 
 .settings__field {
   display: grid;
@@ -364,6 +303,7 @@ function handleSubmit(event: Event): void {
   background: #fff;
   font: inherit;
   font-size: 14px;
+  box-sizing: border-box;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease;
@@ -376,25 +316,70 @@ function handleSubmit(event: Event): void {
   box-shadow: 0 0 0 3px rgba(22, 77, 128, 0.15);
 }
 
-.settings__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: flex-end;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
+.settings__hint {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
-.settings__summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0; }
-.settings__summary dt { color: var(--ink-soft); font-size: 12px; }
-.settings__summary dd { margin: 6px 0 0; overflow-wrap: anywhere; font-size: 14px; }
-.settings__input { box-sizing: border-box; }
-@media (max-width: 400px) {
-  .settings { padding: 20px 16px; }
-  .settings__summary { grid-template-columns: 1fr; }
-  .settings__actions { gap: 8px; }
-  .settings__btn { padding: 9px 14px; }
+.settings__completion {
+  margin: 0 0 4px;
+  padding: 10px 14px;
+  color: #1c6b45;
+  border-left: 3px solid #2e8b57;
+  border-radius: 8px;
+  background: #e9f6ef;
+  font-size: 12px;
+  line-height: 1.6;
 }
+
+.settings__status {
+  font-size: 12px;
+  min-height: 18px;
+}
+
+.settings__status[data-status="saving"] { color: var(--ink-soft); }
+.settings__status[data-status="saved"] { color: #1c6b45; }
+.settings__status[data-status="error"] { color: #a33d32; }
+
+.settings__field-error {
+  color: #a33d32;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.settings__retry {
+  margin-left: 8px;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.settings__pick-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-left: 2px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (pointer: coarse) {
+  .settings__pick-link { min-height: 44px; }
+}
+
+.settings__pick-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .settings__btn {
   padding: 9px 18px;
@@ -403,20 +388,6 @@ function handleSubmit(event: Event): void {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition:
-    background 160ms ease,
-    color 160ms ease,
-    border-color 160ms ease;
-}
-
-.settings__btn--primary {
-  color: #fff;
-  border: 1px solid var(--blue);
-  background: var(--blue);
-}
-
-.settings__btn--primary:hover:not(:disabled) {
-  background: #0e3a64;
 }
 
 .settings__btn--ghost {
@@ -425,12 +396,7 @@ function handleSubmit(event: Event): void {
   background: #fff;
 }
 
-.settings__btn--ghost:hover:not(:disabled) {
-  border-color: var(--ink-soft);
-}
-
-.settings__btn:disabled {
-  cursor: wait;
-  opacity: 0.55;
+@media (max-width: 400px) {
+  .settings { padding: 20px 16px; }
 }
 </style>
