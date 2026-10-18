@@ -7,7 +7,7 @@
  *
  * 字段契约来自已合并的 #57 / #86，姓名编辑对应 #87。
  */
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 
@@ -30,20 +30,16 @@ const {
   loading,
   loadError,
   loadUnauthorized,
-  saving,
-  saveError,
-  nameError,
   needsCompletion,
-  editing,
+  fieldStatuses,
   fieldErrors,
   latestDirection,
   directionError,
-  edit,
-  reset,
-  cancel,
   retryDirection,
+  saveField,
+  retryField,
+  saveDirection,
   load,
-  save,
   autoSave,
   persistOnUnload,
 } = useUserSettings();
@@ -51,12 +47,8 @@ const {
 /**
  * 报名入口拦截后的补全提示（issue #152）。
  *
- * 首页资料不完整时不提交报名，而是带 `?from=apply` 跳到这里。落地后：
- *   - 仍缺字段：直接进编辑态，并在表单上方说明缺了哪几项；
- *   - 已经完整（旧链接，或另一标签页补过）：什么都不做，停在只读态。
- *
- * watch 只看 `loading` 与 `showApplyHint`，不看 `editing`——否则用户点「取消」
- * 会被立刻重新拉回编辑态。
+ * 首页资料不完整时不提交报名，而是带 `?from=apply` 跳到这里。字段本来就可直接编辑，
+ * 落地后显示缺项提示并聚焦第一个必填缺项；若资料已完整，则不显示提示也不抢焦点。
  */
 const route = useRoute();
 const fromApply = computed(
@@ -72,8 +64,13 @@ const showApplyHint = computed(
 watch(
   () => [loading.value, showApplyHint.value] as const,
   ([isLoading, shouldPrompt]) => {
-    if (isLoading || !shouldPrompt || editing.value) return;
-    edit();
+    if (isLoading || !shouldPrompt) return;
+    void nextTick(() => {
+      const selector = missingForApplication.value.includes("班级")
+        ? 'input[placeholder="如：物联网 2301"]'
+        : 'input[placeholder="如：2023114514"]';
+      document.querySelector<HTMLInputElement>(selector)?.focus();
+    });
   },
   { immediate: true },
 );
@@ -82,11 +79,15 @@ watch(
  * 离开页面时静默自动保存（review 反馈：改了没存就走应自动保存）。
  * - SPA 内导航（顶栏返回/去选择/UserMenu 等）走路由离开钩子；
  * - 标签页关闭/刷新在 beforeunload 里用 keepalive fetch 兜底
- *   （beforeunload 无法 await，两路都会触发，但 isDirty 在第一次
- *   autoSave 成功后即为 false，第二次自动空转，不会重复写库）。
+ *   （beforeunload 无法 await；SPA 路由离开与组件卸载可能重叠，
+ *   autoSave 内部会合并并发调用）。
  */
-onBeforeRouteLeave(() => {
-  void autoSave();
+onBeforeRouteLeave(async () => {
+  const saved = await autoSave();
+  if (!saved) {
+    ElMessage.warning("资料未能保存，输入已保留；请检查字段提示后重试。");
+    return false;
+  }
 });
 
 onMounted(() => {
@@ -215,17 +216,14 @@ async function handleDeleteAccount(): Promise<void> {
           :profile="profile"
           :form="form"
           :needs-completion="needsCompletion"
-          :saving="saving"
-          :name-error="nameError"
-          :editing="editing"
+          :field-statuses="fieldStatuses"
           :field-errors="fieldErrors"
           :latest-direction="latestDirection"
           :direction-error="directionError"
-          @submit="save"
-          @edit="edit"
-          @reset="reset"
-          @cancel="cancel"
-          @retry="retryDirection"
+          @save-field="saveField"
+          @retry-field="retryField"
+          @retry-direction="retryDirection"
+          @save-direction="saveDirection"
           @pick-direction="pickDirection"
         />
 
@@ -260,11 +258,6 @@ async function handleDeleteAccount(): Promise<void> {
           </el-button>
         </section>
       </template>
-
-      <!-- 保存失败的局部提示：toast 容易被错过，把这条放在表单下面兜底 -->
-      <p v-if="saveError" class="settings-save-error" role="alert">
-        {{ saveError }}
-      </p>
     </main>
   </div>
 </template>
