@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { ACHIEVEMENT_SCOPE } from "../fixtures";
 import type { StudioAchievement, StudioWork } from "../fixtures";
+import { computed } from "vue";
 
-defineProps<{ works: StudioWork[]; achievements: StudioAchievement[] }>();
+const props = defineProps<{ works: StudioWork[]; achievements: StudioAchievement[] }>();
+const projects = computed(() => props.works.filter(work => work.image).map(work => ({
+  id: work.id, title: work.title, description: work.summary,
+  image: work.image, alt: work.alt,
+})));
+const textWorks = computed(() => props.works.filter(work => !work.image));
 </script>
 
 <template>
@@ -22,10 +28,17 @@ defineProps<{ works: StudioWork[]; achievements: StudioAchievement[] }>();
       </dl>
     </section>
 
-    <ul class="works__list">
-      <li v-for="work in works" :key="work.id">
+    <section v-if="projects.length" class="works__projects" aria-label="历年项目">
+      <figure v-for="project in projects" :key="project.id" class="works__project">
+        <img :src="project.image" :alt="project.alt || project.title" loading="lazy" />
+        <figcaption>{{ project.title }}</figcaption>
+      </figure>
+    </section>
+
+    <ul v-if="textWorks.length" class="works__list">
+      <li v-for="work in textWorks" :key="work.id">
         <div><h3>{{ work.title }}</h3><span class="works__source">资料来源：{{ work.source }}</span></div>
-        <p>{{ work.summary }}</p>
+        <p v-if="work.summary">{{ work.summary }}</p>
       </li>
     </ul>
 
@@ -48,6 +61,11 @@ defineProps<{ works: StudioWork[]; achievements: StudioAchievement[] }>();
 .works__stats dt { color: var(--about-muted); font-size: 11px; line-height: 1.6; }
 .works__stats dd { margin: 4px 0 0; color: var(--about-ink); font-size: 20px; font-weight: 600; }
 .works__list { margin: 26px 0 0; padding: 0; border-top: 1px solid var(--about-line); list-style: none; }
+.works__projects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 28px; }
+.works__project { min-width: 0; margin: 0; }
+.works__project img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--about-paper); }
+.works__project figcaption { margin-top: 12px; color: var(--about-ink); font-size: 16px; font-weight: 600; }
+@media (max-width: 540px) { .works__projects { grid-template-columns: 1fr; } }
 .works__list li { padding: 22px 0; border-bottom: 1px solid var(--about-line); }
 .works__list li > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
 .works__list h3 { margin: 0; font-size: 19px; }

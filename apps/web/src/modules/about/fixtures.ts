@@ -25,6 +25,13 @@
  * 代价是主题名称在两处各写了一遍——改动时**两边都要看一眼**。
  */
 import type { ID } from "@iot-pillot/shared-types";
+import nongyuImage from "./assets/nongyu.png";
+import weatherImage from "./assets/yaan-weather.png";
+import studioSpaceImage from "./assets/studio-space.png";
+import studioDailyImage from "./assets/studio-daily.png";
+import destinations22A from "./assets/destinations-22-a.png";
+import destinations22B from "./assets/destinations-22-b.png";
+import destinations21 from "./assets/destinations-21.png";
 
 /** 简介里的一个数字位（成立年份 / 地点 / 累计项目） */
 export interface StudioStat {
@@ -40,6 +47,27 @@ export interface StudioProfile {
   /** 数字位的统计范围说明，必须与数字同屏，避免把历史统计读成当前规模 */
   statsNote: string;
 }
+
+export interface StudioGallerySlide {
+  id: string;
+  title: string;
+  description: string;
+  image?: string;
+  alt?: string;
+}
+
+/** 工作室提供的环境与团建照片。 */
+export const STUDIO_PHOTOS: StudioGallerySlide[] = [
+  { id: "space", title: "工作室一角", description: "第十教学楼 B413，我们学习、讨论与动手做项目的地方。", image: studioSpaceImage, alt: "工作室环境，多排电脑工位与正在学习的成员" },
+  { id: "collaboration", title: "工作室日常与团建", description: "项目之外，也有一起聚餐、团建与合影的时刻。", image: studioDailyImage, alt: "工作室日常与团建照片拼图，包含成员聚餐和工作室合影" },
+];
+
+/** 用户提供的成员去向资料；单位与方向沿用图片标注，不推断任职时间或雇佣类型。 */
+export const STUDIO_DESTINATIONS: StudioGallerySlide[] = [
+  { id: "destinations-22-a", title: "22 级成员去向 · 美团 / 用友", description: "林思宇：美团 · 前端；龚正旭：美团 · 后端；张蓉：用友 · 测开。", image: destinations22A, alt: "22级成员资料：林思宇在美团前端方向、龚正旭在美团后端方向、张蓉在用友测开方向" },
+  { id: "destinations-22-b", title: "22 级成员去向 · 滴滴 / 小米", description: "刘权、周云兴：滴滴 · 前端；唐磊：小米 · 前端。", image: destinations22B, alt: "22级成员资料：刘权和周云兴在滴滴前端方向，唐磊在小米前端方向" },
+  { id: "destinations-21", title: "21 级成员去向 · 移动", description: "刘祺：移动 · 后端。图片包含成员个人经历分享。", image: destinations21, alt: "21级刘祺的成员去向资料，标注移动后端，附个人经历分享截图" },
+];
 
 /**
  * 工作室概况。
@@ -139,37 +167,43 @@ export interface StudioWork {
    * 都没写年份，写成 2025 会被读成「2025 年做的项目」。
    */
   source: string;
+  image?: string;
+  alt?: string;
 }
 
 /**
  * 历史项目。
  *
  * 名称来自宣讲 PPT 第 8 页与知识库「项目板块」，两份资料都没有实施年份
- * 和详细简介，所以 summary 统一是中性的「待核实」说明，不补造功能与成效。
+ * 和详细简介，所以 summary 留空，不补造功能与成效。
  */
 export const STUDIO_WORKS: StudioWork[] = [
   {
     id: "work-nongyu-app",
+    image: nongyuImage,
+    alt: "农屿 APP 项目标识，绿色建筑与四川农业大学文字",
     title: "农屿 APP 开发",
-    summary: "资料仅列出项目名称，实施年份与范围待核实。",
+    summary: "",
     source: WORK_SOURCE,
   },
   {
     id: "work-yaan-weather",
+    image: weatherImage,
+    alt: "雅安气象项目大屏，包含景区地图、天气实况与气象预报",
     title: "雅安气象项目",
-    summary: "资料仅列出项目名称，实施年份与范围待核实。",
+    summary: "",
     source: WORK_SOURCE,
   },
   {
     id: "work-78511-website",
     title: "78511 部队强军网站建设",
-    summary: "资料仅列出项目名称，实施年份与范围待核实。",
+    summary: "",
     source: WORK_SOURCE,
   },
   {
     id: "work-guanghan-logistics",
     title: "广汉国家级农业产业园掌上物流",
-    summary: "资料仅列出项目名称，实施年份与范围待核实。",
+    summary: "",
     source: WORK_SOURCE,
   },
 ];

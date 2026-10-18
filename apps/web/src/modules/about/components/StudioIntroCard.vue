@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { StudioProfile } from "../fixtures";
 import structureImage from "../assets/studio-structure.svg";
+import { STUDIO_PHOTOS, STUDIO_DESTINATIONS } from "../fixtures";
+import StudioGallery from "./StudioGallery.vue";
 
 defineProps<{ profile: StudioProfile }>();
 </script>
@@ -24,6 +26,7 @@ defineProps<{ profile: StudioProfile }>();
     </div>
     <div class="intro__body">
       <p class="intro__description">{{ profile.description }}</p>
+      <p class="intro__description intro__detail">从界面交互到后端服务，从需求拆解到联调部署，我们希望在完整的项目实践中理解技术，也学会把不同环节连接起来。学习不止于写出一段代码，还包括让它成为可用、可维护的作品。</p>
       <dl class="intro__stats">
         <div v-for="stat in profile.stats" :key="stat.label">
           <dt>{{ stat.label }}</dt>
@@ -36,6 +39,8 @@ defineProps<{ profile: StudioProfile }>();
         <div><small>02 / BUILD</small><h3>动手构建</h3><p>写代码、联调服务，让想法逐步成形。</p></div>
         <div><small>03 / DELIVER</small><h3>完成交付</h3><p>把结果交付给真正的用户。</p></div>
       </div>
+      <StudioGallery title="工作室日常" subtitle="在这里学习、交流，把想法一步步变成现实。" :slides="STUDIO_PHOTOS" />
+      <StudioGallery title="人员去向" subtitle="从工作室出发，记录成员的实习经历与毕业去向。" :slides="STUDIO_DESTINATIONS" />
     </div>
   </div>
 </template>
@@ -57,6 +62,7 @@ defineProps<{ profile: StudioProfile }>();
 .intro__hero-bottom span:first-child { color: var(--about-yellow); }
 .intro__body { padding: 32px 36px; border: 1px solid white; background: #ffffff91; box-shadow: 0 18px 48px -32px #0a102038, inset 0 1px 0 white; }
 .intro__description { max-width: 680px; margin: 0; color: var(--about-muted); font-size: 14px; line-height: 2.1; }
+.intro__detail { margin-top: 16px; }
 .intro__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 24px 0 0; padding: 18px 0; border-block: 1px solid var(--about-line); }
 .intro__stats > div { min-width: 0; }
 .intro__stats dt { color: var(--about-muted); font-size: 11px; }
