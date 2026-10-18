@@ -1,5 +1,14 @@
 import type { FormShape, UserDetail } from "@/api/profile";
 
+/**
+ * 报名入口拦截后跳转个人设置页的来源标记（issue #152）：`?from=apply`。
+ *
+ * 常量放在落地页这一侧（设置页负责解释这个标记），首页只负责带上它。
+ * 不放进 home 模块，避免「落地页反向依赖入口页」。
+ */
+export const PROFILE_SOURCE_PARAM = "from";
+export const PROFILE_SOURCE_APPLY = "apply";
+
 export interface RequiredProfileErrors {
   class?: string;
   studentId?: string;

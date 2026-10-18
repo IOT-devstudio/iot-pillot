@@ -27,6 +27,11 @@ import {
   currentProfile as user,
   profileDisplayName,
 } from "@/modules/user-settings/profileIdentity";
+import {
+  PROFILE_SOURCE_APPLY,
+  PROFILE_SOURCE_PARAM,
+} from "@/modules/user-settings/profileCompletion";
+import { profileEntryState } from "../profileEntry";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import {
   fetchDirections,
@@ -82,6 +87,22 @@ function goSettings(event: MouseEvent): void {
   void transition(() => router.push("/user/settings"));
 }
 
+/**
+ * 资料未完整时的报名拦截（issue #152）。
+ *
+ * 关闭弹窗、带来源标记跳个人设置页，由设置页说明缺了哪几项并直接进编辑态。
+ * 拦截发生在写请求之前——不提交申请，也不留半条记录。
+ */
+function goCompleteProfile(): void {
+  selectedDirection.value = null;
+  void transition(() =>
+    router.push({
+      path: "/user/settings",
+      query: { [PROFILE_SOURCE_PARAM]: PROFILE_SOURCE_APPLY },
+    }),
+  );
+}
+
 function goJourney(event: MouseEvent): void {
   if (!requireSignIn("查看我的进度")) { event.preventDefault(); return; }
   scrollToSection(event, "journey");
@@ -129,10 +150,15 @@ const detailError = ref("");
 const displayName = computed(() => profileDisplayName(user.value));
 
 /**
- * 创始管理员没有个人设置页（issue #138）：首页的「完善资料」入口对它隐藏，
- * 点进去也会被路由守卫弹回——入口还在就是自相矛盾。
+ * 资料入口状态（issue #152）：弹窗、统计区、收尾区三处共用。
+ *
+ * 判定读共享的 `currentProfile`（`user`），不另存快照——设置页保存成功后
+ * `hydrate` 已把新资料发布进来，返回首页就是新的；`/me` 只负责刷新。
+ * 创始管理员（`hidden`）仍然整个隐藏入口，理由同 issue #138：
+ * 它没有个人设置页，点进去也会被守卫弹回。
  */
-const isFounding = computed(() => user.value?.is_founding === true);
+const profileEntry = computed(() => profileEntryState(user.value));
+const showProfileEntry = computed(() => profileEntry.value.state !== "hidden");
 const openDirectionCount = computed(
   () => directions.value.filter((direction) => direction.open).length,
 );
@@ -421,6 +447,12 @@ function openDirection(direction: RecruitmentDirection): void {
  */
 function handleInterview(): void {
   if (!requireSignIn("填写面试表单")) return;
+  // 面试表单提交与直接报名产生同一条申请、同一份资料快照（issue #152），
+  // 只拦「报名」会留下旁路，所以两个入口共用同一道门槛。
+  if (profileEntry.value.blocksApplication) {
+    goCompleteProfile();
+    return;
+  }
   const form = selectedDirection.value?.form ?? null;
   if (form === null || interviewBlockReason.value !== null) return;
   void transition(() => router.push(`/f/${form.share_token}`));
@@ -435,6 +467,12 @@ async function handleApply(): Promise<void> {
   const session = currentSession.value;
   const direction = selectedDirection.value;
   if (direction === null || submitting.value) return;
+  // 资料不完整先去补全（issue #152）：报名快照会带上班级/学号，空着提交
+  // 只会把问题留给审核端。
+  if (profileEntry.value.blocksApplication) {
+    goCompleteProfile();
+    return;
+  }
   submitError.value = "";
   submitNotice.value = "";
   submitting.value = true;
@@ -586,10 +624,10 @@ function steps(application: RecruitmentApplication) {
             ><span>{{ displayName }}</span
             ><br /><span>{{ user.detail?.class || "未填写" }}</span></span
           ><RouterLink
-            v-if="!isFounding"
+            v-if="showProfileEntry"
             class="profile-jump"
             to="/user/settings"
-            aria-label="完善我的资料"
+            :aria-label="profileEntry.label"
             @click="goSettings($event)"
             >↗</RouterLink
           ></strong
@@ -754,11 +792,11 @@ function steps(application: RecruitmentApplication) {
       <span class="mono">ONE MORE THING.</span>
       <p>不必什么都会。<br /><span>愿意动手，就有可能。</span></p>
       <a
-        v-if="!isFounding"
+        v-if="showProfileEntry"
         class="panel-button"
         href="/user/settings"
         @click="goSettings($event)"
-        >完善我的资料 <span>↗</span></a
+        >{{ profileEntry.label }} <span>↗</span></a
       >
     </section>
     <SignInPrompt :action="signInAction" @close="dismiss" @confirm="signIn" />
@@ -779,11 +817,11 @@ function steps(application: RecruitmentApplication) {
         <div>
           <span>资料</span
           ><RouterLink
-            v-if="!isFounding"
+            v-if="showProfileEntry"
             class="plain-link"
             to="/user/settings"
             @click="goSettings($event)"
-            >完善个人资料 ↗</RouterLink
+            >{{ profileEntry.label }} ↗</RouterLink
           ><span v-else class="mono">创始账号</span>
         </div>
       </div>

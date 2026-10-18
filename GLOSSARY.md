@@ -10,6 +10,8 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 - **意向成员 (Prospect)**：提交报名后、尚未接受邀请的潜在成员。
 - **候选人 (Candidate)**：接受邀请函后角色推进的人员，状态含 `interviewing` / `offered` / `hired` / `rejected`。
 - **招新流程 (Recruitment)**：`Prospect → Candidate → offered/hired` 或 `rejected` 的状态机。
+- **申请 (Application)**：用户对某个招新方向的一条报名记录，含提交时的资料快照与审核状态。**报名**是创建申请的动作；直接报名与面试表单提交产生的是同一种申请，同一轮次同一方向至多一条。
+- **资料完整 (Profile Completeness)**：班级与学号都已有效填写。判定只有一套规则，报名入口、登录补全提醒与个人设置必须共用，不得按页面另定必填项。「完善资料」指补全缺失项，与「资料为空」不是一回事。
 
 ## 邮件域
 

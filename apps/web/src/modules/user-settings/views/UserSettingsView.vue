@@ -7,8 +7,8 @@
  *
  * 字段契约来自已合并的 #57 / #86，姓名编辑对应 #87。
  */
-import { computed, inject, onBeforeUnmount, onMounted, ref } from "vue";
-import { onBeforeRouteLeave, useRouter } from "vue-router";
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import PageHeader from "@/components/common/PageHeader.vue";
@@ -16,6 +16,11 @@ import { deleteCurrentUser } from "@/api/profile";
 import { clearAuthSession } from "@/auth/session";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import { useUserSettings } from "../composables/useUserSettings";
+import {
+  PROFILE_SOURCE_APPLY,
+  PROFILE_SOURCE_PARAM,
+  missingRequiredProfile,
+} from "../profileCompletion";
 import ChangePasswordCard from "../components/ChangePasswordCard.vue";
 import UserSettingsForm from "../components/UserSettingsForm.vue";
 
@@ -42,6 +47,36 @@ const {
   autoSave,
   persistOnUnload,
 } = useUserSettings();
+
+/**
+ * 报名入口拦截后的补全提示（issue #152）。
+ *
+ * 首页资料不完整时不提交报名，而是带 `?from=apply` 跳到这里。落地后：
+ *   - 仍缺字段：直接进编辑态，并在表单上方说明缺了哪几项；
+ *   - 已经完整（旧链接，或另一标签页补过）：什么都不做，停在只读态。
+ *
+ * watch 只看 `loading` 与 `showApplyHint`，不看 `editing`——否则用户点「取消」
+ * 会被立刻重新拉回编辑态。
+ */
+const route = useRoute();
+const fromApply = computed(
+  () => route.query[PROFILE_SOURCE_PARAM] === PROFILE_SOURCE_APPLY,
+);
+const missingForApplication = computed(() =>
+  missingRequiredProfile(profile.value?.detail),
+);
+const showApplyHint = computed(
+  () => fromApply.value && missingForApplication.value.length > 0,
+);
+
+watch(
+  () => [loading.value, showApplyHint.value] as const,
+  ([isLoading, shouldPrompt]) => {
+    if (isLoading || !shouldPrompt || editing.value) return;
+    edit();
+  },
+  { immediate: true },
+);
 
 /**
  * 离开页面时静默自动保存（review 反馈：改了没存就走应自动保存）。
@@ -170,6 +205,12 @@ async function handleDeleteAccount(): Promise<void> {
       </section>
 
       <template v-else-if="profile !== null">
+        <!-- 报名被拦截后的落地提示（issue #152）：只列缺的那几项，
+             补全保存后随 showApplyHint 自动消失 -->
+        <p v-if="showApplyHint" class="apply-hint" role="status" aria-live="polite">
+          报名前请先补全：{{ missingForApplication.join("、") }}。补全并保存后即可继续报名。
+        </p>
+
         <UserSettingsForm
           :profile="profile"
           :form="form"
@@ -242,6 +283,18 @@ async function handleDeleteAccount(): Promise<void> {
   max-width: 1200px;
   margin: 0 auto;
   padding: clamp(32px, 5vw, 56px) clamp(20px, 4vw, 48px) 72px;
+}
+
+/* 报名拦截的落地提示（issue #152）：与登录后的补全提醒同色系 */
+.apply-hint {
+  margin: 0;
+  padding: 14px 18px;
+  color: #183c55;
+  background: #f2f7fa;
+  border: 1px solid #b8cddc;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 /* —— 骨架屏 —— */
