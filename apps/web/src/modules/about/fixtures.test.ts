@@ -94,7 +94,7 @@ describe("about fixtures", () => {
 
     for (const work of STUDIO_WORKS) {
       expect(work.title.trim()).not.toBe("");
-      expect(work.summary.trim()).not.toBe("");
+      expect(work.summary).toBe("");
       // 来源时间是资料来源时间，不是项目实施年份：字段就叫 source，不叫 year
       expect(work.source.trim()).not.toBe("");
       expect(work).not.toHaveProperty("year");
