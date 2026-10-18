@@ -60,6 +60,24 @@ export function answerErrors(
   }
   return errors;
 }
+/**
+ * 按**题目顺序**取第一个出错的字段 id（issue #183 §4）。
+ *
+ * 不能用 `Object.keys(errors)[0]`：错误对象的键顺序取决于它怎么被构造出来，
+ * 一旦上游换了来源（合并、过滤、服务端回传），键序和页面顺序就脱钩，用户会被
+ * 送到第三题而不是第一题。这里显式按 fields 的展示顺序找。
+ */
+export function firstErrorFieldId(
+  fields: FormFieldInput[],
+  errors: Record<string, string>,
+): string | null {
+  for (const field of fields) {
+    const id = String(field.id);
+    if (errors[id]) return id;
+  }
+  return null;
+}
+
 export function editorError(input: FormCreateInput): string {
   if (!input.title.trim() || length(input.title) > 200)
     return "表单标题必填，最多 200 个字符";

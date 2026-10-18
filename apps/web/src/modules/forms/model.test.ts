@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerErrors, editorError, initialAnswers, answerRows } from "./model";
+import { answerErrors, editorError, initialAnswers, answerRows, firstErrorFieldId } from "./model";
 import type { FormField } from "@/api/forms";
 
 const fields: FormField[] = [
@@ -88,6 +88,22 @@ describe("form answers", () => {
     expect(
       answerErrors(fields, { "3": "😀".repeat(2000) })["3"],
     ).toBeUndefined();
+  });
+  it("locates the first error by question order instead of error key order", () => {
+    // 题目顺序由 sort_order 决定，与字段 id 的大小无关；错误对象的键却总是
+    // 按整数升序枚举。只取 Object.keys(errors)[0] 会把用户送到第三题。
+    const ordered: FormField[] = [
+      { id: 9, type: "text", label: "第一题", required: true, placeholder: "", sort_order: 0 },
+      { id: 3, type: "text", label: "第二题", required: true, placeholder: "", sort_order: 1 },
+      { id: 7, type: "text", label: "第三题", required: true, placeholder: "", sort_order: 2 },
+    ];
+    const errors = { "3": "请填写此必填项", "7": "请填写此必填项", "9": "请填写此必填项" };
+    expect(Object.keys(errors)[0]).toBe("3");
+    expect(firstErrorFieldId(ordered, errors)).toBe("9");
+    expect(firstErrorFieldId(ordered, { "7": "请填写此必填项" })).toBe("7");
+    expect(firstErrorFieldId(ordered, {})).toBeNull();
+    // 已删除字段的历史错误不在页面上，不能拿它去定位
+    expect(firstErrorFieldId(ordered, { "99": "已删除字段" })).toBeNull();
   });
   it("preserves historical unknown fields and renders all answer kinds", () => {
     const rows = answerRows(fields, {

@@ -348,74 +348,254 @@ textarea.form-control {
   overflow-wrap: anywhere;
   line-height: 1.8;
 }
-.share-form-page {
-  max-width: 760px;
+/*
+ * 用户填写页（issue #183）：Swiss Signal 视觉基准。
+ *
+ * 三条约束决定了这里的写法：
+ *   1. 规则全部收在 .swiss-signal .share-form-page 下 —— 管理端列表/编辑器/
+ *      提交记录，以及被预览复用的 FormFields 都不受影响。
+ *   2. 前缀 .swiss-signal 不是装饰：signal.css 的 `.swiss-signal main` 也命中
+ *      本页的 <main>，只用 .share-form-page 会被它的 max-width 1600px 压过；
+ *      同时 signal.css 里 `.swiss-signal input:not([type=checkbox])`、
+ *      `.swiss-signal .form-error` 等通用规则也要稳定被覆盖，不赌加载顺序。
+ *   3. 颜色只用壳层令牌（--paper / --ink / --blue / --yellow / --line），
+ *      不引入新配色、字体或图片。
+ */
+.swiss-signal .share-form-page {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 800px;
   margin: 0 auto;
-  padding: 40px 32px 80px;
+  padding: 40px 32px 72px;
+  position: relative;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  /* 共享规则（form-button / form-control / form-error）读的局部令牌 */
   --surface: #fffef8;
   --ink-soft: #666b62;
   --line-strong: #aeb3a5;
   --red: #b84235;
 }
-.share-form-intro {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* 背景光晕是 fixed + z-index:0，内容必须自成一层压上去，否则文字会被光斑盖住 */
+.swiss-signal .share-form-page > :not(.glass-backdrop) {
+  position: relative;
+  z-index: 1;
+}
+.swiss-signal .share-form-header {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 28px;
   border-bottom: 2px solid var(--ink);
-  padding-bottom: 20px;
 }
-.share-form-mark {
-  font-size: 52px;
-  line-height: 1;
-  color: var(--blue);
+.swiss-signal .share-form-kicker,
+.swiss-signal .share-form-section-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  line-height: 1.6;
 }
-.share-form-header {
-  padding: 40px 0 24px;
+.swiss-signal .share-form-kicker {
+  color: var(--muted);
 }
-.share-form-header h1 {
-  margin: 20px 0;
-  font-size: clamp(32px, 5vw, 52px);
-  line-height: 1.2;
-  letter-spacing: -0.035em;
-  overflow-wrap: anywhere;
-}
-.form-identity {
-  padding: 24px;
-  border-left: 4px solid var(--blue);
-  background: var(--yellow);
+.swiss-signal .share-form-meta {
+  margin: 0;
+  color: var(--muted);
   font-size: 13px;
+  line-height: 1.6;
+}
+.swiss-signal .share-form-title {
+  margin: 0;
+  font-size: clamp(30px, 4.4vw, 46px);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  font-weight: 800;
   overflow-wrap: anywhere;
 }
-.form-identity strong {
-  display: block;
-  font-size: 20px;
-  margin-top: 16px;
+.swiss-signal .share-form-description {
+  margin: 0;
+  max-width: 62ch;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  line-height: 1.7;
 }
-.form-identity a {
+.swiss-signal .share-form-identity {
+  padding: 28px 0;
+  border-bottom: 1px solid var(--line);
+}
+/* 黄绿色只做局部强调：贴在「当前申请身份」这个小标签上，不做整块底色 */
+.swiss-signal .share-form-identity .share-form-section-title {
+  display: inline-block;
+  padding: 6px 10px;
+  background: var(--yellow);
+  color: var(--ink);
+}
+.swiss-signal .share-form-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+  margin: 18px 0 0;
+}
+.swiss-signal .share-form-facts > div {
+  min-width: 0;
+}
+.swiss-signal .share-form-facts dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.swiss-signal .share-form-facts dd {
+  margin: 4px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.swiss-signal .share-form-locked {
+  color: var(--muted);
+  font-size: 12px;
+}
+.swiss-signal .share-form-link {
+  display: inline-block;
+  margin-top: 18px;
+  font-size: 14px;
+  line-height: 1.6;
   text-decoration: underline;
   text-underline-offset: 4px;
 }
-.share-form-submit {
-  display: grid;
+.swiss-signal .share-form-link:hover {
+  color: var(--blue);
+}
+.swiss-signal .share-form-questions {
+  padding: 28px 0 4px;
+  border-bottom: 2px solid var(--ink);
+}
+.swiss-signal .share-form-questions .share-form-section-title {
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+.swiss-signal .share-form-page .form-fields > .form-question:first-child {
+  padding-top: 8px;
+}
+/* 最后一题的下边线交给 .share-form-questions 的 2px 分隔线，避免双线 */
+.swiss-signal .share-form-page .form-fields > .form-question:last-child {
+  border-bottom: 0;
+}
+.swiss-signal .share-form-page .form-question__label {
   gap: 12px;
+  margin-bottom: 10px;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.swiss-signal .share-form-page .form-question__number {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+.swiss-signal .share-form-page .form-question__label small {
+  margin-left: 6px;
+  font-size: 12px;
+}
+.swiss-signal .share-form-page .form-control {
+  margin: 0;
+  min-height: 48px;
+  padding: 12px;
+  font-size: 16px;
+  line-height: 1.6;
+  background: var(--surface);
+}
+.swiss-signal .share-form-page textarea.form-control {
+  min-height: 132px;
+  resize: vertical;
+}
+.swiss-signal .share-form-page .form-hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.swiss-signal .share-form-page .form-error {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.swiss-signal .share-form-page .form-check {
+  padding: 4px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.swiss-signal .share-form-submit {
+  display: grid;
+  gap: 14px;
   padding-top: 28px;
 }
-.share-form-page .form-button {
+.swiss-signal .share-form-submit .share-form-section-title {
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+.swiss-signal .share-form-submit .form-hint {
+  margin: 0;
+}
+.swiss-signal .share-form-submit__button {
+  justify-self: start;
+  width: fit-content;
+  min-width: 240px;
+  min-height: 48px;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.swiss-signal .share-form-page .form-button--primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.swiss-signal .share-form-page .form-button--primary:hover:not(:disabled) {
+  background: #122caa;
+  border-color: #122caa;
+  color: #fff;
+}
+.swiss-signal .share-form-state,
+.swiss-signal .share-form-result {
+  display: grid;
+  gap: 16px;
+  justify-items: start;
+  padding: 40px 0;
+  border-bottom: 1px solid var(--line);
+}
+.swiss-signal .share-form-state h2,
+.swiss-signal .share-form-result h2 {
+  margin: 0;
+  font-size: clamp(22px, 3.4vw, 30px);
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.swiss-signal .share-form-state__body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+}
+.swiss-signal .share-form-result .share-form-facts {
+  margin: 0;
+}
+.swiss-signal .share-form-result .form-button {
   min-height: 48px;
 }
-.share-form-page .form-button--primary {
-  background: var(--blue);
-  color: white;
-}
-.share-form-state {
-  padding: 40px 0;
-  line-height: 1.8;
-}
-.share-form-state h1,
-.share-form-state h2 {
-  font-size: clamp(26px, 4vw, 36px);
-  overflow-wrap: anywhere;
+@media (max-width: 640px) {
+  .swiss-signal .share-form-page {
+    padding: 28px 20px 56px;
+  }
+  .swiss-signal .share-form-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .swiss-signal .share-form-submit__button {
+    justify-self: stretch;
+    width: 100%;
+    min-width: 0;
+  }
 }
 @media (max-width: 1100px) {
   .forms-list {
@@ -448,9 +628,6 @@ textarea.form-control {
   }
 }
 @media (max-width: 480px) {
-  .share-form-page {
-    padding: 24px 20px 48px;
-  }
   .forms-binding {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
@@ -464,12 +641,5 @@ textarea.form-control {
   .forms-page .form-button,
   .forms-page .el-button {
     min-height: 44px;
-  }
-  .form-identity {
-    padding: 20px;
-  }
-  .share-form-intro .forms-kicker {
-    max-width: 75%;
-    line-height: 1.7;
   }
 }

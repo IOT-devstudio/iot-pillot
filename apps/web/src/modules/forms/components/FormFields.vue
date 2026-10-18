@@ -21,12 +21,33 @@ function update(field: FormFieldInput, event: Event) {
       : input.value;
   emit("update:modelValue", { ...props.modelValue, [String(field.id)]: value });
 }
+/**
+ * 控件的可访问描述（issue #183 §4）：错误提示必须通过 aria-describedby 关联，
+ * 不能只靠红色边框；邮箱题的「仅作本次答案」说明同样挂上去，读屏才不会漏。
+ */
+function describedBy(field: FormFieldInput): string | undefined {
+  const ids = [
+    field.type === "email" ? `${props.prefix}-hint-${field.id}` : "",
+    props.errors[String(field.id)] ? `${props.prefix}-error-${field.id}` : "",
+  ].filter(Boolean);
+  return ids.length ? ids.join(" ") : undefined;
+}
 </script>
 
 <template>
   <div class="form-fields">
     <div v-for="(field, index) in fields" :key="field.id" class="form-question">
-      <label :for="`${prefix}-${field.id}`" class="form-question__label">
+      <!--
+        单项确认的题目文字不能是 <label>：它内部还要再放一个包住复选框的
+        <label>，嵌套 label 在 HTML 里是非法的，读屏会把两个名字拼在一起。
+        所以复选框的题目用 div 呈现，真正的名字交给内层 label。
+      -->
+      <component
+        :is="field.type === 'checkbox' ? 'div' : 'label'"
+        :id="`${prefix}-label-${field.id}`"
+        :for="field.type === 'checkbox' ? undefined : `${prefix}-${field.id}`"
+        class="form-question__label"
+      >
         <span class="form-question__number">{{
           String(index + 1).padStart(2, "0")
         }}</span>
@@ -34,9 +55,13 @@ function update(field: FormFieldInput, event: Event) {
           >{{ field.label || "未命名题目" }}
           <small>{{ field.required ? "必填" : "选填" }}</small></span
         >
-      </label>
-      <p v-if="field.type === 'email'" class="form-hint">
-        仅作本次报名答案，不会修改账号绑定邮箱。
+      </component>
+      <p
+        v-if="field.type === 'email'"
+        :id="`${prefix}-hint-${field.id}`"
+        class="form-hint"
+      >
+        仅作本次申请答案，不会修改账号绑定邮箱。
       </p>
       <label v-if="field.type === 'checkbox'" class="form-check">
         <input
@@ -49,9 +74,7 @@ function update(field: FormFieldInput, event: Event) {
           :disabled="disabled"
           :aria-required="field.required"
           :aria-invalid="!!errors[String(field.id)]"
-          :aria-describedby="
-            errors[String(field.id)] ? `${prefix}-error-${field.id}` : undefined
-          "
+          :aria-describedby="describedBy(field)"
           @change="update(field, $event)"
         />
         <span>{{ field.placeholder || "我已阅读并确认以上内容" }}</span>
@@ -75,9 +98,7 @@ function update(field: FormFieldInput, event: Event) {
         :maxlength="2000"
         :aria-required="field.required"
         :aria-invalid="!!errors[String(field.id)]"
-        :aria-describedby="
-          errors[String(field.id)] ? `${prefix}-error-${field.id}` : undefined
-        "
+        :aria-describedby="describedBy(field)"
         @input="update(field, $event)"
       >
         <template v-if="field.type === 'select'">
