@@ -12,13 +12,13 @@ defineProps<{ roles: StudioRole[] }>();
       <li v-for="(role, index) in roles" :key="role.id">
         <small>{{ String(index + 1).padStart(2, "0") }}</small>
         <h3>{{ role.title }}</h3>
+        <p class="roles__names">{{ role.members.join("、") }}</p>
         <p>{{ role.summary }}</p>
         <ul class="roles__duties">
           <li v-for="duty in role.duties" :key="duty">{{ duty }}</li>
         </ul>
       </li>
     </ul>
-    <p class="roles__note">以上为岗位职责，不是现任成员名单，也不代表未经确认的人数；与系统的 admin / member 权限角色无关。</p>
   </div>
 </template>
 
@@ -36,7 +36,7 @@ defineProps<{ roles: StudioRole[] }>();
 .roles__list p { margin: 0; color: var(--about-muted); font-size: 12px; line-height: 1.8; }
 .roles__duties { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; }
 .roles__duties li { padding: 2px 8px; border: 1px solid var(--about-line); background: var(--about-paper); color: var(--about-ink); font-size: 10px; }
-.roles__note { margin: 22px 0 0; color: var(--about-muted); font-size: 10px; line-height: 1.7; }
+.roles__list .roles__names { margin-bottom: 8px; color: var(--about-ink); font-size: 16px; font-weight: 600; }
 @media (max-width: 900px) { .roles__list { grid-template-columns: 1fr; gap: 12px; } }
 @media (max-width: 540px) { .roles { min-height: 450px; padding: 26px 24px; } .roles__head h2 { font-size: 25px; } .roles__head > span { font-size: 34px; } .roles__list > li { padding: 18px 16px; } }
 </style>

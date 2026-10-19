@@ -101,15 +101,14 @@ describe("about fixtures", () => {
     }
   });
 
-  it("describes project roles, never a current roster", () => {
+  it("describes project roles and confirmed current leads", () => {
     expectUniqueIds(STUDIO_ROLES);
     expect(STUDIO_ROLES.map((role) => role.title)).toEqual(["总负责人", "前端负责人", "后端负责人"]);
 
     for (const role of STUDIO_ROLES) {
       expect(role.summary.trim()).not.toBe("");
       expect(role.duties.length).toBeGreaterThan(0);
-      // 没有可公开名册时不生成姓名：岗位卡片上不允许出现 name 字段
-      expect(role).not.toHaveProperty("name");
+      expect(role.members.length).toBeGreaterThan(0);
     }
   });
 });
