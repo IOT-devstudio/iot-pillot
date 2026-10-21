@@ -104,7 +104,6 @@ function move(event: KeyboardEvent, index: number): void {
             <WorksList v-else-if="section.id === 'works'" :works="STUDIO_WORKS" :achievements="STUDIO_ACHIEVEMENTS" />
             <RoleList v-else :roles="STUDIO_ROLES" />
           </section>
-          <p class="about__note">关于工作室 / 内容依据工作室知识库与 2025 年宣讲资料整理，最新口径以工作室确认为准。</p>
         </div>
       </div>
     </div>
@@ -151,7 +150,6 @@ function move(event: KeyboardEvent, index: number): void {
 .about__panel[hidden] { display: none; }
 .about__panel--enter { animation: about-panel-reveal .3s ease both; }
 @keyframes about-panel-reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-.about__note { margin: 22px 0 0; color: var(--about-muted); font-size: 10px; }
 @media (max-width: 900px) { .about__workspace { grid-template-columns: 175px minmax(0, 1fr); gap: 24px; } .about__heading p { display: none; } }
 @media (max-width: 540px) {
   .about { padding: 26px 16px 45px; }

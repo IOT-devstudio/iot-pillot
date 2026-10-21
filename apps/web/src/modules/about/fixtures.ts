@@ -7,7 +7,7 @@
  * 「负责人职责」，以及 2025 年 10 月的宣讲 PPT。资料没给的事实
  * **一律不补**（issue #94 立下的规矩，这里继续遵守）：
  *   - 不写当前成员人数，也不写「在做项目数」；
- *   - 不展示未经确认的现任成员姓名，团队栏目只放岗位职责；
+ *   - 现任负责人姓名采用工作室确认的名单；
  *   - 历史项目资料只列了名称，就不补功能、成效和实施年份；
  *   - 成果数字必须和「截至 2022 级」的统计范围同屏出现。
  *
@@ -212,6 +212,7 @@ export const STUDIO_WORKS: StudioWork[] = [
 export interface StudioRole {
   id: ID;
   title: string;
+  members: string[];
   summary: string;
   /** 该岗位负责的具体事务，页面渲染成一列职责条目 */
   duties: string[];
@@ -220,8 +221,8 @@ export interface StudioRole {
 /**
  * 团队分工。
  *
- * 来自知识库「负责人职责」。这里是**岗位**，不是现任人员名单——没有可
- * 公开的名册就不生成姓名与头像（issue #181）。也**不是** shared-types 里的
+ * 职责来自知识库「负责人职责」，现任负责人由工作室确认。
+ * 岗位不是 shared-types 里的
  * `Role`（`"admin" | "member"`）：那个是系统 RBAC 权限角色，跟「在工作室里
  * 负责什么」完全是两回事。
  */
@@ -229,18 +230,21 @@ export const STUDIO_ROLES: StudioRole[] = [
   {
     id: "role-lead",
     title: "总负责人",
+    members: ["廖文轩", "苏季瑶"],
     summary: "统筹工作室整体运转。",
     duties: ["招新", "例会", "知识库", "项目对接", "团队建设"],
   },
   {
     id: "role-frontend-lead",
     title: "前端负责人",
+    members: ["易子涵"],
     summary: "负责前端方向的技术分享与招新环节。",
     duties: ["技术分享", "招新出题", "面试"],
   },
   {
     id: "role-backend-lead",
     title: "后端负责人",
+    members: ["姚一飞"],
     summary: "负责后端方向的技术分享与招新环节。",
     duties: ["技术分享", "招新出题", "面试"],
   },
