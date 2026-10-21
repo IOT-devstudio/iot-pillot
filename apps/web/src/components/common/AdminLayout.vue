@@ -216,10 +216,10 @@ onBeforeUnmount(() => {
         <router-link
           to="/dashboard"
           class="admin-brand"
-          aria-label="iot-pillot 控制台"
+          aria-label="IoT-Studio·招新 控制台"
         >
           <img class="admin-brand__mark" src="/studio-logo.png" alt="" aria-hidden="true" />
-          <span class="admin-brand__name">iot-pillot</span>
+          <span class="admin-brand__name">IoT-Studio·招新</span>
         </router-link>
         <button
           class="admin-sidebar__collapse"
@@ -336,7 +336,7 @@ onBeforeUnmount(() => {
 
       <footer class="admin-sidebar__footer">
         <span class="admin-sidebar__season">2026 年招新</span>
-        <span class="admin-sidebar__signature">IOT-PILLOT · ADMIN CONSOLE</span>
+        <span class="admin-sidebar__signature">IoT-Studio · 招新</span>
       </footer>
     </aside>
 
@@ -357,7 +357,7 @@ onBeforeUnmount(() => {
         </button>
         <router-link to="/dashboard" class="admin-main__mobile-brand">
           <img class="admin-brand__mark" src="/studio-logo.png" alt="" aria-hidden="true" />
-          <span>iot-pillot</span>
+          <span>IoT-Studio·招新</span>
         </router-link>
       </div>
 
@@ -443,7 +443,7 @@ onBeforeUnmount(() => {
 .admin-main__mobile-brand > span:last-child {
   overflow: hidden;
   font-family: var(--font-serif);
-  font-size: 19px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.03em;
   white-space: nowrap;

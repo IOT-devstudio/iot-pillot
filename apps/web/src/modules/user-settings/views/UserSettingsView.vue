@@ -172,7 +172,7 @@ async function handleDeleteAccount(): Promise<void> {
     <div class="glass-backdrop" aria-hidden="true"></div>
     <main class="page__body">
       <PageHeader
-        eyebrow="iot-pillot · 用户侧"
+        eyebrow="IoT-Studio·招新"
         title="个人设置"
         description="维护你的姓名与个人资料。账号绑定邮箱不可修改。"
       />

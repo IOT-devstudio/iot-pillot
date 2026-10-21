@@ -114,7 +114,7 @@ function roleLabel(user: AdminUser): string {
 <template>
   <div class="page">
     <main class="page__body">
-      <PageHeader eyebrow="IOT-PILLOT · 招新管理" title="控制台" />
+      <PageHeader eyebrow="IoT-Studio·招新" title="控制台" />
 
       <section class="overview" aria-label="运营概览">
         <article class="metric metric--primary">

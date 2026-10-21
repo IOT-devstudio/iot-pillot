@@ -75,7 +75,7 @@ onMounted(loadAll);
   <div class="page">
     <main class="page__body">
       <PageHeader
-        eyebrow="iot-pillot · 权限管理"
+        eyebrow="IoT-Studio·招新"
         title="用户与权限"
         description="维护管理员名单：提升或撤销某个账号的管理权限。角色变更会让对方强制退出，需重新登录。"
       />
