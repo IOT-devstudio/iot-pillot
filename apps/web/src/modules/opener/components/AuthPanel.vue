@@ -46,7 +46,7 @@ defineEmits<{
 <template>
   <section class="auth-panel" aria-labelledby="studio-panel-title">
     <header class="auth-panel__head">
-      <p class="auth-panel__eyebrow">IoT 全栈工作室 · 招新</p>
+      <p class="auth-panel__eyebrow">IoT-Studio·招新</p>
       <h1 id="studio-panel-title" class="auth-panel__title">
         {{ mode === "login" ? "回到工作台" : "加入工作室" }}
       </h1>

@@ -160,7 +160,7 @@ onMounted(() => {
   <div class="page">
     <main class="page__body">
       <PageHeader
-        eyebrow="iot-pillot · 招新管理"
+        eyebrow="IoT-Studio·招新"
         title="邮件中心"
         description="管理邮件模板并发送邀请、通知与感谢信；所有发出的邮件都会留下可追溯的记录。"
         :meta="loading || error ? '' : `共 ${templates.length} 个模板`"
