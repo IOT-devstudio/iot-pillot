@@ -249,7 +249,18 @@ jobs:
         run: docker rm -f smoke >/dev/null 2>&1 || true
 
       - name: 压缩镜像
-        run: gzip -f -1 "${GITHUB_WORKSPACE}/app.tar"
+        run: |
+          set -euo pipefail
+          gzip -f -1 "${GITHUB_WORKSPACE}/app.tar"
+          PACKAGE_BYTES=$(stat -c %s "${GITHUB_WORKSPACE}/app.tar.gz")
+          PACKAGE_MIB=$(awk -v bytes="$PACKAGE_BYTES" 'BEGIN { printf "%.2f", bytes / 1048576 }')
+          {
+            echo "### 部署包大小"
+            echo ""
+            echo "| 文件 | 大小（MiB） | 字节数 |"
+            echo "|---|---:|---:|"
+            echo "| app.tar.gz | $PACKAGE_MIB | $PACKAGE_BYTES |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: 传输到服务器
         uses: appleboy/scp-action@v0.1.7
