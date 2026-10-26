@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
-	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
 )
 
 /* ------------------------------------------------------------------ *
@@ -211,36 +210,6 @@ func TestFreezeRunOnce_DoesNotResendWhenAlreadyNotified(t *testing.T) {
 	}
 	if !target.IsFrozen() {
 		t.Fatal("应补上冻结")
-	}
-}
-
-func TestUnfreeze(t *testing.T) {
-	target := user(2, 8, "张3", "", 0)
-	fixture := newFreezeFixture(target)
-	mailer := &freezeRecorder{}
-	uc := NewFreezeUseCase(fixture.repo, mailer, &recordingRevoker{})
-	uc.now = func() time.Time { return fixture.now }
-
-	if _, err := uc.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce 失败: %v", err)
-	}
-
-	got, err := uc.Unfreeze(context.Background(), target.ID)
-	if err != nil {
-		t.Fatalf("解冻失败: %v", err)
-	}
-	if got.IsFrozen() || got.FreezeReason != "" || got.FreezeNotifiedAt != nil {
-		t.Fatalf("解冻后三列都应为空: %+v", got)
-	}
-
-	// 未冻结账号再解冻：明确业务错误，不能静默成功
-	if _, err := uc.Unfreeze(context.Background(), target.ID); !errors.Is(err, ErrNotFrozen) {
-		t.Fatalf("重复解冻应返回 ErrNotFrozen，实际 %v", err)
-	}
-
-	// 不存在的账号
-	if _, err := uc.Unfreeze(context.Background(), 999); !errors.Is(err, repository.ErrUserNotFound) {
-		t.Fatalf("不存在账号应返回 ErrUserNotFound，实际 %v", err)
 	}
 }
 

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"log"
 	"time"
 
@@ -154,27 +153,4 @@ func (uc *FreezeUseCase) RunOnce(ctx context.Context) (FreezeRunResult, error) {
 	}
 
 	return result, nil
-}
-
-// ErrNotFrozen 对未冻结账号执行解冻。
-var ErrNotFrozen = errors.New("该账号当前未被冻结")
-
-// Unfreeze 管理员解冻账号。
-//
-// 只清冻结标记，不动资料本身：解冻是「允许这个人重新登录去改资料」，
-// 不是「替他把资料改对」。资料若仍不合规，下一轮扫描会再次冻结，
-// 因此管理端应在解冻前确认对方已把资料补好。
-func (uc *FreezeUseCase) Unfreeze(ctx context.Context, userID int) (*domain.User, error) {
-	if err := uc.users.Unfreeze(ctx, userID); err != nil {
-		if errors.Is(err, repository.ErrUserNotFrozen) {
-			return nil, ErrNotFrozen
-		}
-		return nil, err
-	}
-
-	user, err := uc.users.GetByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
 }

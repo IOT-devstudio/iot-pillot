@@ -204,6 +204,18 @@ func TestAdminUnfreezeUser(t *testing.T) {
 	if user.IsFrozen() {
 		t.Fatal("解冻后不应再是冻结状态")
 	}
+	// 三列都要清干净：只清 frozen_at 会留下原因/通知时间，
+	// 下次冻结时「已通知过」的判断会把该发的信吞掉。
+	user.FreezeReason = "班级不合规"
+	notified := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	user.FreezeNotifiedAt = &notified
+	user.FrozenAt = &notified
+	if _, err := uc.UnfreezeUser(context.Background(), user.ID); err != nil {
+		t.Fatalf("再次解冻失败: %v", err)
+	}
+	if user.FreezeReason != "" || user.FreezeNotifiedAt != nil {
+		t.Fatalf("解冻应清空原因与通知时间，实际 reason=%q notifiedAt=%v", user.FreezeReason, user.FreezeNotifiedAt)
+	}
 
 	// 重复解冻：明确业务错误
 	if _, err := uc.UnfreezeUser(context.Background(), user.ID); !errors.Is(err, ErrNotFrozen) {

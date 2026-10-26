@@ -446,6 +446,12 @@ func (a *AdminUseCase) UnfreezeUser(ctx context.Context, targetID int) (*respons
 // 清掉 frozen_at 也不会让它重新可用。
 var ErrUnfreezeDeleted = errors.New("该账号已注销，无法解冻")
 
+// ErrNotFrozen 对未冻结账号执行解冻（0012）。
+//
+// 单独给「本来就没冻结」一个明确错误：对未冻结账号点解冻是误操作，
+// 静默成功会让操作者以为解冻生效了，而实际上什么都没有发生。
+var ErrNotFrozen = errors.New("该账号当前未被冻结")
+
 /* ------------------------------------------------------------------ *
  * 辅助
  * ------------------------------------------------------------------ */
