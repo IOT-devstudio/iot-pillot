@@ -93,6 +93,91 @@ func (r *issue86UserRepo) SoftDelete(_ context.Context, id int) error {
 	return nil
 }
 
+/* ------------------------------------------------------------------ *
+ * 冻结相关（0012）：内存实现与 gorm 实现同契约
+ * ------------------------------------------------------------------ */
+
+// ListForAdmin 内存版管理端列表：默认过滤冻结行，其余按 ID 倒序。
+func (r *issue86UserRepo) ListForAdmin(
+	_ context.Context,
+	page int,
+	pageSize int,
+	filter repository.UserListFilter,
+) ([]*domain.User, int64, error) {
+	var kept []*domain.User
+	for _, user := range r.all {
+		if !filter.IncludeFrozen && user.IsFrozen() {
+			continue
+		}
+		kept = append(kept, user)
+	}
+	total := int64(len(kept))
+	start := (page - 1) * pageSize
+	if start >= len(kept) {
+		return nil, total, nil
+	}
+	end := start + pageSize
+	if end > len(kept) {
+		end = len(kept)
+	}
+	return kept[start:end], total, nil
+}
+
+// ListFreezeCandidates 返回注册早于 before 的未冻结未注销账号。
+func (r *issue86UserRepo) ListFreezeCandidates(_ context.Context, before time.Time) ([]*domain.User, error) {
+	var result []*domain.User
+	for _, user := range r.all {
+		if user.IsFrozen() || user.IsDeleted() {
+			continue
+		}
+		if user.CreatedAt.After(before) {
+			continue
+		}
+		result = append(result, user)
+	}
+	return result, nil
+}
+
+// Freeze 条件冻结：只有未冻结行会被写入。
+func (r *issue86UserRepo) Freeze(_ context.Context, id int, reason string, at time.Time) (bool, error) {
+	user, ok := r.byID[id]
+	if !ok || user.IsFrozen() || user.IsDeleted() {
+		return false, nil
+	}
+	frozenAt := at
+	user.FrozenAt = &frozenAt
+	user.FreezeReason = reason
+	return true, nil
+}
+
+// MarkFreezeNotified 记录通知时间（已记录则不动）。
+//
+// 与 gorm 实现同契约：不要求已冻结——调用方是「先发通知、再冻结」。
+func (r *issue86UserRepo) MarkFreezeNotified(_ context.Context, id int, at time.Time) error {
+	user, ok := r.byID[id]
+	if !ok || user.FreezeNotifiedAt != nil {
+		return nil
+	}
+	notified := at
+	user.FreezeNotifiedAt = &notified
+	return nil
+}
+
+// Unfreeze 清空冻结三列；未冻结返回 ErrUserNotFrozen。
+func (r *issue86UserRepo) Unfreeze(_ context.Context, id int) error {
+	user, ok := r.byID[id]
+	if !ok {
+		return repository.ErrUserNotFound
+	}
+	if !user.IsFrozen() {
+		return repository.ErrUserNotFrozen
+	}
+	user.FrozenAt = nil
+	user.FreezeReason = ""
+	user.FreezeNotifiedAt = nil
+	return nil
+}
+
 // issue86TokenManager 空实现 TokenIssuer，改名测试不需要签发令牌。
 type issue86TokenManager struct{}
 
@@ -207,7 +292,7 @@ func TestParseUpdateMe_NameValidation(t *testing.T) {
 		body    string
 		wantErr string // 期望的错误文案；空串表示合法
 	}{
-		{"缺省_不动", `{"class":"c"}`, ""},
+		{"缺省_不动", `{"class":"软工230301"}`, ""},
 		{"null_不可清除", `{"name":null}`, "姓名须为 2–20 个中文汉字"},
 		{"边界_正好三中文", `{"name":"张三丰"}`, ""},
 		{"ASCII_拒绝", `{"name":"abc"}`, "姓名须为 2–20 个中文汉字"},
@@ -240,7 +325,7 @@ func TestParseUpdateMe_NameValidation(t *testing.T) {
 // 解析阶段：姓名缺省保留、null 拒绝、有值校验。
 func TestParseUpdateMe_NameThreeState(t *testing.T) {
 	// 缺省
-	req, err := request.ParseUpdateMe([]byte(`{"class":"c"}`))
+	req, err := request.ParseUpdateMe([]byte(`{"class":"软工230301"}`))
 	if err != nil {
 		t.Fatalf("解析失败: %v", err)
 	}

@@ -46,6 +46,9 @@ const {
   deleteUser,
   isSelf,
   UNKNOWN_IDENTITY_NOTE,
+  showFrozen,
+  toggleFrozenVisibility,
+  unfreezeUser,
 } = useAdminPermissions();
 
 /** 当前页被筛选掉后，若本来有数据却筛没了，给一句提示而不是让人以为加载失败 */
@@ -104,7 +107,17 @@ onMounted(loadAll);
             </el-select>
             <span class="toolbar__hint">筛选仅作用于当前页</span>
           </div>
-          <el-button text @click="resetFilters">重置筛选</el-button>
+          <div class="toolbar__actions">
+            <!-- 冻结账号默认隐藏（0012）：过滤在后端做（include_frozen），
+                 这样 total 与可翻页数始终一致 -->
+            <el-checkbox
+              :model-value="showFrozen"
+              @change="(value: boolean | string | number) => toggleFrozenVisibility(Boolean(value))"
+            >
+              显示冻结账号
+            </el-checkbox>
+            <el-button text @click="resetFilters">重置筛选</el-button>
+          </div>
         </div>
 
         <!-- 用骨架屏而不是一行「正在加载…」：后者约 50px，换成表格后高度跳到
@@ -139,6 +152,14 @@ onMounted(loadAll);
                 <el-tag v-if="row.is_deleted" type="danger" size="small" effect="plain">
                   账号已注销
                 </el-tag>
+                <!-- 冻结标记（0012）：鼠标悬停显示冻结原因，省一列宽度 -->
+                <el-tooltip
+                  v-if="row.is_frozen"
+                  :content="row.freeze_reason || '资料不合规'"
+                  placement="top"
+                >
+                  <el-tag type="warning" size="small" effect="plain">已冻结</el-tag>
+                </el-tooltip>
               </template>
             </el-table-column>
             <el-table-column prop="created_at" label="注册时间" min-width="200" />
@@ -165,6 +186,16 @@ onMounted(loadAll);
                   @click="deleteUser(row)"
                 >
                   注销
+                </el-button>
+                <!-- 解冻（0012）：只对冻结行显示；不需要创始权限 -->
+                <el-button
+                  v-if="row.is_frozen"
+                  link
+                  type="warning"
+                  :loading="isBusy(row.user_id)"
+                  @click="unfreezeUser(row)"
+                >
+                  解冻
                 </el-button>
                 <template v-if="actionFor(row).kind === 'grant'">
                   <el-button
@@ -277,6 +308,14 @@ onMounted(loadAll);
 }
 
 .toolbar__filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* 右侧动作区：冻结开关与重置按钮同一行，窄屏下允许换行 */
+.toolbar__actions {
   display: flex;
   align-items: center;
   gap: 12px;

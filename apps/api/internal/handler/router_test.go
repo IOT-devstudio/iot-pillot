@@ -1,0 +1,55 @@
+package handler
+
+import (
+	"testing"
+
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
+)
+
+// TestNewRouterDoesNotPanic 构造一次完整路由表。
+//
+// gin 在注册阶段就会对「同方法下通配符与静态段冲突」直接 panic，而这类冲突
+// 只有在真正构造路由时才会暴露——没有任何单测覆盖的话，一次路由新增就可能
+// 让服务在启动时崩掉。这里用 nil 依赖构造：handler 只在处理请求时才解引用服务，
+// 因此构造阶段不需要 DB / Redis / SMTP。
+func TestNewRouterDoesNotPanic(t *testing.T) {
+	cfg := &config.Config{
+		SERVICE: &config.ServiceConfig{Port: 0, Mode: "test"},
+		CORS:    &config.CORSConfig{},
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("路由注册 panic（多为通配符冲突）: %v", recovered)
+		}
+	}()
+
+	router := NewRouter(
+		cfg,
+		nil, // health
+		nil, // auth
+		nil, // admin
+		nil, // mail
+		nil, // recruitment
+		nil, // invitation
+		nil, // form
+		nil, // freeze scheduler：允许为空（Run 里有 nil 判断）
+		nil, // token manager
+		nil, // admin store
+	)
+	if router == nil || router.eng == nil {
+		t.Fatal("路由未构造成功")
+	}
+
+	// 解冻路由（0012）必须真的挂上：gin 的 Routes() 是注册结果的唯一真相。
+	var found bool
+	for _, route := range router.eng.Routes() {
+		if route.Method == "POST" && route.Path == "/api/v1/admin/users/:user_id/unfreeze" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("未注册 POST /api/v1/admin/users/:user_id/unfreeze")
+	}
+}

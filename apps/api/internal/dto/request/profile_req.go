@@ -3,7 +3,6 @@ package request
 import (
 	"encoding/json"
 	"fmt"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
@@ -83,11 +82,27 @@ func ParseUpdateMe(body []byte) (*UpdateMeReq, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 班级格式（0012）：与定时冻结共用 domain.ValidateClass 同一口径。
+	// 缺省与清除不校验——清除是「我要留空」，不该被格式规则拦下，
+	// 它会在下一次定时扫描时按「未填写」处置。
+	if class.Present && !class.Clear {
+		if msg := domain.ValidateClass(class.Value); msg != "" {
+			return nil, fmt.Errorf("%s", msg)
+		}
+	}
 	req.Class = class
 
 	studentID, err := parsePatchStudentID(raw)
 	if err != nil {
 		return nil, err
+	}
+	// 学号格式（0012）：9 位数字，0 仍按既有契约表示「未填」。
+	// 0 与非 0 都过一遍 ValidateStudentID：0 返回「学号未填写」，
+	// 但那是清除语义，这里只在显式给了非 0 值时才拒绝不合规的位数。
+	if studentID.Present && !studentID.Clear && studentID.Value != 0 {
+		if msg := domain.ValidateStudentID(studentID.Value); msg != "" {
+			return nil, fmt.Errorf("%s", msg)
+		}
 	}
 	req.StudentID = studentID
 
@@ -112,19 +127,16 @@ func ParseUpdateMe(body []byte) (*UpdateMeReq, error) {
 	req.Direction = direction
 
 	// 姓名仅在提交该字段时校验，缺省保留历史姓名。
+	// 长度与汉字规则收敛到 domain.ValidateName（0012 定时冻结共用口径），
+	// 但对外文案保持既有的「姓名须为 2–20 个中文汉字」——前端提示与
+	// 既有接口契约都依赖这句话，冻结原因才需要更细的「未填写/不是汉字」。
 	name, err := parsePatchString(raw, "name", maxNameLen)
 	if err != nil {
 		return nil, fmt.Errorf("姓名须为 2–20 个中文汉字")
 	}
 	if name.Present {
-		n := utf8.RuneCountInString(name.Value)
-		if name.Clear || n < minNameLen || n > maxNameLen {
+		if name.Clear || domain.ValidateName(name.Value) != "" {
 			return nil, fmt.Errorf("姓名须为 2–20 个中文汉字")
-		}
-		for _, r := range name.Value {
-			if !unicode.Is(unicode.Han, r) {
-				return nil, fmt.Errorf("姓名须为 2–20 个中文汉字")
-			}
 		}
 	}
 	req.Name = name

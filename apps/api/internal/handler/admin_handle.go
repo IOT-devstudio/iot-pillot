@@ -52,10 +52,12 @@ func parseBoundedInt(raw string, fallback int, min int, max int) int {
 // ListUsers 用户列表（仅管理员）
 // @Summary 用户列表
 // @Description 分页读取已注册用户，并标注其当前是否为管理员。响应不含密码哈希。
+// @Description 默认不返回因资料不合规被冻结的账号（0012）；include_frozen=true 时一并返回。
 // @Tags 管理端
 // @Produce json
 // @Param page query int false "页码，从 1 开始" default(1)
 // @Param page_size query int false "每页条数，最大 100" default(20)
+// @Param include_frozen query bool false "是否包含已冻结账号，默认 false" default(false)
 // @Success 200 {object} response.Result{data=response.AdminUserListResp} "成功"
 // @Failure 401 {object} response.Result "未认证"
 // @Failure 403 {object} response.Result "非管理员"
@@ -65,13 +67,32 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	page := parseBoundedInt(c.Query("page"), 1, 1, 100000)
 	pageSize := parseBoundedInt(c.Query("page_size"), 20, 1, 100)
 
-	result, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize)
+	// include_frozen 只认显式的 true/1：参数脏了按默认「不显示冻结账号」处理，
+	// 与 parseBoundedInt 的取舍一致——查询参数写错不该让列表接口失败，
+	// 更不该因为拼错就意外把冻结账号翻出来。
+	includeFrozen := parseBoundedBool(c.Query("include_frozen"))
+
+	result, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, includeFrozen)
 	if err != nil {
 		failInternal(c, err)
 		return
 	}
 
 	response.OK(c, result)
+}
+
+// parseBoundedBool 解析布尔查询参数，无法识别时回落 false。
+//
+// 只接受 true/1/false/0 四种写法：不引入 strconv.ParseBool 的
+// "T"/"TRUE"/"True" 全谱系，是为了让接口契约保持在「明确的四种」上，
+// 拼错的值一律按默认值处理而不是静默生效。
+func parseBoundedBool(raw string) bool {
+	switch raw {
+	case "true", "1":
+		return true
+	default:
+		return false
+	}
 }
 
 // ListAdmins 管理员名单（仅管理员）
@@ -203,4 +224,41 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 	}
 
 	response.OKWithMsg(c, "账号已注销，其会话已全部失效", nil)
+}
+
+// UnfreezeUser 解冻账号（仅管理员，0012）
+// @Summary 解冻账号
+// @Description 清除因资料不合规产生的冻结标记，允许该账号重新登录补全资料。仅管理员可调。
+// @Tags 管理端
+// @Produce json
+// @Param user_id path int true "目标用户 ID"
+// @Success 200 {object} response.Result{data=response.AdminUnfreezeResp} "解冻成功"
+// @Failure 400 {object} response.Result "用户不存在/账号未冻结/账号已注销"
+// @Failure 401 {object} response.Result "未认证"
+// @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
+// @Router /api/v1/admin/users/{user_id}/unfreeze [post]
+func (h *AdminHandler) UnfreezeUser(c *gin.Context) {
+	userID, err := strconv.Atoi(c.Param("user_id"))
+	if err != nil || userID <= 0 {
+		response.FailInvalidParam(c, "user_id 必须是正整数")
+		return
+	}
+
+	result, err := h.adminService.UnfreezeUser(c.Request.Context(), userID)
+	if err != nil {
+		// 与 DeleteUser 同一套映射：业务守卫翻 400 + 可读中文，
+		// 未知错误才走 500 脱敏。
+		switch {
+		case errors.Is(err, service.ErrNotFrozen),
+			errors.Is(err, service.ErrUnfreezeDeleted),
+			errors.Is(err, repository.ErrUserNotFound):
+			response.FailInvalidParam(c, err.Error())
+		default:
+			failInternal(c, err)
+		}
+		return
+	}
+
+	response.OKWithMsg(c, "账号已解冻，该用户可重新登录补全资料", result)
 }

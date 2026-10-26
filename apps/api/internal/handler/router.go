@@ -14,6 +14,7 @@ import (
 	"github.com/IOT-devstudio/iot-pillot/apps/api/docs"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/middleware"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/service"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,12 @@ import (
 type Router struct {
 	eng *gin.Engine
 	cfg *config.Config
+	// freeze 资料不合规账号的定时冻结任务（0012）。
+	//
+	// 放在 Router 而不是 main：它要跟 HTTP 服务同生共死，而生命周期
+	// （启动/收到 SIGTERM 后收尾）本来就由 Run 掌握。main 里再加一份
+	// Start/Stop 只会让「谁负责停」出现两个答案。
+	freeze *service.FreezeScheduler
 }
 
 func NewRouter(
@@ -35,6 +42,7 @@ func NewRouter(
 	recruitmentHandler *RecruitmentHandler,
 	invitationHandler *RecruitmentInvitationHandler,
 	formHandler *FormHandler,
+	freezeScheduler *service.FreezeScheduler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -140,6 +148,9 @@ func NewRouter(
 		// 注销账号（issue #142）：admin 组之上再叠创始关——
 		// 晋升管理员在此拿 403，业务守卫（自注销/创始互斥）在 service 层
 		admin.DELETE("/users/:user_id", requireFounding, adminHandler.DeleteUser)
+		// 解冻账号（0012）：只清冻结标记，不要求创始权限——冻结是系统按资料
+		// 规则自动做的处置，任何管理员都应能撤销它。
+		admin.POST("/users/:user_id/unfreeze", adminHandler.UnfreezeUser)
 
 		// ── 管理端-邮件（同样要求管理员）──
 		admin.GET("/mail-templates", mailHandler.ListMailTemplates)
@@ -204,7 +215,7 @@ func NewRouter(
 		apiV1.GET("/forms/:id/submissions", authRequired, requireAdmin, formHandler.ListFormSubmissions)
 		apiV1.GET("/forms/:id/submissions/:submission_id", authRequired, requireAdmin, formHandler.GetFormSubmission)
 	}
-	return &Router{eng: r, cfg: cfg}
+	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler}
 }
 
 // Run 启动 HTTP 服务，并在收到 SIGINT/SIGTERM 时优雅退出。
@@ -224,6 +235,14 @@ func (r *Router) Run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// 定时冻结（0012）：随服务启动，收到退出信号后停止并等待当前一轮落库。
+	// Stop 放在 shutdown 之前：先让后台任务收尾，再等在途请求结束，
+	// 避免退出过程中后台仍在写库。
+	if r.freeze != nil {
+		r.freeze.Start()
+		defer r.freeze.Stop()
+	}
 
 	serveErr := make(chan error, 1)
 	go func() {

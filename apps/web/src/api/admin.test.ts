@@ -6,6 +6,7 @@ import {
   listAdmins,
   listMails,
   revokeAdmin,
+  unfreezeAdminUser,
 } from "./admin";
 import { AUTH_STORAGE_KEY } from "@/auth/session";
 
@@ -100,10 +101,44 @@ describe("admin api", () => {
       page_size: 20,
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/admin/users?page=2&page_size=20",
+      "/api/v1/admin/users?page=2&page_size=20&include_frozen=false",
       expect.anything(),
     );
     expect(authHeaderOf(fetchMock)).toBe("Bearer access-token");
+  });
+
+  it("include_frozen=true 时显式请求冻结账号（0012）", async () => {
+    mockSession();
+    const fetchMock = mockJson({
+      code: 0,
+      message: "success",
+      data: { items: [adminUser], total: 1, page: 1, page_size: 20 },
+    });
+
+    await listAdminUsers(1, 20, true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/admin/users?page=1&page_size=20&include_frozen=true",
+      expect.anything(),
+    );
+  });
+
+  it("解冻账号走 POST /admin/users/:id/unfreeze（0012）", async () => {
+    mockSession();
+    const fetchMock = mockJson({
+      code: 0,
+      message: "账号已解冻",
+      data: { user_id: 7, is_frozen: false },
+    });
+
+    await expect(unfreezeAdminUser(7)).resolves.toEqual({
+      user_id: 7,
+      is_frozen: false,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/admin/users/7/unfreeze",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("读取管理员名单（不分页）", async () => {

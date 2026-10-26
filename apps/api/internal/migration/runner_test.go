@@ -78,7 +78,7 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	if err := db.QueryRow("SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 11 || dirty {
+	if version != 12 || dirty {
 		t.Fatalf("version=%d dirty=%v", version, dirty)
 	}
 	var count int
@@ -108,6 +108,28 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	}
 	if !strings.Contains(emailIndexDef, "deleted_at") {
 		t.Fatalf("邮箱唯一索引谓词应含 deleted_at IS NULL（#142 Q5），实际 %q", emailIndexDef)
+	}
+	// 0012 的冻结三列必须真的落地：扫描任务与登录拦截都按列名读写，
+	// 缺列会让「定时冻结」在运行时直接报 SQLSTATE 42703。
+	for _, column := range []string{"frozen_at", "freeze_reason", "freeze_notified_at"} {
+		var dataType string
+		if err := db.QueryRow(
+			`SELECT data_type FROM information_schema.columns
+			 WHERE table_name='users' AND column_name=$1`, column,
+		).Scan(&dataType); err != nil {
+			t.Fatalf("0012 的 %s 列未创建: %v", column, err)
+		}
+	}
+	// 扫描主查询「未冻结 + 未注销 + 注册早于 N 天」需要部分索引支撑，
+	// 否则用户表增长后会退化成全表扫描。
+	var freezeIndexDef string
+	if err := db.QueryRow(
+		"SELECT indexdef FROM pg_indexes WHERE tablename='users' AND indexname='idx_users_active_created_at'",
+	).Scan(&freezeIndexDef); err != nil {
+		t.Fatalf("0012 的部分索引未创建: %v", err)
+	}
+	if !strings.Contains(freezeIndexDef, "frozen_at IS NULL") || !strings.Contains(freezeIndexDef, "deleted_at IS NULL") {
+		t.Fatalf("索引谓词应同时含 frozen_at IS NULL 与 deleted_at IS NULL，实际 %q", freezeIndexDef)
 	}
 }
 

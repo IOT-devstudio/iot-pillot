@@ -61,6 +61,10 @@ function makeDeps(overrides: Partial<AdminPermissionsDeps> = {}) {
       session_revoked: true,
     }),
     deleteAdminUser: async () => {},
+    unfreezeAdminUser: async (userId: number) => ({
+      user_id: userId,
+      is_frozen: false,
+    }),
     ...overrides,
   };
   return deps;
@@ -441,5 +445,93 @@ describe("useAdminPermissions mutations", () => {
 
     expect(ERROR).toHaveBeenCalledTimes(1);
     expect(String(ERROR.mock.calls[0]?.[0])).toContain("创始管理员");
+  });
+
+  // ── 冻结账号（0012）──
+
+  it("默认不请求冻结账号，打开开关后带 include_frozen=true 并回到第一页", async () => {
+    const listUsers = vi.fn(
+      async (
+        _page: number,
+        _pageSize: number,
+        _includeFrozen: boolean,
+      ): Promise<{ items: AdminUser[]; total: number }> => ({
+        items: [user()],
+        total: 1,
+      }),
+    );
+    const state = useAdminPermissions(makeDeps({ listUsers }));
+    await state.loadAll();
+
+    // 进页面默认隐藏冻结账号
+    expect(listUsers).toHaveBeenLastCalledWith(1, 20, false);
+    expect(state.showFrozen.value).toBe(false);
+
+    await state.toggleFrozenVisibility(true);
+
+    expect(listUsers).toHaveBeenLastCalledWith(1, 20, true);
+    expect(state.showFrozen.value).toBe(true);
+  });
+
+  it("切换冻结开关后回到第 1 页，避免停在越界页码", async () => {
+    const listUsers = vi.fn(
+      async (_page: number, _pageSize: number, _includeFrozen: boolean) => ({
+        items: [user()],
+        total: 60,
+      }),
+    );
+    const state = useAdminPermissions(makeDeps({ listUsers }));
+    await state.loadAll();
+    await state.changePage(2);
+    expect(listUsers).toHaveBeenLastCalledWith(2, 20, false);
+
+    await state.toggleFrozenVisibility();
+
+    expect(listUsers).toHaveBeenLastCalledWith(1, 20, true);
+    expect(state.page.value).toBe(1);
+  });
+
+  it("解冻冻结账号会调用接口并提示成功", async () => {
+    const unfreezeAdminUser = vi.fn(async (userId: number) => ({
+      user_id: userId,
+      is_frozen: false,
+    }));
+    const state = useAdminPermissions(makeDeps({ unfreezeAdminUser }));
+    await state.loadAll();
+    CONFIRM.mockResolvedValue("confirm" as never);
+
+    await state.unfreezeUser(user({ user_id: 7, is_frozen: true }));
+
+    expect(unfreezeAdminUser).toHaveBeenCalledWith(7);
+    expect(SUCCESS).toHaveBeenCalledTimes(1);
+  });
+
+  it("对未冻结账号不解冻，避免无意义请求", async () => {
+    const unfreezeAdminUser = vi.fn();
+    const state = useAdminPermissions(makeDeps({ unfreezeAdminUser }));
+    await state.loadAll();
+
+    await state.unfreezeUser(user({ user_id: 7, is_frozen: false }));
+
+    expect(unfreezeAdminUser).not.toHaveBeenCalled();
+    expect(CONFIRM).not.toHaveBeenCalled();
+    expect(String(WARNING.mock.calls[0]?.[0])).toContain("未被冻结");
+  });
+
+  it("解冻失败时给出可读提示", async () => {
+    const state = useAdminPermissions(
+      makeDeps({
+        unfreezeAdminUser: async () => {
+          throw new AuthRequestError("该账号已注销，无法解冻", 400);
+        },
+      }),
+    );
+    await state.loadAll();
+    CONFIRM.mockResolvedValue("confirm" as never);
+
+    await state.unfreezeUser(user({ user_id: 7, is_frozen: true }));
+
+    expect(ERROR).toHaveBeenCalledTimes(1);
+    expect(String(ERROR.mock.calls[0]?.[0])).toContain("无法解冻");
   });
 });

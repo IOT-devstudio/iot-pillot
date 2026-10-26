@@ -108,6 +108,12 @@ var ErrPasswordReused = errors.New("新密码不能与当前密码相同")
 // 两者对用户的下一步动作指引完全相反。
 var ErrAccountNotFoundForReset = errors.New("该邮箱尚未注册")
 
+// ErrAccountFrozen 账号因资料不合规被冻结（0012）。
+//
+// 提示语必须说清「怎么恢复」：只说"账号被冻结"会让用户以为需要申诉，
+// 实际只要把资料改对、联系管理员解冻即可。
+var ErrAccountFrozen = errors.New("账号因资料不完整已被冻结，请按通知邮件补齐资料后联系管理员解冻")
+
 /* ------------------------------------------------------------------ *
  * 角色
  * ------------------------------------------------------------------ */
@@ -284,6 +290,14 @@ func (auc *AuthUseCase) Login(ctx context.Context, req *request.LoginReq) (*resp
 		return nil, ErrInvalidCredentials
 	}
 
+	// 冻结判定放在密码校验**之后**（0012）：
+	// 先验密码再拒冻结，可以避免「猜对用户名就能确认该账号存在且被冻结」
+	// 这种信息泄露；同时密码错误的冻结账号仍按凭据错误计数，行为一致。
+	// 不计失败次数——冻结不是凭据问题，计数会让解冻后的首次登录被历史手误拖累。
+	if user.IsFrozen() {
+		return nil, ErrAccountFrozen
+	}
+
 	role, err := auc.roleFor(ctx, user.ID)
 	if err != nil {
 		return nil, err
@@ -389,6 +403,13 @@ func (auc *AuthUseCase) Refresh(ctx context.Context, refreshToken string) (*resp
 	userID, username, _, err := auc.tokenManager.ValidateRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, err
+	}
+
+	// 冻结拦截（0012）：refresh 令牌是冻结前签发的，不在这里拦住，
+	// 被冻结的账号就能靠不断刷新把会话无限续下去，冻结形同虚设。
+	// 查不到用户（已注销）时按未冻结继续走原逻辑——那由令牌层与登录面处理。
+	if user, err := auc.userRepo.GetByID(ctx, userID); err == nil && user != nil && user.IsFrozen() {
+		return nil, ErrAccountFrozen
 	}
 
 	role, err := auc.roleFor(ctx, userID)
