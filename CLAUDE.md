@@ -137,6 +137,7 @@ iot-pillot/
 | 招新方向 / 报名 / 我的申请（用户端，需登录） | `/api/v1/recruitment/directions` 等 | 前端已对接 | 首页读真实方向与开放状态、报名与进度（#89）；报名必须登录，无匿名提交 |
 | 招新轮次 / 方向开关 / 申请审核（管理端） | `/api/v1/admin/recruitment/*` | 前端已对接 | 申请审核页 `/recruitment/applications`（#89）；轮次/方向开关与基础审核 |
 | 招新邀请与候选人流程（BE-04） | `POST /api/v1/admin/invitations/send`、`GET /api/v1/admin/invitations`、`POST /api/v1/admin/invitations/:id/revoke`、`GET /api/v1/admin/candidates`、`GET /api/v1/admin/candidates/:id`、`POST /api/v1/admin/candidates/:id/advance`、`GET /api/v1/me/invitations`、`POST /api/v1/me/invitations/accept`、`GET /api/v1/me/candidates` | 后端已交付，前端未接入 | `packages/shared-types` 的 BE-04 段是真实契约（number ID）；邀请邮件复用 MailModule 模板发送 |
+| 工作室成员名录（#195） | `GET/POST /api/v1/admin/studio/members`、`GET/PUT /api/v1/admin/studio/members/:id`、`POST /api/v1/admin/studio/members/:id/archive` | 前端已对接 | 仅 admin（ADR 0001）；`user_id` 可空以收录无账号校友，`(name, birth_year)` 唯一；归档不物理删除。工作室项目/知识库仍是草案（#198/#196） |
 | 表单、模板、用户权限、SMTP 设置 | 部分尚无路由 | 阻塞 | 共享 TS 类型中未标 BE-04 的招新类型与表单类型仍是领域草案，不能直接当作已交付 API |
 
 开始业务页面前必须先解决以下契约差异：

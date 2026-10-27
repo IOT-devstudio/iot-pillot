@@ -9,6 +9,7 @@ import { openerRoutes } from "@/modules/opener/routes";
 import { openerEditorRoutes } from "@/modules/opener-editor/routes";
 import { recruitmentRoutes } from "@/modules/recruitment/routes";
 import { settingsRoutes } from "@/modules/settings/routes";
+import { studioMembersRoutes } from "@/modules/studio-members/routes";
 import { userSettingsRoutes } from "@/modules/user-settings/routes";
 import AuthView from "@/views/AuthView.vue";
 
@@ -32,6 +33,8 @@ export const routes: RouteRecordRaw[] = [
   // 邮件中心（模板 + 发信记录，mail 模块自带 meta.allowRoles）
   ...mailRoutes,
   ...formRoutes,
+  // 工作室运营（#195）：成员名录；项目管理 / 知识库是后续票（#198/#196）
+  ...studioMembersRoutes,
   // 内容首页已并入管理台，保留旧路径重定向，避免收藏夹与旧链接 404
   { path: "/home", redirect: "/dashboard" },
   // 兼容登录路径：与根路径复用同一认证组件，保留 redirect 与 fallback 参数。

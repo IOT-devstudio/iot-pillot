@@ -1550,6 +1550,358 @@
                 }
             }
         },
+        "/api/v1/admin/studio/members": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页列出成员名录，支持关键词（姓名/届别/方向/职能）、方向与在读状态筛选。仅管理员可读。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室成员"
+                ],
+                "summary": "工作室成员列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "关键词（姓名/届别/方向/职能模糊匹配）",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "方向精确匹配",
+                        "name": "direction",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "在读状态；缺省返回全部（含已归档）",
+                        "name": "is_active",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码，从 1 开始",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioMemberListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员录入成员档案。user_id 可空（收录无系统账号的校友/外部人员）；同名+出生年冲突返回 400。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室成员"
+                ],
+                "summary": "录入工作室成员",
+                "parameters": [
+                    {
+                        "description": "成员档案",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.StudioMemberCreateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioMemberResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "字段不合法 / 同名同出生年已存在 / user_id 无效",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/studio/members/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按 id 取成员档案。仅管理员可读。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室成员"
+                ],
+                "summary": "工作室成员详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "成员 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioMemberResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "成员不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "补丁式更新：只传要改的项。user_id 传 null 表示解除账号绑定；is_active=true 表示恢复在读。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室成员"
+                ],
+                "summary": "更新工作室成员",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "成员 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新内容",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.StudioMemberUpdateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioMemberResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "字段不合法 / 成员不存在 / 同名同出生年已存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/studio/members/{id}/archive": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "归档（置 archived_at 与 is_active=false），不物理删除，以保住后续项目参与历史。重复归档返回 400。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室成员"
+                ],
+                "summary": "归档工作室成员",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "成员 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioMemberResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "成员不存在或已归档",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/users": {
             "get": {
                 "security": [
@@ -3686,6 +4038,76 @@
                 }
             }
         },
+        "request.StudioMemberCreateReq": {
+            "type": "object",
+            "required": [
+                "birth_year",
+                "cohort",
+                "direction",
+                "name",
+                "role_in_studio"
+            ],
+            "properties": {
+                "birth_year": {
+                    "type": "integer"
+                },
+                "cohort": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "employment": {
+                    "type": "string"
+                },
+                "internship": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role_in_studio": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "request.StudioMemberUpdateReq": {
+            "type": "object",
+            "properties": {
+                "birth_year": {
+                    "type": "integer"
+                },
+                "cohort": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "employment": {
+                    "type": "string"
+                },
+                "internship": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "description": "IsActive 三态：不传 = 不改；true = 恢复在读（顺带清归档时刻）。",
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role_in_studio": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "description": "UserID 三态：不传（nil）= 不改；传 null = 解除绑定；传数字 = 绑定该账号。\n**int 在 gin 绑定里天然支持这三种输入。",
+                    "type": "integer"
+                }
+            }
+        },
         "request.UpdateMePatch": {
             "type": "object",
             "properties": {
@@ -4619,6 +5041,74 @@
                 },
                 "submitted": {
                     "type": "boolean"
+                }
+            }
+        },
+        "response.StudioMemberListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.StudioMemberResp"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.StudioMemberResp": {
+            "type": "object",
+            "properties": {
+                "archived_at": {
+                    "description": "ArchivedAt 归档时刻；未归档为 null（不是空串）——\n共享类型里它是 ISODateTime | null，前端直接用 null 判断归档态。",
+                    "type": "string"
+                },
+                "birth_year": {
+                    "type": "integer"
+                },
+                "cohort": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "direction": {
+                    "type": "string"
+                },
+                "employment": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "internship": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role_in_studio": {
+                    "type": "string"
+                },
+                "source_candidate_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
                 }
             }
         },

@@ -49,6 +49,10 @@ vi.mock("@/modules/mail/views/MailCenterView.vue", () => ({
 vi.mock("@/modules/user-settings/views/UserSettingsView.vue", () => ({
   default: { name: "UserSettingsView" },
 }));
+// 工作室成员名录（#195）只验路由元信息，组件不必真挂载
+vi.mock("@/modules/studio-members/views/StudioMembersView.vue", () => ({
+  default: { name: "StudioMembersView" },
+}));
 
 import { routes } from "./routes";
 
@@ -152,6 +156,18 @@ describe("application routes", () => {
     }
   });
 
+  it("mounts the studio member roster as an admin-only page (issue #195)", () => {
+    const roster = routes.filter((route) => route.path === "/studio/members");
+
+    expect(roster).toHaveLength(1);
+    expect(roster[0]?.name).toBe("studio-members");
+    expect(roster[0]?.component).toMatchObject({ name: "StudioMembersView" });
+    // 工作室运营首期仅 admin（ADR 0001）；漏标 allowRoles 就等于对普通用户敞开。
+    expect(roster[0]?.meta?.allowRoles).toEqual(["admin"]);
+    // 成员名录在统一管理外壳里，不另起顶栏。
+    expect(roster[0]?.meta?.adminShell).toBe(true);
+  });
+
   it("mounts the mail center as a member-only real page", () => {
     const mailRoutes = routes.filter((route) => route.path === "/templates");
 
@@ -190,6 +206,7 @@ describe("application routes", () => {
           route.path.startsWith("/settings") ||
           route.path.startsWith("/recruitment") ||
           route.path.startsWith("/forms") ||
+          route.path.startsWith("/studio") ||
           route.path === "/templates" ||
           route.path === "/admin/buildings"),
     );

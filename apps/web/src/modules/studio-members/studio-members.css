@@ -1,0 +1,271 @@
+/* 工作室成员名录（#195）。沿用管理端的暖纸 / 墨色令牌，不另起一套视觉。 */
+.studio-members-page .page__body {
+  display: grid;
+  gap: 24px;
+}
+
+.studio-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.studio-muted {
+  color: var(--ink-faint);
+}
+
+.studio-error {
+  color: var(--red);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.studio-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── 按钮 ────────────────────────────────────────────────────── */
+
+.studio-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.studio-button:hover {
+  background: var(--paper-deep);
+}
+
+.studio-button--primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.studio-button--primary:hover {
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.studio-button--small {
+  min-height: 32px;
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+.studio-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.studio-button:focus-visible,
+.studio-control:focus-visible {
+  outline: 2px solid var(--blue-bright);
+  outline-offset: 3px;
+}
+
+/* ── 筛选条 ──────────────────────────────────────────────────── */
+
+.studio-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)) auto;
+  gap: 16px;
+  align-items: end;
+}
+
+.studio-filters__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── 表单控件 ────────────────────────────────────────────────── */
+
+.studio-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.studio-field__label {
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.studio-field__label em {
+  color: var(--red);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.studio-field__error {
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.studio-control {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.studio-control[aria-invalid="true"] {
+  border-color: var(--red);
+}
+
+/* ── 表格 ────────────────────────────────────────────────────── */
+
+.studio-table-wrap {
+  overflow-x: auto;
+}
+
+.studio-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.studio-table th,
+.studio-table td {
+  padding: 14px 16px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.studio-table th {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.studio-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.studio-table__name {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.studio-table__sub {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* 操作列：td 必须保持 table-cell，否则整行布局会散掉。
+   要横排按钮就把它们包进这个内部容器。 */
+.studio-table__actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.studio-table__actions-inner {
+  display: inline-flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.studio-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--green);
+}
+
+.studio-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.studio-status--archived {
+  color: var(--ink-faint);
+}
+
+/* ── 空态 / 抽屉表单 ─────────────────────────────────────────── */
+
+.studio-empty {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.studio-empty h2 {
+  margin: 6px 0 0;
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.studio-empty p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.studio-form {
+  display: grid;
+  gap: 16px;
+}
+
+.studio-form__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .studio-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .studio-filters__actions {
+    justify-content: flex-start;
+  }
+}
