@@ -15,13 +15,13 @@ function profile(overrides: Partial<MyProfile> = {}): MyProfile {
     username: "member",
     role: "member",
     name: "张三",
-    detail: { class: "物联网 2301", student_id: 2023114514, qq: "10001" },
+    detail: { class: "物联网230301", student_id: 202311451, qq: "10001" },
     ...overrides,
   };
 }
 
 describe("profileEntryState", () => {
-  it("offers 查看资料 and lets applications through when both required fields are filled", () => {
+  it("offers 查看资料 and lets applications through when both required fields are filled and well-formed", () => {
     const entry = profileEntryState(profile());
     expect(entry).toMatchObject({
       state: "ready",
@@ -33,16 +33,27 @@ describe("profileEntryState", () => {
 
   it("blocks applications and names only the missing field", () => {
     expect(
-      profileEntryState(profile({ detail: { class: "物联网 2301", student_id: 0 } })),
+      profileEntryState(profile({ detail: { class: "物联网230301", student_id: 0 } })),
     ).toMatchObject({ state: "needs-completion", missing: ["学号"], label: "完善资料", blocksApplication: true });
     expect(
-      profileEntryState(profile({ detail: { class: " ", student_id: 2023114514 } })),
+      profileEntryState(profile({ detail: { class: " ", student_id: 202311451 } })),
     ).toMatchObject({ state: "needs-completion", missing: ["班级"] });
     expect(profileEntryState(profile({ detail: {} }))).toMatchObject({
       state: "needs-completion",
       missing: ["班级", "学号"],
       blocksApplication: true,
     });
+  });
+
+  it("blocks applications when values exist but the format is invalid", () => {
+    // 0012 口径：班级必须是「汉字 + 6 位数字」、学号 9 位数字。
+    // 填了但格式不符同样会被定时冻结，所以入口也要先拦住去改。
+    expect(
+      profileEntryState(profile({ detail: { class: "物联网 2301", student_id: 202311451 } })),
+    ).toMatchObject({ state: "needs-completion", missing: ["班级"], blocksApplication: true });
+    expect(
+      profileEntryState(profile({ detail: { class: "物联网230301", student_id: 2023114514 } })),
+    ).toMatchObject({ state: "needs-completion", missing: ["学号"], blocksApplication: true });
   });
 
   it("does not treat a filled name as a complete profile", () => {

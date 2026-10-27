@@ -377,6 +377,61 @@ func (a *MailUseCase) SendAccountDeletionNotice(
 	return err
 }
 
+// freezeMailType 资料不合规冻结通知邮件的模板类型（0012）。
+// 与 deletion 同理：模板中心建一条 type=freeze 的模板即可覆盖内置文案。
+const freezeMailType = "freeze"
+
+// builtInFreezeMail 未配置 freeze 模板时的内置默认文案（不落库）。
+//
+// 正文里 {{reason}} 是本次判定的具体原因（由 domain.ProfileIssuesSummary 生成），
+// 模板作者可以自由摆放；不写这个占位符也不会报错——缺变量只在模板里引用了
+// 未提供的键时才会失败，而 reason 每次都会传。
+func builtInFreezeMail() *domain.MailModel {
+	return &domain.MailModel{
+		Name:  "内置资料冻结通知",
+		Type:  freezeMailType,
+		Title: "你的账号已因资料不完整被冻结",
+		MailModel: `{{name}}，你好：
+
+你的工作室账号注册已满 7 天，但资料仍不满足要求，已被暂时冻结，当前无法登录。
+
+需要修正的内容：{{reason}}
+
+请按以下口径核对后联系工作室管理员解冻：
+· 姓名：2–20 个中文汉字
+· 班级：汉字 + 6 位数字，例如 软件工程230301
+· 学号：9 位数字
+
+资料补齐后由管理员解冻，即可恢复正常登录。
+
+—— IoT Studio 工作室`,
+	}
+}
+
+// SendAccountFreezeNotice 发送资料冻结通知邮件（0012，仅定时冻结任务调用）。
+//
+// 与 SendAccountDeletionNotice 同一套模板选择与投递路径：配置了 type=freeze
+// 的模板就用它，没配置用内置默认。失败返回错误，由调用方决定「本轮不冻结、
+// 下一轮重试」——冻结是系统自动行为，不能在用户还没收到通知时静默生效。
+func (a *MailUseCase) SendAccountFreezeNotice(
+	ctx context.Context,
+	user *domain.User,
+	reason string,
+) error {
+	model, err := a.templates.GetByType(ctx, freezeMailType)
+	if err != nil {
+		return err
+	}
+	if model == nil {
+		model = builtInFreezeMail()
+	}
+
+	// operatorID 传 0：冻结由定时任务发起，没有人类操作者。
+	// 发信记录里 from_user_id = 0 正好与「管理员手动发送」区分开。
+	_, err = a.sendWithTemplate(ctx, 0, model, user, request.MailVars{"reason": reason})
+	return err
+}
+
 // sendWithTemplate 渲染 + 发送 + 落记录。单发与群发共用同一条路径，
 // 避免两条路径的校验与记录行为出现分歧；模板由调用方传入，群发时只查一次。
 func (a *MailUseCase) sendWithTemplate(

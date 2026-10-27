@@ -70,6 +70,9 @@ func repoTestDBUsers(t *testing.T) *gorm.DB {
 			parse int NOT NULL DEFAULT 0,
 			password text NOT NULL,
 			deleted_at timestamptz,
+			frozen_at timestamptz,
+			freeze_reason text,
+			freeze_notified_at timestamptz,
 			created_at timestamptz,
 			updated_at timestamptz
 		)`,

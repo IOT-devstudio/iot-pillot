@@ -36,6 +36,15 @@ export interface AdminUser {
    * true 时列表显示「账号已注销」，该行不再提供注销按钮。
    */
   is_deleted?: boolean;
+  /**
+   * 账号是否因资料不合规被冻结（0012）。列表默认不返回冻结行，
+   * 打开「显示冻结账号」后才可能出现 true；此时该行提供「解冻」按钮。
+   */
+  is_frozen?: boolean;
+  /** 冻结时刻（RFC3339），未冻结为空串。 */
+  frozen_at?: string;
+  /** 冻结原因快照，例如「班级须为「汉字 + 6 位数字」」。 */
+  freeze_reason?: string;
   detail?: AdminUserDetail;
 }
 
@@ -64,14 +73,21 @@ export function fetchCurrentUser(): Promise<CurrentUser> {
   return requestWithSession<CurrentUser>("/api/v1/me");
 }
 
-/** 分页读取管理员用户列表，自动处理会话刷新。 */
+/**
+ * 分页读取管理员用户列表，自动处理会话刷新。
+ *
+ * includeFrozen 默认 false：冻结是系统判定「资料不合规」的处置状态，
+ * 混在名单里会淹没真正在推进招新的人；需要处置时显式打开。
+ */
 export function listAdminUsers(
   page = 1,
   pageSize = 20,
+  includeFrozen = false,
 ): Promise<AdminUserList> {
   const query = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
+    include_frozen: String(includeFrozen),
   });
   return requestWithSession<AdminUserList>(
     `/api/v1/admin/users?${query.toString()}`,
@@ -108,6 +124,22 @@ export function deleteAdminUser(userId: number): Promise<void> {
   return requestWithSession<void>(`/api/v1/admin/users/${userId}`, {
     method: "DELETE",
   });
+}
+
+/**
+ * 解冻账号（0012，POST /admin/users/:id/unfreeze）。
+ *
+ * 只清冻结标记，不校验资料是否已补齐：解冻的语义是「允许这个人重新登录去改资料」，
+ * 资料仍不合规时下一轮定时扫描会再次冻结。
+ */
+export function unfreezeAdminUser(userId: number): Promise<{
+  user_id: number;
+  is_frozen: boolean;
+}> {
+  return requestWithSession<{ user_id: number; is_frozen: boolean }>(
+    `/api/v1/admin/users/${userId}/unfreeze`,
+    { method: "POST" },
+  );
 }
 
 /** 发信记录（后端 MailRecordResp）。完整管理在 #52，这里只供概览展示。 */

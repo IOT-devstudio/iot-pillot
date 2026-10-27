@@ -25,8 +25,45 @@ func TestProfileChineseName(t *testing.T) {
 			t.Errorf("accepted %s", body)
 		}
 	}
-	req, err := ParseUpdateMe([]byte(`{"class":"新班级"}`))
+	req, err := ParseUpdateMe([]byte(`{"class":"软工230301"}`))
 	if err != nil || req.Name.Present {
 		t.Fatalf("omitted name must stay unchanged: %v", err)
+	}
+}
+
+// 班级与学号的写入校验（0012）：与定时冻结共用 domain 规则。
+// 不合规输入在写入阶段就被拒，避免「保存成功 → 7 天后被冻结」这种落差。
+func TestParseUpdateMe_ClassAndStudentID(t *testing.T) {
+	cases := []struct {
+		desc    string
+		body    string
+		wantErr string
+	}{
+		{"班级合规", `{"class":"软件工程230301"}`, ""},
+		{"班级数字不足", `{"class":"软工23030"}`, "班级须为「汉字 + 6 位数字」"},
+		{"班级没有数字", `{"class":"软工"}`, "班级须为「汉字 + 6 位数字」"},
+		{"班级含空格", `{"class":"软工 230301"}`, "班级须为「汉字 + 6 位数字」"},
+		{"班级清除（null）放行", `{"class":null}`, ""},
+		{"学号九位合规", `{"student_id":202311451}`, ""},
+		{"学号八位", `{"student_id":20231145}`, "学号须为 9 位数字"},
+		{"学号十位", `{"student_id":2023114514}`, "学号须为 9 位数字"},
+		{"学号清除（null）放行", `{"student_id":null}`, ""},
+		{"学号零视为未填放行", `{"student_id":0}`, ""},
+		{"班级与学号同时不合规时先报班级", `{"class":"x","student_id":1}`, "班级须为"},
+	}
+	for _, c := range cases {
+		_, err := ParseUpdateMe([]byte(c.body))
+		if c.wantErr == "" {
+			if err != nil {
+				t.Fatalf("用例 %q 应合法，却报错: %v", c.desc, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatalf("用例 %q 应报错，却通过", c.desc)
+		}
+		if !strings.Contains(err.Error(), c.wantErr) {
+			t.Fatalf("用例 %q 文案不符，got=%q want 包含 %q", c.desc, err.Error(), c.wantErr)
+		}
 	}
 }

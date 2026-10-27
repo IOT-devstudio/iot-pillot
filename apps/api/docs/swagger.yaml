@@ -414,6 +414,14 @@ definitions:
       user_id:
         type: integer
     type: object
+  response.AdminUnfreezeResp:
+    properties:
+      is_frozen:
+        description: IsFrozen 恒为 false：解冻成功后回显目标状态，前端据此就地更新行。
+        type: boolean
+      user_id:
+        type: integer
+    type: object
   response.AdminUserListResp:
     properties:
       items:
@@ -437,6 +445,12 @@ definitions:
         description: |-
           Detail 只读资料（issue #57）：管理员能看到完整信息，但改不了——
           编辑入口只有本人的 PUT /me。
+      freeze_reason:
+        description: FreezeReason 冻结原因快照（例如「班级须为「汉字 + 6 位数字」」），未冻结为空串。
+        type: string
+      frozen_at:
+        description: FrozenAt 冻结时刻（RFC3339），未冻结为空串。
+        type: string
       is_admin:
         description: IsAdmin 由 Redis 名单现算，方便管理端直接标注"当前是不是管理员"
         type: boolean
@@ -444,6 +458,11 @@ definitions:
         description: |-
           IsDeleted 账号是否已注销（issue #142 Q3：历史保留，列表标注）。
           false = 正常账号；true = 软删行，前端显示「账号已注销」。
+        type: boolean
+      is_frozen:
+        description: |-
+          IsFrozen 账号是否因资料不合规被冻结（0012）。
+          列表默认不返回冻结行，只有显式 include_frozen=true 时才会出现 true。
         type: boolean
       name:
         type: string
@@ -1901,7 +1920,9 @@ paths:
       - 管理端-招新
   /api/v1/admin/users:
     get:
-      description: 分页读取已注册用户，并标注其当前是否为管理员。响应不含密码哈希。
+      description: |-
+        分页读取已注册用户，并标注其当前是否为管理员。响应不含密码哈希。
+        默认不返回因资料不合规被冻结的账号（0012）；include_frozen=true 时一并返回。
       parameters:
       - default: 1
         description: 页码，从 1 开始
@@ -1913,6 +1934,11 @@ paths:
         in: query
         name: page_size
         type: integer
+      - default: false
+        description: 是否包含已冻结账号，默认 false
+        in: query
+        name: include_frozen
+        type: boolean
       produces:
       - application/json
       responses:
@@ -1969,6 +1995,44 @@ paths:
       security:
       - BearerAuth: []
       summary: 注销账号（软删）
+      tags:
+      - 管理端
+  /api/v1/admin/users/{user_id}/unfreeze:
+    post:
+      description: 清除因资料不合规产生的冻结标记，允许该账号重新登录补全资料。仅管理员可调。
+      parameters:
+      - description: 目标用户 ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 解冻成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.AdminUnfreezeResp'
+              type: object
+        "400":
+          description: 用户不存在/账号未冻结/账号已注销
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 解冻账号
       tags:
       - 管理端
   /api/v1/change-password:
@@ -2334,7 +2398,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: 通过用户名**或邮箱** + 密码登录，返回双令牌（access_token + refresh_token）。
+      description: |-
+        通过用户名**或邮箱** + 密码登录，返回双令牌（access_token + refresh_token）。
+        用户名不唯一时请用邮箱登录。
+        资料不合规被冻结的账号（0012）返回 403，需联系管理员解冻。
       parameters:
       - description: 登录请求参数
         in: body
@@ -2360,6 +2427,14 @@ paths:
             $ref: '#/definitions/response.Result'
         "401":
           description: 用户名或密码错误（不区分二者）
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 账号因资料不完整已被冻结
+          schema:
+            $ref: '#/definitions/response.Result'
+        "429":
+          description: 连续失败次数过多，账号临时锁定
           schema:
             $ref: '#/definitions/response.Result'
       summary: 用户登录

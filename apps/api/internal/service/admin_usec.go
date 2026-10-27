@@ -202,8 +202,18 @@ func seedFoundingInto(ctx context.Context, admins utils.AdminDirectory, ids []in
 //
 // 只映射出必要字段：密码哈希绝不能出现在任何响应里，
 // 所以这里显式构造 DTO，而不是把 domain.User 直接交给序列化。
-func (a *AdminUseCase) ListUsers(ctx context.Context, page int, pageSize int) (*response.AdminUserListResp, error) {
-	users, total, err := a.userRepo.GetAll(ctx, page, pageSize)
+//
+// 冻结过滤（0012）：默认不显示冻结账号，includeFrozen=true 才纳入。
+// 过滤与分页在仓储层同一条查询条件上完成，total 与可翻页数一致。
+func (a *AdminUseCase) ListUsers(
+	ctx context.Context,
+	page int,
+	pageSize int,
+	includeFrozen bool,
+) (*response.AdminUserListResp, error) {
+	users, total, err := a.userRepo.ListForAdmin(ctx, page, pageSize, repository.UserListFilter{
+		IncludeFrozen: includeFrozen,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -395,6 +405,54 @@ func (a *AdminUseCase) DeleteUser(ctx context.Context, operatorID int, targetID 
 }
 
 /* ------------------------------------------------------------------ *
+ * 解冻账号（0012）
+ * ------------------------------------------------------------------ */
+
+// UnfreezeUser 解冻因资料不合规被冻结的账号。
+//
+// 刻意**不踢会话**：冻结期间登录与刷新都被拒绝，该账号手上不会存在有效令牌；
+// 解冻的意义正是让本人重新登录去补资料，此时踢会话没有任何对象可踢。
+//
+// 也不校验资料是否已补齐：解冻是「允许这个人重新登录」，资料是否改对由
+// 下一轮定时扫描判定（仍不合规会再次冻结）。若在这里硬性要求资料合规，
+// 管理员就无法在用户尚未登录、无法修改资料的情况下做任何处置。
+func (a *AdminUseCase) UnfreezeUser(ctx context.Context, targetID int) (*response.AdminUnfreezeResp, error) {
+	user, err := a.userRepo.GetByID(ctx, targetID)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			// 保留哨兵可判别性：handler 靠 errors.Is 翻译成 400
+			return nil, fmt.Errorf("用户不存在: %w", repository.ErrUserNotFound)
+		}
+		return nil, err
+	}
+	if user.IsDeleted() {
+		return nil, ErrUnfreezeDeleted
+	}
+
+	if err := a.userRepo.Unfreeze(ctx, targetID); err != nil {
+		if errors.Is(err, repository.ErrUserNotFrozen) {
+			return nil, ErrNotFrozen
+		}
+		return nil, err
+	}
+
+	log.Printf("[admin] 账号已解冻: userID=%d name=%q", targetID, user.Name)
+	return &response.AdminUnfreezeResp{UserID: targetID, IsFrozen: false}, nil
+}
+
+// ErrUnfreezeDeleted 尝试解冻一个已注销账号。
+//
+// 注销不可逆（#142），解冻它没有意义：登录面按 deleted_at 已经封死，
+// 清掉 frozen_at 也不会让它重新可用。
+var ErrUnfreezeDeleted = errors.New("该账号已注销，无法解冻")
+
+// ErrNotFrozen 对未冻结账号执行解冻（0012）。
+//
+// 单独给「本来就没冻结」一个明确错误：对未冻结账号点解冻是误操作，
+// 静默成功会让操作者以为解冻生效了，而实际上什么都没有发生。
+var ErrNotFrozen = errors.New("该账号当前未被冻结")
+
+/* ------------------------------------------------------------------ *
  * 辅助
  * ------------------------------------------------------------------ */
 
@@ -413,13 +471,23 @@ func toSet(ids []int) map[int]struct{} {
 func toAdminUserResp(user *domain.User, adminSet map[int]struct{}) response.AdminUserResp {
 	_, isAdmin := adminSet[user.ID]
 
+	// 冻结字段（0012）：时刻按 RFC3339 输出，未冻结统一空串，
+	// 前端无需为「有 frozen_at 但没 reason」这类半套状态写分支。
+	frozenAt := ""
+	if user.FrozenAt != nil {
+		frozenAt = user.FrozenAt.Format(time.RFC3339)
+	}
+
 	return response.AdminUserResp{
 		UserID:    user.ID,
 		Name:      user.Name,
 		CreatedAt: user.CreatedAt.Format(time.RFC3339),
 		IsAdmin:   isAdmin,
 		// 已注销行保留在列表里（#142 Q3），前端按此标「账号已注销」
-		IsDeleted: user.IsDeleted(),
-		Detail:    response.NewUserProfileDetail(user.Detail),
+		IsDeleted:    user.IsDeleted(),
+		IsFrozen:     user.IsFrozen(),
+		FrozenAt:     frozenAt,
+		FreezeReason: user.FreezeReason,
+		Detail:       response.NewUserProfileDetail(user.Detail),
 	}
 }

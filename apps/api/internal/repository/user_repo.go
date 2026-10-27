@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 	"gorm.io/gorm"
@@ -34,13 +35,45 @@ type UserRepo interface {
 	Save(ctx context.Context, user *domain.User) error
 	// GetAll 全量分页（**含已注销行**，管理端列表标 is_deleted）。
 	GetAll(ctx context.Context, page int, pageSize int) ([]*domain.User, int64, error)
+	// ListForAdmin 管理端分页列表，按 filter 过滤。
+	//
+	// 与 GetAll 并存而不是替换：GetAll 的「不排软删行」语义已被既有调用与
+	// 测试依赖，新增过滤维度（冻结）时改签名会波及无关代码。
+	ListForAdmin(ctx context.Context, page int, pageSize int, filter UserListFilter) ([]*domain.User, int64, error)
 	// SoftDelete 软删：置 deleted_at = now（幂等：已注销行返回 ErrUserAlreadyDeleted，
 	// 不重复写）。邮箱唯一索引（迁移 0011 partial）随之释放该邮箱。
 	SoftDelete(ctx context.Context, id int) error
+	// ListFreezeCandidates 列出「注册满 before 之前、未冻结、未注销」的账号，
+	// 供定时冻结任务逐个按资料规则判定（0012）。
+	ListFreezeCandidates(ctx context.Context, before time.Time) ([]*domain.User, error)
+	// Freeze 条件冻结：仅当该行仍未冻结时写入，返回是否真的写入。
+	//
+	// 条件更新（WHERE frozen_at IS NULL）是**多实例幂等闸门**：同一批候选被
+	// 两个进程同时扫到，只有一个能把 RowsAffected 拿到 1，另一个拿到 false，
+	// 据此跳过重复发信与重复记日志。
+	Freeze(ctx context.Context, id int, reason string, at time.Time) (bool, error)
+	// MarkFreezeNotified 记录冻结通知邮件的发出时间（幂等：只写未通知过的行）。
+	MarkFreezeNotified(ctx context.Context, id int, at time.Time) error
+	// Unfreeze 解冻：清空 frozen_at / freeze_reason / freeze_notified_at。
+	// 未冻结的行返回 ErrUserNotFrozen，调用方翻译成 400。
+	Unfreeze(ctx context.Context, id int) error
 }
 
 // ErrUserAlreadyDeleted 对已注销账号重复注销。
 var ErrUserAlreadyDeleted = errors.New("该账号已注销")
+
+// ErrUserNotFrozen 对未冻结账号执行解冻（0012）。
+var ErrUserNotFrozen = errors.New("该账号当前未被冻结")
+
+// UserListFilter 管理端用户列表的过滤条件，零值表示不额外限制。
+type UserListFilter struct {
+	// IncludeFrozen 是否把已冻结账号纳入列表。
+	//
+	// 默认 false：冻结是系统判定「资料不合规」的处置状态，管理员日常名单里
+	// 混进这批账号会淹没真正在推进招新的人。需要处置时显式打开。
+	// 注意它**只影响冻结**，已注销行（deleted_at）仍按 #142 Q3 保留展示。
+	IncludeFrozen bool
+}
 
 // ErrAmbiguousUsername 同一个用户名对应多个账号。
 var ErrAmbiguousUsername = errors.New("用户名对应多个账号，请改用邮箱登录")
@@ -210,6 +243,129 @@ func (r *gormUserRepo) SoftDelete(ctx context.Context, id int) error {
 			return ErrUserNotFound
 		}
 		return ErrUserAlreadyDeleted
+	}
+	return nil
+}
+
+/* ------------------------------------------------------------------ *
+ * 管理端列表过滤与冻结（0012）
+ * ------------------------------------------------------------------ */
+
+// ListForAdmin 管理端分页列表。
+//
+// 过滤条件与计数必须在**同一条查询条件**上：先 Count 再 Find 时若条件不一致，
+// total 会比实际能翻到的行数多，前端分页出现永远翻不到的尾页。
+// 因此这里把 filter 组装成可复用的 scope 函数，两次查询共用。
+func (r *gormUserRepo) ListForAdmin(
+	ctx context.Context,
+	page int,
+	pageSize int,
+	filter UserListFilter,
+) ([]*domain.User, int64, error) {
+	var users []*domain.User
+	var total int64
+
+	scope := func(db *gorm.DB) *gorm.DB {
+		// 已注销行照旧展示（#142 Q3）：历史与审计要能看到谁被注销了。
+		if !filter.IncludeFrozen {
+			db = db.Where("frozen_at IS NULL")
+		}
+		return db
+	}
+
+	if err := scope(r.db.WithContext(ctx).Model(&domain.User{})).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	if err := scope(r.db.WithContext(ctx)).
+		Order("id DESC").
+		Offset(offset).
+		Limit(pageSize).
+		Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return users, total, nil
+}
+
+// ListFreezeCandidates 列出待判定的冻结候选：注册时间早于 before、未冻结、未注销。
+//
+// 不在 SQL 里表达「资料不合规」：规则是 Go 里的正则（domain.ProfileIssues），
+// 在 SQL 里重写一遍必然与 Go 版本漂移。这里只按时间与状态粗筛，
+// 逐条判定交给调用方；注册满 7 天的账号是有限集合，全量取出可接受。
+func (r *gormUserRepo) ListFreezeCandidates(ctx context.Context, before time.Time) ([]*domain.User, error) {
+	var users []*domain.User
+	err := r.db.WithContext(ctx).
+		Where("frozen_at IS NULL AND deleted_at IS NULL AND created_at <= ?", before).
+		Order("id ASC").
+		Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+// Freeze 条件冻结。
+//
+// WHERE frozen_at IS NULL 承担两件事：多实例并发下只有一个进程能写成功，
+// 以及「已冻结的账号不会被第二次改写原因」。返回 false 表示这一行已经被
+// 别人（或上一轮扫描）冻结过，调用方应跳过发信。
+func (r *gormUserRepo) Freeze(ctx context.Context, id int, reason string, at time.Time) (bool, error) {
+	result := r.db.WithContext(ctx).
+		Model(&domain.User{}).
+		Where("id = ? AND frozen_at IS NULL AND deleted_at IS NULL", id).
+		Updates(map[string]any{
+			"frozen_at":     at,
+			"freeze_reason": reason,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// MarkFreezeNotified 记录通知邮件的发出时间。
+//
+// 条件里**不要求** frozen_at IS NOT NULL：调用顺序是「先发通知、再写冻结」，
+// 若要求已冻结，这条更新永远命中不了（冻结还没发生），于是每轮扫描都会
+// 重发一封通知。这里只要求「尚未记录过通知时间」，重复调用是无害空操作。
+func (r *gormUserRepo) MarkFreezeNotified(ctx context.Context, id int, at time.Time) error {
+	return r.db.WithContext(ctx).
+		Model(&domain.User{}).
+		Where("id = ? AND freeze_notified_at IS NULL", id).
+		Update("freeze_notified_at", at).Error
+}
+
+// Unfreeze 解冻：三列一起清空。
+//
+// 用 WHERE frozen_at IS NOT NULL 区分「本来就没冻结」：
+// 对未冻结账号点解冻是明确的误操作，要回 400 而不是静默成功。
+func (r *gormUserRepo) Unfreeze(ctx context.Context, id int) error {
+	result := r.db.WithContext(ctx).
+		Model(&domain.User{}).
+		Where("id = ? AND frozen_at IS NOT NULL", id).
+		Updates(map[string]any{
+			"frozen_at":          nil,
+			"freeze_reason":      "",
+			"freeze_notified_at": nil,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		// 区分「账号不存在」与「本来就没冻结」，两者对操作者的指引不同
+		var count int64
+		if err := r.db.WithContext(ctx).
+			Model(&domain.User{}).
+			Where("id = ?", id).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			return ErrUserNotFound
+		}
+		return ErrUserNotFrozen
 	}
 	return nil
 }

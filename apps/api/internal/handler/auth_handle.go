@@ -31,7 +31,8 @@ func NewAuthHandler(authService *service.AuthUseCase, limiter *utils.Limiter) *A
 // Login 用户登录接口
 // @Summary 用户登录
 // @Description 通过用户名**或邮箱** + 密码登录，返回双令牌（access_token + refresh_token）。
-// 用户名不唯一时请用邮箱登录。
+// @Description 用户名不唯一时请用邮箱登录。
+// @Description 资料不合规被冻结的账号（0012）返回 403，需联系管理员解冻。
 // @Tags 认证模块
 // @Accept json
 // @Produce json
@@ -39,6 +40,8 @@ func NewAuthHandler(authService *service.AuthUseCase, limiter *utils.Limiter) *A
 // @Success 200 {object} response.Result{data=response.LoginResp} "成功返回双令牌"
 // @Failure 400 {object} response.Result "请求参数错误"
 // @Failure 401 {object} response.Result "用户名或密码错误（不区分二者）"
+// @Failure 403 {object} response.Result "账号因资料不完整已被冻结"
+// @Failure 429 {object} response.Result "连续失败次数过多，账号临时锁定"
 // @Router /api/v1/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var dto request.LoginReq
@@ -487,6 +490,12 @@ func failAuth(c *gin.Context, err error) {
 
 	case errors.Is(err, service.ErrAccountLocked):
 		response.FailTooManyRequests(c, err.Error())
+
+	// 冻结账号（0012）：403 而不是 401。
+	// 401 会被前端当成「会话过期」触发刷新/清会话跳登录页，而这里凭据是对的、
+	// 只是账号被停用——用 403 让前端展示「账号已冻结」提示，不要把用户甩回登录页。
+	case errors.Is(err, service.ErrAccountFrozen):
+		response.FailForbidden(c, err.Error())
 
 	case errors.Is(err, service.ErrEmailTaken),
 		errors.Is(err, service.ErrAccountNotFoundForReset),

@@ -1564,7 +1564,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "分页读取已注册用户，并标注其当前是否为管理员。响应不含密码哈希。",
+                "description": "分页读取已注册用户，并标注其当前是否为管理员。响应不含密码哈希。\n默认不返回因资料不合规被冻结的账号（0012）；include_frozen=true 时一并返回。",
                 "produces": [
                     "application/json"
                 ],
@@ -1585,6 +1585,13 @@ const docTemplate = `{
                         "default": 20,
                         "description": "每页条数，最大 100",
                         "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "是否包含已冻结账号，默认 false",
+                        "name": "include_frozen",
                         "in": "query"
                     }
                 ],
@@ -1667,6 +1674,70 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "非管理员或非创始管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/users/{user_id}/unfreeze": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "清除因资料不合规产生的冻结标记，允许该账号重新登录补全资料。仅管理员可调。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端"
+                ],
+                "summary": "解冻账号",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "目标用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "解冻成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.AdminUnfreezeResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "用户不存在/账号未冻结/账号已注销",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
                         "schema": {
                             "$ref": "#/definitions/response.Result"
                         }
@@ -2262,7 +2333,7 @@ const docTemplate = `{
         },
         "/api/v1/login": {
             "post": {
-                "description": "通过用户名**或邮箱** + 密码登录，返回双令牌（access_token + refresh_token）。",
+                "description": "通过用户名**或邮箱** + 密码登录，返回双令牌（access_token + refresh_token）。\n用户名不唯一时请用邮箱登录。\n资料不合规被冻结的账号（0012）返回 403，需联系管理员解冻。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2311,6 +2382,18 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "用户名或密码错误（不区分二者）",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "账号因资料不完整已被冻结",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "429": {
+                        "description": "连续失败次数过多，账号临时锁定",
                         "schema": {
                             "$ref": "#/definitions/response.Result"
                         }
@@ -3713,6 +3796,18 @@ const docTemplate = `{
                 }
             }
         },
+        "response.AdminUnfreezeResp": {
+            "type": "object",
+            "properties": {
+                "is_frozen": {
+                    "description": "IsFrozen 恒为 false：解冻成功后回显目标状态，前端据此就地更新行。",
+                    "type": "boolean"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "response.AdminUserListResp": {
             "type": "object",
             "properties": {
@@ -3747,12 +3842,24 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "freeze_reason": {
+                    "description": "FreezeReason 冻结原因快照（例如「班级须为「汉字 + 6 位数字」」），未冻结为空串。",
+                    "type": "string"
+                },
+                "frozen_at": {
+                    "description": "FrozenAt 冻结时刻（RFC3339），未冻结为空串。",
+                    "type": "string"
+                },
                 "is_admin": {
                     "description": "IsAdmin 由 Redis 名单现算，方便管理端直接标注\"当前是不是管理员\"",
                     "type": "boolean"
                 },
                 "is_deleted": {
                     "description": "IsDeleted 账号是否已注销（issue #142 Q3：历史保留，列表标注）。\nfalse = 正常账号；true = 软删行，前端显示「账号已注销」。",
+                    "type": "boolean"
+                },
+                "is_frozen": {
+                    "description": "IsFrozen 账号是否因资料不合规被冻结（0012）。\n列表默认不返回冻结行，只有显式 include_frozen=true 时才会出现 true。",
                     "type": "boolean"
                 },
                 "name": {

@@ -23,6 +23,10 @@ import (
 // wire.Bind(new(接口), new(*实现)) 解决，现在改成"返回值就是接口"的 NewXxx，
 // 每个都写在接口声明的旁边（utils/admin_store.go、service/auth_usec.go、
 // handler/health_handle.go …）。本文件里因此既没有 new()，也没有 cmd 侧的胶水 provider。
+//
+// 返回 *service.FreezeScheduler 会让装配变得别扭（wire 的 injector 只接受
+// 单个主返回值），而且定时任务本来就该跟 HTTP 服务同生共死——因此它作为
+// NewRouter 的依赖注入，由 Router.Run 在服务启动/退出时 Start/Stop。
 func InitializeApp() (*handler.Router, func(), error) {
 	configConfig, err := config.Load()
 	if err != nil {
@@ -78,7 +82,10 @@ func InitializeApp() (*handler.Router, func(), error) {
 	recruitmentInvitationUseCase := service.NewRecruitmentInvitationUseCase(applicationStore, invitationRepo, candidateRepo, userRepo, businessMailer, mailModelRepo)
 	recruitmentInvitationHandler := handler.NewRecruitmentInvitationHandler(recruitmentInvitationUseCase)
 	formHandler := handler.NewFormHandler(formUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, tokenManager, adminStore)
+	freezeMailer := service.NewFreezeMailer(mailUseCase)
+	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker)
+	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, freezeScheduler, tokenManager, adminStore)
 	return router, func() {
 		cleanup()
 	}, nil

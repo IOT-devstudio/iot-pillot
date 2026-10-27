@@ -223,6 +223,28 @@ func (s *userRepoStub) GetAll(ctx context.Context, page, pageSize int) ([]*domai
 // SoftDelete 空实现（issue #142 加接口方法）：邀请测试不涉及注销。
 func (s *userRepoStub) SoftDelete(ctx context.Context, id int) error { return nil }
 
+// 以下为 0012 冻结相关接口方法的空实现：邀请流程不涉及冻结判定。
+func (s *userRepoStub) ListForAdmin(
+	_ context.Context,
+	_ int,
+	_ int,
+	_ repository.UserListFilter,
+) ([]*domain.User, int64, error) {
+	return nil, 0, nil
+}
+
+func (s *userRepoStub) ListFreezeCandidates(_ context.Context, _ time.Time) ([]*domain.User, error) {
+	return nil, nil
+}
+
+func (s *userRepoStub) Freeze(_ context.Context, _ int, _ string, _ time.Time) (bool, error) {
+	return false, nil
+}
+
+func (s *userRepoStub) MarkFreezeNotified(_ context.Context, _ int, _ time.Time) error { return nil }
+
+func (s *userRepoStub) Unfreeze(_ context.Context, _ int) error { return nil }
+
 type mailModelRepoStub struct {
 	models map[int]*domain.MailModel
 }

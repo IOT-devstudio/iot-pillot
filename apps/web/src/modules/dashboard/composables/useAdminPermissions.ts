@@ -19,6 +19,7 @@ import {
   listAdminUsers,
   listAdmins,
   revokeAdmin,
+  unfreezeAdminUser,
   type AdminMutation,
   type AdminUser,
   type CurrentUser,
@@ -106,21 +107,26 @@ export interface AdminPermissionsDeps {
   listUsers: (
     page: number,
     pageSize: number,
+    includeFrozen: boolean,
   ) => Promise<{ items: AdminUser[]; total: number }>;
   listAdmins: () => Promise<{ items: AdminUser[] }>;
   grantAdmin: (userId: number) => Promise<AdminMutation>;
   revokeAdmin: (userId: number) => Promise<AdminMutation>;
   /** 注销账号（issue #142，仅创始管理员可调；后端另有三重守卫） */
   deleteAdminUser: (userId: number) => Promise<void>;
+  /** 解冻账号（0012）：只清冻结标记，资料是否补齐由下一轮扫描判定 */
+  unfreezeAdminUser: (userId: number) => Promise<{ user_id: number; is_frozen: boolean }>;
 }
 
 const defaultDeps: AdminPermissionsDeps = {
   fetchCurrentUser: () => fetchCurrentUser(),
-  listUsers: (page, pageSize) => listAdminUsers(page, pageSize),
+  listUsers: (page, pageSize, includeFrozen) =>
+    listAdminUsers(page, pageSize, includeFrozen),
   listAdmins: () => listAdmins(),
   grantAdmin: (userId) => grantAdmin(userId),
   revokeAdmin: (userId) => revokeAdmin(userId),
   deleteAdminUser: (userId) => deleteAdminUser(userId),
+  unfreezeAdminUser: (userId) => unfreezeAdminUser(userId),
 };
 
 /**
@@ -167,6 +173,14 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
 
   const keyword = ref("");
   const roleFilter = ref<RoleFilter>("all");
+  /**
+   * 是否把已冻结账号纳入列表（0012）。
+   *
+   * 默认 false：冻结是系统按「资料不合规」自动做的处置，混在日常名单里
+   * 会淹没真正在推进招新的人。开关交给后端过滤（include_frozen），
+   * 而不是前端把已有行筛掉——否则分页 total 与可翻页数会对不上。
+   */
+  const showFrozen = ref(false);
 
   const pageCount = computed(() =>
     Math.max(1, Math.ceil(total.value / pageSize.value)),
@@ -231,7 +245,11 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
   async function loadUsers(): Promise<void> {
     usersLoading.value = true;
     try {
-      const result = await deps.listUsers(page.value, pageSize.value);
+      const result = await deps.listUsers(
+        page.value,
+        pageSize.value,
+        showFrozen.value,
+      );
       users.value = result.items;
       total.value = result.total;
       usersError.value = "";
@@ -245,6 +263,18 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     } finally {
       usersLoading.value = false;
     }
+  }
+
+  /**
+   * 切换「显示冻结账号」并重新取数。
+   *
+   * 回到第 1 页：过滤变化后 total 会变，停在原页码可能落到最后一页之外，
+   * 表现为「打开开关后一片空白」。
+   */
+  async function toggleFrozenVisibility(next?: boolean): Promise<void> {
+    showFrozen.value = next ?? !showFrozen.value;
+    page.value = 1;
+    await loadUsers();
   }
 
   async function loadAdmins(): Promise<void> {
@@ -412,6 +442,44 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     roleFilter.value = "all";
   }
 
+  /**
+   * 解冻账号（0012）。
+   *
+   * 只清冻结标记、不校验资料是否已补齐：解冻的语义是「允许对方重新登录去改」。
+   * 因此确认文案要提醒操作者先确认对方已把资料改对，否则下一轮扫描会再冻结。
+   */
+  async function unfreezeUser(user: AdminUser): Promise<void> {
+    if (!user.is_frozen) {
+      ElMessage.warning("该账号当前未被冻结");
+      return;
+    }
+
+    try {
+      await ElMessageBox.confirm(
+        `解冻「${user.name}」后其可重新登录。若资料仍不合规，下一轮定时检查会再次冻结。确认解冻？`,
+        "解冻账号",
+        {
+          type: "warning",
+          confirmButtonText: "确认解冻",
+          cancelButtonText: "取消",
+        },
+      );
+    } catch {
+      return; // 用户取消
+    }
+
+    markBusy(user.user_id, true);
+    try {
+      await deps.unfreezeAdminUser(user.user_id);
+      ElMessage.success("账号已解冻，该用户可重新登录补全资料");
+      await refresh();
+    } catch (error: unknown) {
+      ElMessage.error(describeAuthError(error).message);
+    } finally {
+      markBusy(user.user_id, false);
+    }
+  }
+
   return {
     // 用户列表
     users,
@@ -440,6 +508,10 @@ export function useAdminPermissions(deps: AdminPermissionsDeps = defaultDeps) {
     keyword,
     roleFilter,
     resetFilters,
+    // 冻结（0012）
+    showFrozen,
+    toggleFrozenVisibility,
+    unfreezeUser,
     // 动作
     loadAll,
     loadUsers,

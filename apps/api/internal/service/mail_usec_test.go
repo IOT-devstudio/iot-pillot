@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/request"
@@ -145,6 +146,28 @@ func (s *stubUserRepo) GetAll(_ context.Context, _, _ int) ([]*domain.User, int6
 
 // SoftDelete 空实现（issue #142 加接口方法）：发信测试不涉及注销。
 func (s *stubUserRepo) SoftDelete(_ context.Context, _ int) error { return nil }
+
+// 以下为 0012 冻结相关接口方法的空实现：发信测试不涉及冻结判定。
+func (s *stubUserRepo) ListForAdmin(
+	_ context.Context,
+	_ int,
+	_ int,
+	_ repository.UserListFilter,
+) ([]*domain.User, int64, error) {
+	return s.all, int64(len(s.all)), nil
+}
+
+func (s *stubUserRepo) ListFreezeCandidates(_ context.Context, _ time.Time) ([]*domain.User, error) {
+	return nil, nil
+}
+
+func (s *stubUserRepo) Freeze(_ context.Context, _ int, _ string, _ time.Time) (bool, error) {
+	return false, nil
+}
+
+func (s *stubUserRepo) MarkFreezeNotified(_ context.Context, _ int, _ time.Time) error { return nil }
+
+func (s *stubUserRepo) Unfreeze(_ context.Context, _ int) error { return nil }
 
 func (s *stubMailRepo) Create(_ context.Context, mail *domain.Mail) error {
 	if s.err != nil {

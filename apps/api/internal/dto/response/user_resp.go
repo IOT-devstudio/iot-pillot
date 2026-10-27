@@ -76,9 +76,23 @@ type AdminUserResp struct {
 	// IsDeleted 账号是否已注销（issue #142 Q3：历史保留，列表标注）。
 	// false = 正常账号；true = 软删行，前端显示「账号已注销」。
 	IsDeleted bool `json:"is_deleted"`
+	// IsFrozen 账号是否因资料不合规被冻结（0012）。
+	// 列表默认不返回冻结行，只有显式 include_frozen=true 时才会出现 true。
+	IsFrozen bool `json:"is_frozen"`
+	// FrozenAt 冻结时刻（RFC3339），未冻结为空串。
+	FrozenAt string `json:"frozen_at"`
+	// FreezeReason 冻结原因快照（例如「班级须为「汉字 + 6 位数字」」），未冻结为空串。
+	FreezeReason string `json:"freeze_reason"`
 	// Detail 只读资料（issue #57）：管理员能看到完整信息，但改不了——
 	// 编辑入口只有本人的 PUT /me。
 	Detail UserProfileDetail `json:"detail"`
+}
+
+// AdminUnfreezeResp 解冻账号的结果（0012）。
+type AdminUnfreezeResp struct {
+	UserID int `json:"user_id"`
+	// IsFrozen 恒为 false：解冻成功后回显目标状态，前端据此就地更新行。
+	IsFrozen bool `json:"is_frozen"`
 }
 
 // AdminUserListResp 管理端用户列表分页结果。
