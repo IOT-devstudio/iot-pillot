@@ -46,6 +46,12 @@ type UserRepo interface {
 	// ListFreezeCandidates 列出「注册满 before 之前、未冻结、未注销」的账号，
 	// 供定时冻结任务逐个按资料规则判定（0012）。
 	ListFreezeCandidates(ctx context.Context, before time.Time) ([]*domain.User, error)
+	// ListFrozen 列出当前所有已冻结、未注销的账号。
+	//
+	// 用途只有一个：定时任务把「管理员被误冻结」这种自锁状态捞回来。
+	// 管理员的冻结是事故而不是处置——唯一最高权限账号一旦被冻，
+	// 谁也调不了解冻接口。因此扫描每轮都要能看见冻结行做自救。
+	ListFrozen(ctx context.Context) ([]*domain.User, error)
 	// Freeze 条件冻结：仅当该行仍未冻结时写入，返回是否真的写入。
 	//
 	// 条件更新（WHERE frozen_at IS NULL）是**多实例幂等闸门**：同一批候选被
@@ -298,6 +304,23 @@ func (r *gormUserRepo) ListFreezeCandidates(ctx context.Context, before time.Tim
 	var users []*domain.User
 	err := r.db.WithContext(ctx).
 		Where("frozen_at IS NULL AND deleted_at IS NULL AND created_at <= ?", before).
+		Order("id ASC").
+		Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+// ListFrozen 列出已冻结、未注销的账号（供管理员自救使用）。
+//
+// 为什么单独一条查询：ListFreezeCandidates 按定义排除已冻结行，
+// 而「管理员已经被冻结」恰恰只能在已冻结行里发现。冻结集合是人工处置
+// 的少量数据，全量取出没有性能问题。
+func (r *gormUserRepo) ListFrozen(ctx context.Context) ([]*domain.User, error) {
+	var users []*domain.User
+	err := r.db.WithContext(ctx).
+		Where("frozen_at IS NOT NULL AND deleted_at IS NULL").
 		Order("id ASC").
 		Find(&users).Error
 	if err != nil {

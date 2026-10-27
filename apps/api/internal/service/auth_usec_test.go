@@ -138,6 +138,17 @@ func (r *issue86UserRepo) ListFreezeCandidates(_ context.Context, before time.Ti
 	return result, nil
 }
 
+// ListFrozen 返回当前已冻结、未注销的账号（管理员自救用）。
+func (r *issue86UserRepo) ListFrozen(_ context.Context) ([]*domain.User, error) {
+	var result []*domain.User
+	for _, user := range r.all {
+		if user.IsFrozen() && !user.IsDeleted() {
+			result = append(result, user)
+		}
+	}
+	return result, nil
+}
+
 // Freeze 条件冻结：只有未冻结行会被写入。
 func (r *issue86UserRepo) Freeze(_ context.Context, id int, reason string, at time.Time) (bool, error) {
 	user, ok := r.byID[id]

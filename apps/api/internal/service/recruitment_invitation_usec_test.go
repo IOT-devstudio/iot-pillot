@@ -237,6 +237,8 @@ func (s *userRepoStub) ListFreezeCandidates(_ context.Context, _ time.Time) ([]*
 	return nil, nil
 }
 
+func (s *userRepoStub) ListFrozen(_ context.Context) ([]*domain.User, error) { return nil, nil }
+
 func (s *userRepoStub) Freeze(_ context.Context, _ int, _ string, _ time.Time) (bool, error) {
 	return false, nil
 }

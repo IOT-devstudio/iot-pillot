@@ -83,7 +83,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 	recruitmentInvitationHandler := handler.NewRecruitmentInvitationHandler(recruitmentInvitationUseCase)
 	formHandler := handler.NewFormHandler(formUseCase)
 	freezeMailer := service.NewFreezeMailer(mailUseCase)
-	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker)
+	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker, adminDirectory)
 	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
 	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, freezeScheduler, tokenManager, adminStore)
 	return router, func() {

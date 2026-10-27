@@ -87,6 +87,7 @@ func (s *FreezeScheduler) runOnce(trigger string) {
 		return
 	}
 
-	log.Printf("[freeze] %s扫描完成：候选 %d，合规 %d，冻结 %d，已被冻结 %d，邮件失败 %d",
-		trigger, result.Candidates, result.Compliant, result.Frozen, result.AlreadyFrozen, result.MailFailed)
+	log.Printf("[freeze] %s扫描完成：候选 %d，合规 %d，冻结 %d，已被冻结 %d，邮件失败 %d，跳过管理员 %d，解冻管理员 %d",
+		trigger, result.Candidates, result.Compliant, result.Frozen, result.AlreadyFrozen,
+		result.MailFailed, result.SkippedAdmins, result.RescuedAdmins)
 }
