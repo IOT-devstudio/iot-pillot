@@ -18,7 +18,7 @@ const missing = computed(() => {
 
 <template>
   <aside v-if="missing.length" class="profile-notice" role="status" aria-live="polite">
-    <span>请补全{{ missing.join("、") }}，方便我们核对报名资料。</span>
+    <span>资料待完善：{{ missing.join("、") }}。请到个人设置按提示修改，格式不符会在注册满 7 天后被冻结。</span>
     <RouterLink to="/user/settings">去完善资料 →</RouterLink>
   </aside>
 </template>

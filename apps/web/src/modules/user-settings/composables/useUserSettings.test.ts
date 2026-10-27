@@ -33,8 +33,8 @@ function profile(overrides: Partial<MyProfile> = {}): MyProfile {
     name: "Ada",
     role: "member",
     detail: {
-      class: "iot 2301",
-      student_id: 2023114514,
+      class: "物联网230301",
+      student_id: 202311451,
       qq: "1044696157",
       direction: "front-end",
       email: "ada@example.edu.cn",
@@ -60,8 +60,8 @@ describe("useUserSettings（字段级自动保存，#149）", () => {
     await state.load();
     expect(state.form).toEqual({
       name: "Ada",
-      class: "iot 2301",
-      studentId: "2023114514",
+      class: "物联网230301",
+      studentId: "202311451",
       qq: "1044696157",
       direction: "front-end",
     });
@@ -73,13 +73,13 @@ describe("useUserSettings（字段级自动保存，#149）", () => {
     const state = useUserSettings(makeDeps({ updateMyProfile: update }));
     await state.load();
 
-    state.form.class = "iot 2402";
+    state.form.class = "物联网240201";
     await state.saveField("class");
 
     // 只带 class 字段，不带姓名/学号/QQ
     expect(update).toHaveBeenCalledTimes(1);
     const [payload, userId] = update.mock.calls[0]!;
-    expect(payload).toEqual({ class: "iot 2402" });
+    expect(payload).toEqual({ class: "物联网240201" });
     expect(userId).toBe(1);
     expect(state.fieldStatuses.class).toBe("saved");
   });
@@ -140,7 +140,7 @@ describe("useUserSettings（字段级自动保存，#149）", () => {
     expect(state.latestDirection.value).toBe("back-end");
     expect(state.directionError.value).toContain("联系管理员");
 
-    state.form.class = "iot 2402";
+    state.form.class = "物联网240201";
     await state.saveField("class");
     expect(update).not.toHaveBeenCalled();
     expect(state.fieldStatuses.class).toBe("error");
@@ -166,11 +166,11 @@ describe("useUserSettings（字段级自动保存，#149）", () => {
     });
     const state = useUserSettings(makeDeps({ updateMyProfile: update }));
     await state.load();
-    state.form.class = "iot 2402";
+    state.form.class = "物联网240201";
     await state.saveField("class");
     expect(state.fieldStatuses.class).toBe("error");
     expect(state.fieldErrors.value.class).toBeTruthy();
-    expect(state.form.class).toBe("iot 2402");
+    expect(state.form.class).toBe("物联网240201");
 
     await state.retryField("class");
     expect(state.fieldStatuses.class).toBe("saved");
@@ -220,12 +220,12 @@ describe("useUserSettings（字段级自动保存，#149）", () => {
     const update = vi.fn(async (_input?: MyProfileUpdate) => profile());
     const state = useUserSettings(makeDeps({ updateMyProfile: update }));
     await state.load();
-    state.form.class = "新班级";
+    state.form.class = "物联网240401";
     state.form.qq = "88888";
     await state.autoSave();
     expect(update).toHaveBeenCalledTimes(1);
     const [payload] = update.mock.calls[0]!;
-    expect(payload).toMatchObject({ class: "新班级", qq: "88888" });
+    expect(payload).toMatchObject({ class: "物联网240401", qq: "88888" });
   });
 
   it("waits for an in-flight field save before auto-saving the latest draft", async () => {
@@ -237,24 +237,24 @@ describe("useUserSettings（字段级自动保存，#149）", () => {
     const state = useUserSettings(makeDeps({ updateMyProfile: update }));
     await state.load();
 
-    state.form.class = "iot 2402";
+    state.form.class = "物联网240201";
     const fieldSave = state.saveField("class");
     await vi.waitFor(() => expect(resolveFirst).toBeTypeOf("function"));
 
-    state.form.class = "iot 2403";
+    state.form.class = "物联网240301";
     const pageSave = state.autoSave();
     await Promise.resolve();
     expect(update).toHaveBeenCalledTimes(1);
 
-    resolveFirst(profile({ detail: { ...profile().detail, class: "iot 2402" } }));
+    resolveFirst(profile({ detail: { ...profile().detail, class: "物联网240201" } }));
     await fieldSave;
     await vi.waitFor(() => expect(resolveSecond).toBeTypeOf("function"));
-    expect(update.mock.calls[1]?.[0]).toMatchObject({ class: "iot 2403" });
+    expect(update.mock.calls[1]?.[0]).toMatchObject({ class: "物联网240301" });
 
-    resolveSecond(profile({ detail: { ...profile().detail, class: "iot 2403" } }));
+    resolveSecond(profile({ detail: { ...profile().detail, class: "物联网240301" } }));
     await pageSave;
     expect(update).toHaveBeenCalledTimes(2);
-    expect(state.form.class).toBe("iot 2403");
+    expect(state.form.class).toBe("物联网240301");
   });
 
   it("coalesces overlapping page auto-saves into one PUT", async () => {
@@ -278,7 +278,7 @@ describe("useUserSettings（字段级自动保存，#149）", () => {
     const update = vi.fn(async () => profile());
     const state = useUserSettings(makeDeps({ updateMyProfile: update }));
     await state.load();
-    state.form.class = "新班级";
+    state.form.class = "物联网240401";
     state.form.studentId = "0"; // 非法
     expect(await state.autoSave()).toBe(false);
     expect(update).not.toHaveBeenCalled();
@@ -357,8 +357,8 @@ describe("nextFormFromProfile", () => {
   it("maps detail into the form shape", () => {
     expect(nextFormFromProfile(profile())).toEqual({
       name: "Ada",
-      class: "iot 2301",
-      studentId: "2023114514",
+      class: "物联网230301",
+      studentId: "202311451",
       qq: "1044696157",
       direction: "front-end",
     });

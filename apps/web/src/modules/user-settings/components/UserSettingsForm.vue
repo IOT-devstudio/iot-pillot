@@ -90,7 +90,7 @@ function onInput(key: FieldKey): void {
         role="status"
         aria-live="polite"
       >
-        请补全班级和学号；QQ 为选填。完善后将不再显示登录补全提醒。
+        请补全或修正班级和学号；QQ 为选填。注册满 7 天资料仍不合规的账号会被定时冻结。
       </p>
 
       <!-- 姓名 -->
@@ -127,12 +127,16 @@ function onInput(key: FieldKey): void {
           type="text"
           maxlength="64"
           autocomplete="off"
-          placeholder="如：物联网 2301"
+          placeholder="如：软件工程230301"
           required
           :aria-invalid="Boolean(fieldErrors.class)"
+          aria-describedby="settings-class-hint"
           @input="onInput('class')"
           @blur="onBlur('class')"
         />
+        <span id="settings-class-hint" class="settings__hint">
+          汉字 + 6 位数字，例如 软件工程230301。
+        </span>
         <span class="settings__status" role="status" :data-status="fieldStatuses.class">
           <template v-if="fieldStatuses.class === 'saving'">保存中…</template>
           <template v-else-if="fieldStatuses.class === 'saved'">已保存</template>
@@ -151,14 +155,14 @@ function onInput(key: FieldKey): void {
           class="settings__input"
           type="text"
           inputmode="numeric"
-          placeholder="如：2023114514"
+          placeholder="如：202311451"
           required
           :aria-invalid="Boolean(fieldErrors.studentId)"
           aria-describedby="settings-student-hint"
           @input="onInput('studentId')"
           @blur="onBlur('studentId')"
         />
-        <span id="settings-student-hint" class="settings__hint">填写完整的整数学号；0 表示未填写。</span>
+        <span id="settings-student-hint" class="settings__hint">9 位数字，例如 202311451。</span>
         <span class="settings__status" role="status" :data-status="fieldStatuses.studentId">
           <template v-if="fieldStatuses.studentId === 'saving'">保存中…</template>
           <template v-else-if="fieldStatuses.studentId === 'saved'">已保存</template>
