@@ -7,6 +7,7 @@ import (
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 )
 
 /* ------------------------------------------------------------------ *
@@ -58,6 +59,12 @@ type FreezeUseCase struct {
 	// 不做这一步，冻结只挡住「新登录」和「刷新令牌」，而冻结前签发的 access
 	// token 在过期前仍能调接口——账号看起来被封了，实际还能操作数据。
 	sessions SessionRevoker
+	// admins 管理员名单（Redis 真源），用于把管理员排除在自动冻结之外。
+	//
+	// 为什么必须排除：冻结会同时封死登录与解冻接口（解冻本身要管理员身份）。
+	// 唯一最高权限账号被冻结后，系统就再没有任何人能通过 API 解冻它——
+	// 这是自锁，不是处置。管理员资料不合规要靠人工提醒，不能靠自动封号。
+	admins utils.AdminDirectory
 	// now 可注入，便于测试固定时钟；生产装配用 time.Now。
 	now func() time.Time
 }
@@ -67,8 +74,15 @@ func NewFreezeUseCase(
 	users repository.UserRepo,
 	mailer FreezeMailer,
 	sessions SessionRevoker,
+	admins utils.AdminDirectory,
 ) *FreezeUseCase {
-	return &FreezeUseCase{users: users, mailer: mailer, sessions: sessions, now: time.Now}
+	return &FreezeUseCase{
+		users:    users,
+		mailer:   mailer,
+		sessions: sessions,
+		admins:   admins,
+		now:      time.Now,
+	}
 }
 
 // FreezeRunResult 一次扫描的结果，供日志与测试断言。
@@ -83,6 +97,10 @@ type FreezeRunResult struct {
 	AlreadyFrozen int
 	// MailFailed 邮件发送失败、本轮跳过冻结的数量（下一轮重试）
 	MailFailed int
+	// SkippedAdmins 本轮因是管理员而跳过冻结的数量
+	SkippedAdmins int
+	// RescuedAdmins 本轮被解冻的管理员数量（自救：此前被误冻结的管理员）
+	RescuedAdmins int
 }
 
 // RunOnce 执行一次扫描并冻结。
@@ -90,11 +108,30 @@ type FreezeRunResult struct {
 // 幂等：所有写操作都带条件（Freeze 要求 frozen_at IS NULL），
 // 因此重复执行、多实例并发执行都不会重复冻结或重复发信。
 // 单个账号的失败只记日志、继续处理其余账号——一个坏邮箱不该让整批停摆。
+//
+// 管理员例外（hotfix）：
+//  1. 已是管理员的账号**永不自动冻结**——冻结会同时封死登录与解冻入口，
+//     唯一最高权限账号被冻后没有任何 API 能救回来；
+//  2. 每轮先把「当前被冻结的管理员」解冻，这是对已经发生的自锁状态的自救。
 func (uc *FreezeUseCase) RunOnce(ctx context.Context) (FreezeRunResult, error) {
 	var result FreezeRunResult
 
 	now := uc.now()
 	deadline := now.Add(-FreezeGracePeriod)
+
+	// 管理员名单读 Redis：读不到就整轮放弃。
+	// 宁可这轮不冻结，也不能在不知道谁是管理员的情况下批量封号——
+	// 那正是把最高权限账号锁死的路径。
+	adminIDs, err := uc.admins.ListAdmins(ctx)
+	if err != nil {
+		return result, err
+	}
+	adminSet := make(map[int]struct{}, len(adminIDs))
+	for _, id := range adminIDs {
+		adminSet[id] = struct{}{}
+	}
+
+	result.RescuedAdmins = uc.rescueFrozenAdmins(ctx, adminSet, now)
 
 	candidates, err := uc.users.ListFreezeCandidates(ctx, deadline)
 	if err != nil {
@@ -104,6 +141,12 @@ func (uc *FreezeUseCase) RunOnce(ctx context.Context) (FreezeRunResult, error) {
 
 	for _, user := range candidates {
 		if user == nil {
+			continue
+		}
+
+		// 管理员一律跳过（见方法注释）：不判断资料、不发冻结邮件、不冻结。
+		if _, isAdmin := adminSet[user.ID]; isAdmin {
+			result.SkippedAdmins++
 			continue
 		}
 
@@ -153,4 +196,47 @@ func (uc *FreezeUseCase) RunOnce(ctx context.Context) (FreezeRunResult, error) {
 	}
 
 	return result, nil
+}
+
+// rescueFrozenAdmins 解冻「当前被冻结的管理员」，返回解冻数量。
+//
+// 这是自锁状态的自救通道：0012 上线首轮扫描按资料规则冻结了管理员，
+// 而解冻接口要求管理员身份——锁死。每轮扫描先跑这段，容器重启后
+// 管理员即恢复，不依赖人工改库。
+//
+// 只对管理员生效：普通用户的冻结是正常处置，不能被这里顺手放开。
+// 单个失败只记日志，不影响本轮其余账号的处理。
+func (uc *FreezeUseCase) rescueFrozenAdmins(
+	ctx context.Context,
+	adminSet map[int]struct{},
+	now time.Time,
+) int {
+	if len(adminSet) == 0 {
+		return 0
+	}
+
+	frozenUsers, err := uc.users.ListFrozen(ctx)
+	if err != nil {
+		log.Printf("[freeze] 读取已冻结账号失败（本轮跳过管理员自救）: %v", err)
+		return 0
+	}
+
+	rescued := 0
+	for _, user := range frozenUsers {
+		if user == nil || !user.IsFrozen() {
+			continue
+		}
+		if _, isAdmin := adminSet[user.ID]; !isAdmin {
+			continue
+		}
+
+		if err := uc.users.Unfreeze(ctx, user.ID); err != nil {
+			log.Printf("[freeze] 管理员 userID=%d 已冻结但解冻失败（下一轮重试）: %v", user.ID, err)
+			continue
+		}
+		rescued++
+		log.Printf("[freeze] 已解冻误冻结的管理员 userID=%d（原因曾是：%s），解冻时刻 %s",
+			user.ID, user.FreezeReason, now.Format(time.RFC3339))
+	}
+	return rescued
 }

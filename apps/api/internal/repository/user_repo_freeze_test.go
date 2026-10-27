@@ -205,3 +205,34 @@ func TestFreeze_RefusesDeletedUser(t *testing.T) {
 		t.Fatal("已注销账号不应被冻结")
 	}
 }
+
+func TestListFrozen_ExcludesDeleted(t *testing.T) {
+	db := repoTestDBUsers(t)
+	repo := NewUserRepo(db)
+	ctx := context.Background()
+
+	frozen := seedFreezeUser(t, db, "frozen-admin", time.Now().AddDate(0, 0, -8))
+	deleted := seedFreezeUser(t, db, "deleted-frozen", time.Now().AddDate(0, 0, -8))
+	normal := seedFreezeUser(t, db, "normal", time.Now())
+	now := time.Now()
+	if err := db.Model(&domain.User{}).Where("id IN ?", []int{frozen.ID, deleted.ID}).
+		Update("frozen_at", now).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&domain.User{}).Where("id = ?", deleted.ID).
+		Update("deleted_at", now).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	users, err := repo.ListFrozen(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || users[0].ID != frozen.ID {
+		ids := make([]int, 0, len(users))
+		for _, user := range users {
+			ids = append(ids, user.ID)
+		}
+		t.Fatalf("只应返回未注销的冻结账号，实际 %v（normal=%d）", ids, normal.ID)
+	}
+}
