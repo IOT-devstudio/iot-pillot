@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IOT-devstudio/iot-pillot/apps/api/migrations"
 	_ "github.com/lib/pq"
 )
 
@@ -408,5 +409,41 @@ func TestFormsOpenUniqueRejectsExistingDuplicates(t *testing.T) {
 	}
 	if !exists {
 		t.Fatal("清理后重跑应当建出索引")
+	}
+}
+
+// TestMigrationVersionsUnique 不需要数据库：只读嵌入的 SQL 文件名。
+//
+// golang-migrate 在源初始化阶段就以「duplicate migration file」直接失败，
+// 表现是服务起不来、迁移工具跑不动、镜像冒烟测试红。这类错误必须在
+// 提交前就被挡住——曾经有一次把另一个分支未跟踪的 0011_*.up.sql 带进
+// 主干，直到部署阶段才暴露（阻断发布）。
+func TestMigrationVersionsUnique(t *testing.T) {
+	entries, err := migrations.Files.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen := map[string]string{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".up.sql") && !strings.HasSuffix(name, ".down.sql") {
+			continue // README / embed.go 等
+		}
+		version := strings.SplitN(name, "_", 2)[0]
+		// 只对「同版本同方向」判重：up/down 成对是正常的。
+		direction := "up"
+		if strings.HasSuffix(name, ".down.sql") {
+			direction = "down"
+		}
+		key := version + "." + direction
+		if previous, ok := seen[key]; ok {
+			t.Fatalf("迁移版本重复：%s 与 %s（同版本同方向只能有一个文件）", previous, name)
+		}
+		seen[key] = name
+	}
+
+	if len(seen) == 0 {
+		t.Fatal("没有发现任何迁移文件，嵌入目录可能配置错了")
 	}
 }
