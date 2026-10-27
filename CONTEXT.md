@@ -4,21 +4,24 @@
 
 ## 当前阶段
 
-- iot-pillot：IoT 全栈开发工作室的后台管理 web 程序，当前阶段为工作室招新管理。
-- 认证与角色分流基础交付已完成：`/login`、`/register`、刷新、退出、`/me`、管理员用户列表已对接；`admin`/`member` RBAC 与前端路由守卫已联调。
-- 业务模块（表单 / 模板 / 招新 / 用户权限 / SMTP 设置）后端路由尚未就绪，前端以与最终 DTO 一致的 fixture 驱动，未伪装真实联调。
+- iot-pillot：IoT 全栈开发工作室的后台管理 web 程序；招新主线已大部分落地。
+- **工作室运营域（除招新外）**：2026-10-27 完成检票（术语 + ADR + 迁移 0013–0015 + shared-types 草案）。**尚未实现 handler/页面。**
+- 开放 issue：#91 前端接入邀请接受与候选人处理。
 
-## 本次初始化（2026-09-20）
+## 工作室运营检票结论（2026-10-27）
 
-- 记录 issue tracker（GitHub Issues，PRs 不作 triage 面）、triage 标签、domain docs 结论（single-context）。
-- 已建 `docs/agents/{issue-tracker,triage-labels,domain}.md`，并在 `CLAUDE.md` 追加 `## Agent skills` 块。
-- 已建根 `GLOSSARY.md`（术语表）与 `CONTEXT.md`（本文件）。
+- 做：成员名录、项目管理（多对多参与）、内部知识库（版本修订）。
+- 不做（本轮）：例会签到系统；member/游客可见工作室管理 API；关于页自动接库。
+- 权限：仅 admin 读写。
+- 成员：独立 `studio_members`；`hired` 手动转成员。
+- 详文：`docs/superpowers/specs/2026-10-27-studio-ops-check-report.md`、`docs/adr/0001-studio-member-project-model.md`。
 
 ## 未决项
 
-详见 `CLAUDE.md` 后续未决项：部署目标平台、邮件模板渲染选型、数据库迁移工具、国际化范围、Postgres 备份策略。
+详见 `CLAUDE.md` 后续未决项：部署目标平台、邮件模板渲染选型、国际化范围、Postgres 备份策略。
 
 ## 下一步
 
-- 首个真实领域术语或架构决策产生时，用 `/domain-modeling` 补充 `GLOSSARY.md` 或新增 `docs/adr/NNNN-*.md`。
-- 标签与 issue 约定见 `docs/agents/triage-labels.md` 与 `docs/agents/issue-tracker.md`。
+- `/to-tickets` 或建 GitHub issues：BE-Studio-01…04 + FE-Studio-01…03（见检票报告 §8）。
+- 实现前不要对生产执行 0013–0015 up（空表可接受则本地可 up）。
+- #91 与工作室实现可并行，无 schema 冲突。

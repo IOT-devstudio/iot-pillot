@@ -3,3 +3,4 @@ export * from "./common";
 export * from "./recruitment";
 export * from "./form";
 export * from "./template";
+export * from "./studio";
