@@ -2180,6 +2180,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/admin/studio/members/from-candidate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "只有已录用（hired）的候选人可转入；同一候选人只能转入一次。\n姓名与方向取自申请，出生年 / 届别 / 职能由管理员补全。不改招新状态机。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室成员"
+                ],
+                "summary": "将 hired 候选人转为工作室成员",
+                "parameters": [
+                    {
+                        "description": "转入信息",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.ConvertCandidateToMemberReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioMemberResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "候选人不存在 / 非 hired / 已转入 / 缺必填项",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/studio/members/{id}": {
             "get": {
                 "security": [
@@ -4107,6 +4176,35 @@ const docTemplate = `{
                     "minLength": 6
                 },
                 "old_password": {
+                    "type": "string"
+                }
+            }
+        },
+        "request.ConvertCandidateToMemberReq": {
+            "type": "object",
+            "required": [
+                "birth_year",
+                "candidate_id",
+                "cohort",
+                "role_in_studio"
+            ],
+            "properties": {
+                "birth_year": {
+                    "type": "integer"
+                },
+                "candidate_id": {
+                    "type": "integer"
+                },
+                "cohort": {
+                    "type": "string"
+                },
+                "employment": {
+                    "type": "string"
+                },
+                "internship": {
+                    "type": "string"
+                },
+                "role_in_studio": {
                     "type": "string"
                 }
             }

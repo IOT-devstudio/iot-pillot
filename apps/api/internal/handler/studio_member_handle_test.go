@@ -48,6 +48,15 @@ func (s *httpStudioMemberRepo) GetByID(_ context.Context, id int) (*domain.Studi
 	return nil, repository.ErrStudioMemberNotFound
 }
 
+func (s *httpStudioMemberRepo) GetBySourceCandidateID(_ context.Context, candidateID int) (*domain.StudioMember, error) {
+	for _, m := range s.members {
+		if m.SourceCandidateID != nil && *m.SourceCandidateID == candidateID {
+			return m, nil
+		}
+	}
+	return nil, repository.ErrStudioMemberNotFound
+}
+
 func (s *httpStudioMemberRepo) List(_ context.Context, _ repository.StudioMemberListFilter, _ int, _ int) ([]*domain.StudioMember, int64, error) {
 	out := make([]*domain.StudioMember, 0, len(s.members))
 	for _, m := range s.members {
@@ -102,7 +111,7 @@ func newStudioMemberTestEngine(t *testing.T, admin bool) (*gin.Engine, *httpStud
 	gin.SetMode(gin.TestMode)
 
 	repo := newHTTPStudioMemberRepo()
-	uc := service.NewStudioMemberUseCase(repo, httpStudioAccounts{})
+	uc := service.NewStudioMemberUseCase(repo, httpStudioAccounts{}, httpCandidates{})
 	h := NewStudioMemberHandler(uc)
 
 	r := gin.New()
@@ -116,7 +125,34 @@ func newStudioMemberTestEngine(t *testing.T, admin bool) (*gin.Engine, *httpStud
 	studio.GET("/members/:id", h.GetStudioMember)
 	studio.PUT("/members/:id", h.UpdateStudioMember)
 	studio.POST("/members/:id/archive", h.ArchiveStudioMember)
+	studio.POST("/members/from-candidate", h.ConvertCandidateToMember)
 	return r, repo
+}
+
+// httpCandidates 满足 service.StudioMemberCandidateDirectory：
+// 55 号是 hired 候选人，56 号还在面试。
+type httpCandidates struct{}
+
+func (httpCandidates) GetByID(_ context.Context, id int) (*domain.Candidate, error) {
+	switch id {
+	case 55:
+		return &domain.Candidate{ID: 55, ApplicationID: 900, UserID: 7, Status: domain.CandidateHired}, nil
+	case 56:
+		return &domain.Candidate{ID: 56, ApplicationID: 901, UserID: 8, Status: domain.CandidateInterviewing}, nil
+	default:
+		return nil, repository.ErrCandidateNotFound
+	}
+}
+
+func (httpCandidates) GetApplicationByID(_ context.Context, id int) (*domain.Application, error) {
+	switch id {
+	case 900:
+		return &domain.Application{ID: 900, UserID: 7, DirectionCode: "front-end", Name: "张三"}, nil
+	case 901:
+		return &domain.Application{ID: 901, UserID: 8, DirectionCode: "back-end", Name: "李四"}, nil
+	default:
+		return nil, repository.ErrApplicationNotFound
+	}
 }
 
 const validMemberBody = `{"name":"张三","birth_year":2003,"cohort":"2024 级","direction":"front-end","role_in_studio":"前端负责人"}`
@@ -299,6 +335,107 @@ func TestUpdateStudioMember_AbsentUserIDKeepsBinding(t *testing.T) {
 	}
 	if repo.members[1].UserID == nil || *repo.members[1].UserID != 7 {
 		t.Fatalf("键不出现时不应动绑定，实际 %v", repo.members[1].UserID)
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 验收项：hired 转成员（#197）
+ * ------------------------------------------------------------------ */
+
+const validConvertBody = `{"candidate_id":55,"birth_year":2003,"cohort":"2024 级","role_in_studio":"前端成员"}`
+
+func TestConvertCandidateToMember_HiredSucceeds(t *testing.T) {
+	r, repo := newStudioMemberTestEngine(t, true)
+
+	w := doJSON(r, http.MethodPost, "/api/v1/admin/studio/members/from-candidate", validConvertBody, "good-token")
+	if w.Code != http.StatusOK {
+		t.Fatalf("hired 转入应成功，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+	// 姓名与方向取自申请，不是请求体里的字段。
+	if !containsAll(w.Body.String(), "张三", "front-end") {
+		t.Errorf("姓名与方向应取自申请，实际 %s", w.Body.String())
+	}
+	// 溯源必须回显：前端据此展示「来自候选人」。
+	if !containsAll(w.Body.String(), `"source_candidate_id":55`) {
+		t.Errorf("应记录来源候选人，实际 %s", w.Body.String())
+	}
+	if len(repo.members) != 1 {
+		t.Errorf("应写入 1 条档案，实际 %d", len(repo.members))
+	}
+}
+
+func TestConvertCandidateToMember_NonHiredRejected(t *testing.T) {
+	r, repo := newStudioMemberTestEngine(t, true)
+
+	// 56 号还在面试。
+	w := doJSON(r, http.MethodPost, "/api/v1/admin/studio/members/from-candidate",
+		`{"candidate_id":56,"birth_year":2003,"cohort":"2024 级","role_in_studio":"成员"}`, "good-token")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("非 hired 应 400，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+	if !containsAll(w.Body.String(), "hired") {
+		t.Errorf("应说明只有 hired 可转入，实际 %s", w.Body.String())
+	}
+	if len(repo.members) != 0 {
+		t.Error("拒绝时不应写库")
+	}
+}
+
+func TestConvertCandidateToMember_DuplicateRejected(t *testing.T) {
+	r, repo := newStudioMemberTestEngine(t, true)
+
+	if w := doJSON(r, http.MethodPost, "/api/v1/admin/studio/members/from-candidate", validConvertBody, "good-token"); w.Code != http.StatusOK {
+		t.Fatalf("首次转入应成功，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+
+	w := doJSON(r, http.MethodPost, "/api/v1/admin/studio/members/from-candidate", validConvertBody, "good-token")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("重复转入应 400，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+	if !containsAll(w.Body.String(), "已转为") {
+		t.Errorf("应说明已转过，实际 %s", w.Body.String())
+	}
+	if len(repo.members) != 1 {
+		t.Errorf("重复转入不应新增档案，实际 %d", len(repo.members))
+	}
+}
+
+func TestConvertCandidateToMember_MissingFields(t *testing.T) {
+	r, repo := newStudioMemberTestEngine(t, true)
+
+	// 缺出生年：binding:required 直接挡掉。
+	w := doJSON(r, http.MethodPost, "/api/v1/admin/studio/members/from-candidate",
+		`{"candidate_id":55,"cohort":"2024 级","role_in_studio":"成员"}`, "good-token")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("缺必填项应 400，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+	if len(repo.members) != 0 {
+		t.Error("校验失败不应写库")
+	}
+}
+
+func TestConvertCandidateToMember_UnknownCandidate(t *testing.T) {
+	r, _ := newStudioMemberTestEngine(t, true)
+
+	w := doJSON(r, http.MethodPost, "/api/v1/admin/studio/members/from-candidate",
+		`{"candidate_id":999,"birth_year":2003,"cohort":"2024 级","role_in_studio":"成员"}`, "good-token")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("不存在的候选人应 400，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+	if !containsAll(w.Body.String(), "候选人不存在") {
+		t.Errorf("应给出可读原因，实际 %s", w.Body.String())
+	}
+}
+
+func TestConvertCandidateToMember_NonAdminForbidden(t *testing.T) {
+	r, repo := newStudioMemberTestEngine(t, false)
+
+	w := doJSON(r, http.MethodPost, "/api/v1/admin/studio/members/from-candidate", validConvertBody, "good-token")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("非管理员应 403，实际 %d", w.Code)
+	}
+	if len(repo.members) != 0 {
+		t.Error("非管理员请求不应写库")
 	}
 }
 

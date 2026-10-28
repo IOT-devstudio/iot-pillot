@@ -43,6 +43,12 @@ func failStudioMember(c *gin.Context, err error) {
 		response.FailInvalidParam(c, err.Error())
 	case errors.Is(err, repository.ErrStudioMemberUserNotFound):
 		response.FailInvalidParam(c, err.Error())
+	case errors.Is(err, service.ErrCandidateNotHired):
+		response.FailInvalidParam(c, err.Error())
+	case errors.Is(err, service.ErrCandidateAlreadyConverted):
+		response.FailInvalidParam(c, err.Error())
+	case errors.Is(err, service.ErrCandidateMissing):
+		response.FailInvalidParam(c, "候选人不存在")
 	default:
 		failInternal(c, err)
 	}
@@ -73,6 +79,45 @@ func parseOptionalBool(raw string) *bool {
 	default:
 		return nil
 	}
+}
+
+// ConvertCandidateToMember hired 候选人转成员（#197）。
+// @Summary 将 hired 候选人转为工作室成员
+// @Description 只有已录用（hired）的候选人可转入；同一候选人只能转入一次。
+// @Description 姓名与方向取自申请，出生年 / 届别 / 职能由管理员补全。不改招新状态机。
+// @Tags 管理端-工作室成员
+// @Accept json
+// @Produce json
+// @Param request body request.ConvertCandidateToMemberReq true "转入信息"
+// @Success 200 {object} response.Result{data=response.StudioMemberResp} "成功"
+// @Failure 400 {object} response.Result "候选人不存在 / 非 hired / 已转入 / 缺必填项"
+// @Failure 401 {object} response.Result "未认证"
+// @Failure 403 {object} response.Result "非管理员"
+// @Security BearerAuth
+// @Router /api/v1/admin/studio/members/from-candidate [post]
+func (h *StudioMemberHandler) ConvertCandidateToMember(c *gin.Context) {
+	var req request.ConvertCandidateToMemberReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, err.Error())
+		return
+	}
+
+	member, err := h.members.ConvertFromCandidate(c.Request.Context(), service.ConvertCandidateInput{
+		CandidateID: req.CandidateID,
+		Fields: domain.StudioMemberFields{
+			BirthYear:    req.BirthYear,
+			Cohort:       req.Cohort,
+			RoleInStudio: req.RoleInStudio,
+			Internship:   req.Internship,
+			Employment:   req.Employment,
+		},
+	})
+	if err != nil {
+		failStudioMember(c, err)
+		return
+	}
+
+	response.OKWithMsg(c, "候选人已转为工作室成员", response.NewStudioMemberResp(member))
 }
 
 // ListStudioMembers 成员列表。

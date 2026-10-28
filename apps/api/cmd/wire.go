@@ -60,6 +60,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		repository.NewStudioKnowledgeRepo,
 
 		service.NewStudioMemberAccountDirectory,
+		service.NewStudioMemberCandidateDirectory,
 
 		service.NewAuthUseCase,
 		service.NewMailUseCase,

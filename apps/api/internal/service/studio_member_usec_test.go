@@ -54,6 +54,15 @@ func (s *stubStudioMemberRepo) GetByID(_ context.Context, id int) (*domain.Studi
 	return nil, repository.ErrStudioMemberNotFound
 }
 
+func (s *stubStudioMemberRepo) GetBySourceCandidateID(_ context.Context, candidateID int) (*domain.StudioMember, error) {
+	for _, m := range s.members {
+		if m.SourceCandidateID != nil && *m.SourceCandidateID == candidateID {
+			return m, nil
+		}
+	}
+	return nil, repository.ErrStudioMemberNotFound
+}
+
 func (s *stubStudioMemberRepo) List(_ context.Context, filter repository.StudioMemberListFilter, _ int, _ int) ([]*domain.StudioMember, int64, error) {
 	s.lastFilter = filter
 	out := make([]*domain.StudioMember, 0, len(s.members))
@@ -121,7 +130,7 @@ func newStudioMemberUseCase(t *testing.T) (*StudioMemberUseCase, *stubStudioMemb
 		// 9 是已注销账号：软删行不能挂到成员档案上。
 		9: {ID: 9, Name: "已注销", DeletedAt: &deletedAt},
 	}}
-	uc := NewStudioMemberUseCase(repo, accounts)
+	uc := NewStudioMemberUseCase(repo, accounts, stubCandidateDirectory{})
 	// 固定时钟：归档时间必须可断言，不能依赖真实时间。
 	uc.now = func() time.Time { return time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC) }
 	return uc, repo

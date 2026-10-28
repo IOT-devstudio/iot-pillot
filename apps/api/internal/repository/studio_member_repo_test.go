@@ -39,6 +39,12 @@ func repoTestDBStudioMembers(t *testing.T) *gorm.DB {
 		// 与迁移 0013 一致：同名不同届可共存。
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_members_name_birth_year
 			ON studio_members (name, birth_year)`,
+		// 与迁移 0013 一致：同一候选人只能转入一次（#197 的数据库防线）。
+		// 不复刻它的话「重复转入」会被测成假绿——服务层的前置检查只是让
+		// 请求早点被拒，真正的唯一性保证在这一行。
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_members_source_candidate
+			ON studio_members (source_candidate_id)
+			WHERE source_candidate_id IS NOT NULL`,
 	}
 	for _, stmt := range ddl {
 		if err := db.Exec(stmt).Error; err != nil {
@@ -170,6 +176,58 @@ func TestStudioMemberRepo_ListFilters(t *testing.T) {
 	}
 	if len(onlyActive) != 1 || onlyActive[0].Name != "李四" {
 		t.Fatalf("仅在读应只剩李四，实际 %+v", onlyActive)
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 来源候选人（#197）
+ * ------------------------------------------------------------------ */
+
+func TestStudioMemberRepo_GetBySourceCandidateID(t *testing.T) {
+	db := repoTestDBStudioMembers(t)
+	repo := NewStudioMemberRepo(db)
+	ctx := context.Background()
+
+	member := newRepoStudioMember("张三", 2003)
+	candidateID := 55
+	member.SourceCandidateID = &candidateID
+	if err := repo.Create(ctx, member); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.GetBySourceCandidateID(ctx, candidateID)
+	if err != nil {
+		t.Fatalf("应按来源候选人查到档案，实际 %v", err)
+	}
+	if got.ID != member.ID {
+		t.Errorf("应返回刚建的档案 %d，实际 %d", member.ID, got.ID)
+	}
+
+	// 没转过：必须返回 NotFound，服务层据此判定「可以转入」。
+	if _, err := repo.GetBySourceCandidateID(ctx, 999); !errors.Is(err, ErrStudioMemberNotFound) {
+		t.Fatalf("未转过应返回 ErrStudioMemberNotFound，实际 %v", err)
+	}
+}
+
+// TestStudioMemberRepo_DuplicateSourceCandidate 锁住数据库层的「一个候选人只能转一次」。
+func TestStudioMemberRepo_DuplicateSourceCandidate(t *testing.T) {
+	db := repoTestDBStudioMembers(t)
+	repo := NewStudioMemberRepo(db)
+	ctx := context.Background()
+
+	candidateID := 55
+	first := newRepoStudioMember("张三", 2003)
+	first.SourceCandidateID = &candidateID
+	if err := repo.Create(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+
+	// 换个姓名与出生年，绕过 (name, birth_year) 唯一索引，
+	// 让这次冲突只可能来自 source_candidate_id。
+	second := newRepoStudioMember("李四", 2004)
+	second.SourceCandidateID = &candidateID
+	if err := repo.Create(ctx, second); !errors.Is(err, ErrStudioMemberDuplicate) {
+		t.Fatalf("同一候选人重复转入应撞唯一索引，实际 %v", err)
 	}
 }
 

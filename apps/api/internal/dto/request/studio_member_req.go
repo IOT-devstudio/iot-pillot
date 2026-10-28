@@ -16,6 +16,22 @@ type StudioMemberCreateReq struct {
 	UserID       *int   `json:"user_id"`
 }
 
+// ConvertCandidateToMemberReq hired 候选人转成员（#197）。
+//
+// 只收候选人 id 与需要**人工补全**的字段：
+// 姓名与方向从申请带过来（不让管理员重填，重填就有填错的可能），
+// 而出生年 / 届别 / 职能在招新数据里根本不存在，必须由管理员给出。
+//
+// 不接受 user_id：转入后成员绑定的是候选人本人的账号，由服务层带过来。
+type ConvertCandidateToMemberReq struct {
+	CandidateID  int    `json:"candidate_id" binding:"required"`
+	BirthYear    int    `json:"birth_year" binding:"required"`
+	Cohort       string `json:"cohort" binding:"required"`
+	RoleInStudio string `json:"role_in_studio" binding:"required"`
+	Internship   string `json:"internship"`
+	Employment   string `json:"employment"`
+}
+
 // StudioMemberUpdateReq 更新工作室成员：只传要改的项。
 //
 // 与 Create 分开：更新是补丁语义，用指针区分「没传」与「传了空串」——

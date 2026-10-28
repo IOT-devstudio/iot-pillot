@@ -5,6 +5,7 @@
  * 网络层保持后端 snake_case（与 api/forms.ts 一致），不做 camelCase 转换。
  */
 import type {
+  ConvertCandidateToMemberInput,
   CreateStudioMemberInput,
   StudioMember,
   StudioMemberPage,
@@ -15,6 +16,7 @@ import { requestWithSession } from "./session-request";
 // 直接复用共享包的契约类型，不在这里复制一份：
 // 后端字段一旦变化，typecheck 会在这一层就报出来，而不是等页面渲染时才炸。
 export type {
+  ConvertCandidateToMemberInput,
   CreateStudioMemberInput,
   StudioMember,
   StudioMemberPage,
@@ -98,5 +100,20 @@ export function archiveStudioMember(id: number): Promise<StudioMember> {
   return requestWithSession<StudioMember>(
     `/api/v1/admin/studio/members/${id}/archive`,
     { method: "POST" },
+  );
+}
+
+/**
+ * hired 候选人转成员（#197）。
+ *
+ * 姓名与方向由后端从申请带过来，这里只传管理员必须补全的字段。
+ * 重复转入 / 非 hired 都会返回 400，message 可直接展示。
+ */
+export function convertCandidateToMember(
+  input: ConvertCandidateToMemberInput,
+): Promise<StudioMember> {
+  return requestWithSession<StudioMember>(
+    "/api/v1/admin/studio/members/from-candidate",
+    json("POST", input),
   );
 }

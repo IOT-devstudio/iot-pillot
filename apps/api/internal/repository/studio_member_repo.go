@@ -63,6 +63,12 @@ type StudioMemberRepo interface {
 	Create(ctx context.Context, member *domain.StudioMember) error
 	// GetByID 按 id 取档案；不存在返回 ErrStudioMemberNotFound。
 	GetByID(ctx context.Context, id int) (*domain.StudioMember, error)
+	// GetBySourceCandidateID 按来源候选人取档案；没转过返回 ErrStudioMemberNotFound。
+	//
+	// 「hired 转成员」用它做写库前的前置检查（#197）：数据库的
+	// source_candidate_id 部分唯一索引仍是最后一道防线，但只靠它的话，
+	// 重复点击会先写一条再撞约束回滚，日志里留下无意义的失败写入。
+	GetBySourceCandidateID(ctx context.Context, candidateID int) (*domain.StudioMember, error)
 	// List 分页列出成员（新建在前）。
 	List(ctx context.Context, filter StudioMemberListFilter, page int, pageSize int) ([]*domain.StudioMember, int64, error)
 	// Update 更新成员的可写列；不存在返回 ErrStudioMemberNotFound，
@@ -103,6 +109,20 @@ func (r *gormStudioMemberRepo) Create(ctx context.Context, member *domain.Studio
 func (r *gormStudioMemberRepo) GetByID(ctx context.Context, id int) (*domain.StudioMember, error) {
 	var member domain.StudioMember
 	if err := r.db.WithContext(ctx).First(&member, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrStudioMemberNotFound
+		}
+		return nil, err
+	}
+	return &member, nil
+}
+
+func (r *gormStudioMemberRepo) GetBySourceCandidateID(ctx context.Context, candidateID int) (*domain.StudioMember, error) {
+	var member domain.StudioMember
+	err := r.db.WithContext(ctx).
+		Where("source_candidate_id = ?", candidateID).
+		First(&member).Error
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrStudioMemberNotFound
 		}
