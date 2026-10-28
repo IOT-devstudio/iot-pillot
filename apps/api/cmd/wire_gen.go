@@ -82,10 +82,17 @@ func InitializeApp() (*handler.Router, func(), error) {
 	recruitmentInvitationUseCase := service.NewRecruitmentInvitationUseCase(applicationStore, invitationRepo, candidateRepo, userRepo, businessMailer, mailModelRepo)
 	recruitmentInvitationHandler := handler.NewRecruitmentInvitationHandler(recruitmentInvitationUseCase)
 	formHandler := handler.NewFormHandler(formUseCase)
+	studioMemberRepo := repository.NewStudioMemberRepo(db)
+	studioMemberAccountDirectory := service.NewStudioMemberAccountDirectory(userRepo)
+	studioMemberUseCase := service.NewStudioMemberUseCase(studioMemberRepo, studioMemberAccountDirectory)
+	studioMemberHandler := handler.NewStudioMemberHandler(studioMemberUseCase)
+	studioKnowledgeRepo := repository.NewStudioKnowledgeRepo(db)
+	studioKnowledgeUseCase := service.NewStudioKnowledgeUseCase(studioKnowledgeRepo)
+	studioKnowledgeHandler := handler.NewStudioKnowledgeHandler(studioKnowledgeUseCase)
 	freezeMailer := service.NewFreezeMailer(mailUseCase)
 	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker, adminDirectory)
 	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, freezeScheduler, tokenManager, adminStore)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, freezeScheduler, tokenManager, adminStore)
 	return router, func() {
 		cleanup()
 	}, nil

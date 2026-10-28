@@ -33,6 +33,8 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 		nil, // recruitment
 		nil, // invitation
 		nil, // form
+		nil, // studio member（#195）
+		nil, // studio knowledge（#196）
 		nil, // freeze scheduler：允许为空（Run 里有 nil 判断）
 		nil, // token manager
 		nil, // admin store
@@ -51,5 +53,51 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("未注册 POST /api/v1/admin/users/:user_id/unfreeze")
+	}
+
+	// 工作室成员（#195）五条端点必须真的挂上，且都在 admin 组内。
+	wantStudioRoutes := map[string]bool{
+		"GET /api/v1/admin/studio/members":              false,
+		"POST /api/v1/admin/studio/members":             false,
+		"GET /api/v1/admin/studio/members/:id":          false,
+		"PUT /api/v1/admin/studio/members/:id":          false,
+		"POST /api/v1/admin/studio/members/:id/archive": false,
+	}
+	for _, route := range router.eng.Routes() {
+		key := route.Method + " " + route.Path
+		if _, ok := wantStudioRoutes[key]; ok {
+			wantStudioRoutes[key] = true
+		}
+	}
+	for key, registered := range wantStudioRoutes {
+		if !registered {
+			t.Errorf("未注册 %s", key)
+		}
+	}
+
+	// 知识库（#196）七条端点必须真的挂上，且都在 admin 组内。
+	//
+	// 特别锁住 revisions 两条：gin 里 /knowledge/:id 与 /knowledge/:id/revisions
+	// 同层共存是合法的，但顺序写错会让 :id 吞掉 revisions 段——
+	// 那种错误只在请求时才暴露，这里提前拦住。
+	wantKnowledgeRoutes := map[string]bool{
+		"GET /api/v1/admin/studio/knowledge":                        false,
+		"POST /api/v1/admin/studio/knowledge":                       false,
+		"GET /api/v1/admin/studio/knowledge/:id":                    false,
+		"PUT /api/v1/admin/studio/knowledge/:id":                    false,
+		"DELETE /api/v1/admin/studio/knowledge/:id":                 false,
+		"GET /api/v1/admin/studio/knowledge/:id/revisions":          false,
+		"GET /api/v1/admin/studio/knowledge/:id/revisions/:version": false,
+	}
+	for _, route := range router.eng.Routes() {
+		key := route.Method + " " + route.Path
+		if _, ok := wantKnowledgeRoutes[key]; ok {
+			wantKnowledgeRoutes[key] = true
+		}
+	}
+	for key, registered := range wantKnowledgeRoutes {
+		if !registered {
+			t.Errorf("未注册 %s", key)
+		}
 	}
 }

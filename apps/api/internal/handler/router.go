@@ -42,6 +42,8 @@ func NewRouter(
 	recruitmentHandler *RecruitmentHandler,
 	invitationHandler *RecruitmentInvitationHandler,
 	formHandler *FormHandler,
+	studioMemberHandler *StudioMemberHandler,
+	studioKnowledgeHandler *StudioKnowledgeHandler,
 	freezeScheduler *service.FreezeScheduler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
@@ -196,6 +198,30 @@ func NewRouter(
 		apiV1.GET("/me/invitations", authRequired, invitationHandler.ListMyInvitations)
 		apiV1.POST("/me/invitations/accept", authRequired, invitationHandler.AcceptInvitation)
 		apiV1.GET("/me/candidates", authRequired, invitationHandler.ListMyCandidates)
+
+		// ── 管理端-工作室运营（#195）──
+		// 工作室域首期**仅 admin**（ADR 0001 §权限拍板）：member 只读与游客
+		// 公开接口都留到后续决策，现在不为它们预留端点。
+		studio := admin.Group("/studio")
+		studio.GET("/members", studioMemberHandler.ListStudioMembers)
+		studio.POST("/members", studioMemberHandler.CreateStudioMember)
+		studio.GET("/members/:id", studioMemberHandler.GetStudioMember)
+		studio.PUT("/members/:id", studioMemberHandler.UpdateStudioMember)
+		// 归档用 POST 而不是 DELETE：它不是删除，档案仍要在名录里可见。
+		studio.POST("/members/:id/archive", studioMemberHandler.ArchiveStudioMember)
+
+		// 知识库（#196）：条目 + 修订历史。
+		//
+		// 每次 PUT 都是「保存新版本」（version+1 + 新快照），
+		// **没有**一键回滚端点——恢复 = 基于旧版内容再保存一版（ADR 0001 §3）。
+		// permission 字段可写但不参与鉴权：首期不为 member/public 挂读取入口。
+		studio.GET("/knowledge", studioKnowledgeHandler.ListStudioKnowledge)
+		studio.POST("/knowledge", studioKnowledgeHandler.CreateStudioKnowledge)
+		studio.GET("/knowledge/:id", studioKnowledgeHandler.GetStudioKnowledge)
+		studio.PUT("/knowledge/:id", studioKnowledgeHandler.UpdateStudioKnowledge)
+		studio.DELETE("/knowledge/:id", studioKnowledgeHandler.DeleteStudioKnowledge)
+		studio.GET("/knowledge/:id/revisions", studioKnowledgeHandler.ListStudioKnowledgeRevisions)
+		studio.GET("/knowledge/:id/revisions/:version", studioKnowledgeHandler.GetStudioKnowledgeRevision)
 
 		// ── 表单（BE-05，issue #92）──
 		// 路径与 docs/architecture.md 的 FormModule 一致：/api/v1/forms 下的读接口

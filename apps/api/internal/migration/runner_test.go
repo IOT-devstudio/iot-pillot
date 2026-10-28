@@ -79,7 +79,9 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	if err := db.QueryRow("SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 12 || dirty {
+	// 工作室运营三张表（0013–0015）随 #195 一并纳管：迁移 SQL 在检票阶段
+	// 就已入库，本票才第一次真正跑 up，所以最高版本从 12 前进到 15。
+	if version != 15 || dirty {
 		t.Fatalf("version=%d dirty=%v", version, dirty)
 	}
 	var count int
@@ -121,6 +123,75 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 			t.Fatalf("0012 的 %s 列未创建: %v", column, err)
 		}
 	}
+	// 0013 的工作室成员表必须真的落地（#195）：档案读写与 (name, birth_year)
+	// 唯一键都按列名/索引名直接使用，缺表会让整个成员名录在运行时 500。
+	for _, column := range []string{"user_id", "name", "birth_year", "cohort", "direction", "role_in_studio", "is_active", "archived_at"} {
+		var dataType string
+		if err := db.QueryRow(
+			`SELECT data_type FROM information_schema.columns
+			 WHERE table_name='studio_members' AND column_name=$1`, column,
+		).Scan(&dataType); err != nil {
+			t.Fatalf("0013 的 studio_members.%s 列未创建: %v", column, err)
+		}
+	}
+	// user_id 可空是 ADR 0001 的硬约束（允许收录无系统账号的校友）：
+	// 一旦变成 NOT NULL，无账号成员就再也录不进来。
+	var userIDNullable string
+	if err := db.QueryRow(
+		`SELECT is_nullable FROM information_schema.columns
+		 WHERE table_name='studio_members' AND column_name='user_id'`,
+	).Scan(&userIDNullable); err != nil {
+		t.Fatal(err)
+	}
+	if userIDNullable != "YES" {
+		t.Fatalf("studio_members.user_id 必须可空，实际 is_nullable=%s", userIDNullable)
+	}
+	// 同名不同届可共存，靠的就是 (name, birth_year) 这个唯一索引。
+	var memberIndexDef string
+	if err := db.QueryRow(
+		"SELECT indexdef FROM pg_indexes WHERE tablename='studio_members' AND indexname='idx_studio_members_name_birth_year'",
+	).Scan(&memberIndexDef); err != nil {
+		t.Fatalf("0013 的姓名+出生年唯一索引未创建: %v", err)
+	}
+	if !strings.Contains(memberIndexDef, "UNIQUE") {
+		t.Fatalf("姓名+出生年索引应为唯一索引，实际 %q", memberIndexDef)
+	}
+
+	// 0015 的知识库两张表必须真的落地（#196）：条目读写、修订历史、
+	// 级联删除与 (entry_id, version) 唯一键全靠它们。
+	for _, column := range []string{"title", "body", "author_id", "permission", "parent_id", "version", "is_public"} {
+		var dataType string
+		if err := db.QueryRow(
+			`SELECT data_type FROM information_schema.columns
+			 WHERE table_name='studio_knowledge_entries' AND column_name=$1`, column,
+		).Scan(&dataType); err != nil {
+			t.Fatalf("0015 的 studio_knowledge_entries.%s 列未创建: %v", column, err)
+		}
+	}
+	// (entry_id, version) 唯一是「版本号就是历史索引」这一设计的强制前提：
+	// 少了它，同一版本可能有两份快照，历史读取会出现歧义。
+	var revisionIndexDef string
+	if err := db.QueryRow(
+		"SELECT indexdef FROM pg_indexes WHERE tablename='studio_knowledge_revisions' AND indexname='idx_studio_knowledge_revisions_entry_version'",
+	).Scan(&revisionIndexDef); err != nil {
+		t.Fatalf("0015 的 (entry_id, version) 唯一索引未创建: %v", err)
+	}
+	if !strings.Contains(revisionIndexDef, "UNIQUE") {
+		t.Fatalf("修订版本索引应为唯一索引，实际 %q", revisionIndexDef)
+	}
+	// 删除条目时修订必须级联清理（服务层不手动删）：
+	// ON DELETE CASCADE 缺失会让删掉的条目留下孤儿修订，永远读不到也删不掉。
+	var cascadeDelete string
+	if err := db.QueryRow(
+		`SELECT confdeltype FROM pg_constraint
+		 WHERE conrelid='studio_knowledge_revisions'::regclass AND contype='f'`,
+	).Scan(&cascadeDelete); err != nil {
+		t.Fatalf("0015 的修订外键未创建: %v", err)
+	}
+	if cascadeDelete != "c" {
+		t.Fatalf("修订外键应为 ON DELETE CASCADE（c），实际 %q", cascadeDelete)
+	}
+
 	// 扫描主查询「未冻结 + 未注销 + 注册早于 N 天」需要部分索引支撑，
 	// 否则用户表增长后会退化成全表扫描。
 	var freezeIndexDef string

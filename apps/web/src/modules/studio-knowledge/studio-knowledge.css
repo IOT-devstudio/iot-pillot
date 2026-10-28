@@ -1,0 +1,354 @@
+/* 工作室知识库（#196）。沿用管理端的暖纸 / 墨色令牌，不另起一套视觉。 */
+.knowledge-page .page__body {
+  display: grid;
+  gap: 24px;
+}
+
+.knowledge-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.knowledge-hint {
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.knowledge-error {
+  color: var(--red);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+/* ── 按钮 ────────────────────────────────────────────────────── */
+
+.knowledge-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.knowledge-button:hover {
+  background: var(--paper-deep);
+}
+
+.knowledge-button--primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.knowledge-button--primary:hover {
+  background: var(--blue);
+  color: var(--surface);
+}
+
+.knowledge-button--danger {
+  color: var(--red);
+  border-color: rgb(184 66 53 / 40%);
+}
+
+.knowledge-button--danger:hover {
+  background: rgb(184 66 53 / 8%);
+}
+
+.knowledge-button--small {
+  min-height: 32px;
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+.knowledge-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.knowledge-button:focus-visible,
+.knowledge-control:focus-visible {
+  outline: 2px solid var(--blue-bright);
+  outline-offset: 3px;
+}
+
+/* ── 筛选条 ──────────────────────────────────────────────────── */
+
+.knowledge-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+}
+
+.knowledge-filters__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── 表单控件 ────────────────────────────────────────────────── */
+
+.knowledge-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.knowledge-field__label {
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.knowledge-field__label em {
+  color: var(--red);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.knowledge-field__error {
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.knowledge-field__hint {
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.knowledge-control {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.knowledge-control--body {
+  min-height: 320px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.75;
+  resize: vertical;
+}
+
+.knowledge-control[aria-invalid="true"] {
+  border-color: var(--red);
+}
+
+/* ── 列表 ────────────────────────────────────────────────────── */
+
+.knowledge-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.knowledge-list__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 28px;
+  min-width: 0;
+}
+
+.knowledge-list__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.knowledge-list__item h2 {
+  margin: 10px 0 0;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.knowledge-list__meta {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.knowledge-list__excerpt {
+  flex: 1;
+  margin: 6px 0 12px;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.knowledge-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.knowledge-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.knowledge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── 空态 / 表单 / 历史 ──────────────────────────────────────── */
+
+.knowledge-empty {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.knowledge-empty h2 {
+  margin: 6px 0 0;
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.knowledge-empty p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.knowledge-form {
+  display: grid;
+  gap: 16px;
+}
+
+.knowledge-form__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.knowledge-history {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line-soft);
+}
+
+.knowledge-history__item {
+  display: grid;
+  gap: 6px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.knowledge-history__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.knowledge-history__head strong {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--blue);
+}
+
+.knowledge-history__date,
+.knowledge-history__editor {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.knowledge-history__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.knowledge-history__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.knowledge-preview {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.knowledge-preview h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.knowledge-preview__body {
+  max-height: 320px;
+  margin: 0 0 10px;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  background: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .knowledge-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .knowledge-filters__actions {
+    justify-content: flex-start;
+  }
+
+  .knowledge-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
