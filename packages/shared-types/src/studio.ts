@@ -12,7 +12,9 @@
  * - **知识库（Knowledge）已联调**（#196）：domain.StudioKnowledgeEntry /
  *   StudioKnowledgeRevision 与本文件一一对应，端点
  *   /api/v1/admin/studio/knowledge*。is_public 是 permission 的派生只读值。
- * - 项目仍是**草案**（#198 尚未实现），不得当作已交付 API。
+ * - **项目与参与（Projects）已联调**（#198）：domain.StudioProject /
+ *   StudioProjectMember 与本文件一一对应，端点 /api/v1/admin/studio/projects*。
+ *   参与行的 name 是姓名**快照**（不随成员档案改名变化）。
  * - 首期路由仅 admin；permission 字段预留 member/public。
  */
 
@@ -113,7 +115,7 @@ export interface ConvertCandidateToMemberInput {
   employment?: string;
 }
 
-// ── 项目 ──────────────────────────────────────────────────────────
+// ── 项目与参与（#198）──────────────────────────────────────────────
 
 export type StudioProjectStatus = "active" | "completed" | "archived";
 export type StudioProjectMemberRole = "lead" | "contributor";
@@ -121,10 +123,13 @@ export type StudioProjectMemberRole = "lead" | "contributor";
 export interface StudioProjectMember {
   id: number;
   project_id: number;
+  // member_id 可空 = 外部参与者（没有成员档案）。
   member_id: number | null;
+  // name 是姓名**快照**：不随成员档案改名变化，历史参与仍显示当时的名字。
   name: string;
   role: StudioProjectMemberRole;
   started_at: ISODateTime;
+  // null = 仍在参与。
   ended_at: ISODateTime | null;
   created_at: ISODateTime;
 }
@@ -139,17 +144,36 @@ export interface StudioProject {
   updated_at: ISODateTime;
 }
 
-export interface StudioProjectDetail extends StudioProject {
+/** 项目详情 = 元数据 + 参与名单（后端返回 { project, members }）。 */
+export interface StudioProjectDetail {
+  project: StudioProject;
   members: StudioProjectMember[];
 }
 
+/** 项目列表分页（GET /admin/studio/projects）。 */
+export interface StudioProjectPage {
+  items: StudioProject[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** 参与名单（GET /admin/studio/projects/:id/members）。 */
+export interface StudioProjectMemberList {
+  items: StudioProjectMember[];
+  total: number;
+}
+
+/** 创建项目（POST /admin/studio/projects）。summary 可空。 */
 export interface CreateStudioProjectInput {
   name: string;
   year: string;
-  summary: string;
+  summary?: string;
+  /** 缺省按 active（与迁移 0014 的列默认值一致）。 */
   status?: StudioProjectStatus;
 }
 
+/** 更新项目（PUT /admin/studio/projects/:id）：补丁语义。 */
 export interface UpdateStudioProjectInput {
   name?: string;
   year?: string;
@@ -157,19 +181,38 @@ export interface UpdateStudioProjectInput {
   status?: StudioProjectStatus;
 }
 
+/**
+ * 添加参与（POST /admin/studio/projects/:id/members）。
+ *
+ * name 必填：它是**姓名快照**，不从成员档案自动取。这样成员以后改名，
+ * 历史参与仍显示当时的名字；同时外部参与者也能记录。
+ * role 缺省按 contributor（与迁移 0014 的列默认值一致）。
+ * started_at 缺省为后端当前时间。
+ */
 export interface AddStudioProjectMemberInput {
   member_id?: number | null;
   name: string;
-  role: StudioProjectMemberRole;
+  role?: StudioProjectMemberRole;
   started_at?: ISODateTime;
   ended_at?: ISODateTime | null;
 }
 
+/**
+ * 更新参与（PUT /admin/studio/projects/:id/members/:member_id）：补丁语义。
+ *
+ * ended_at 是三态，必须用可选 + null 表达：
+ *   不传（undefined）= 不改结束时间；
+ *   传 null         = 仍在参与（清空结束时间）；
+ *   传 ISODateTime  = 已结束。
+ * 用可选 + null 而不是 optional 单层，是因为「没传」与「传了 null」
+ * 是两个不同语义。
+ */
 export interface UpdateStudioProjectMemberInput {
   name?: string;
   role?: StudioProjectMemberRole;
   started_at?: ISODateTime;
   ended_at?: ISODateTime | null;
+  /** 三态同 ended_at：不传 = 不改关联；传 null = 解除关联；传数字 = 关联该成员。 */
   member_id?: number | null;
 }
 

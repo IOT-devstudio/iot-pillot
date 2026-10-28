@@ -44,6 +44,7 @@ func NewRouter(
 	formHandler *FormHandler,
 	studioMemberHandler *StudioMemberHandler,
 	studioKnowledgeHandler *StudioKnowledgeHandler,
+	studioProjectHandler *StudioProjectHandler,
 	freezeScheduler *service.FreezeScheduler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
@@ -225,6 +226,19 @@ func NewRouter(
 		studio.DELETE("/knowledge/:id", studioKnowledgeHandler.DeleteStudioKnowledge)
 		studio.GET("/knowledge/:id/revisions", studioKnowledgeHandler.ListStudioKnowledgeRevisions)
 		studio.GET("/knowledge/:id/revisions/:version", studioKnowledgeHandler.GetStudioKnowledgeRevision)
+
+		// 项目与参与（#198）：项目 CRUD + 参与增删改。
+		//
+		// 项目名全局唯一；参与行带姓名快照，可关联成员档案也可只记外部姓名。
+		studio.GET("/projects", studioProjectHandler.ListStudioProjects)
+		studio.POST("/projects", studioProjectHandler.CreateStudioProject)
+		studio.GET("/projects/:id", studioProjectHandler.GetStudioProject)
+		studio.PUT("/projects/:id", studioProjectHandler.UpdateStudioProject)
+		studio.DELETE("/projects/:id", studioProjectHandler.DeleteStudioProject)
+		studio.GET("/projects/:id/members", studioProjectHandler.ListStudioProjectMembers)
+		studio.POST("/projects/:id/members", studioProjectHandler.AddStudioProjectMember)
+		studio.PUT("/projects/:id/members/:member_id", studioProjectHandler.UpdateStudioProjectMember)
+		studio.DELETE("/projects/:id/members/:member_id", studioProjectHandler.DeleteStudioProjectMember)
 
 		// ── 表单（BE-05，issue #92）──
 		// 路径与 docs/architecture.md 的 FormModule 一致：/api/v1/forms 下的读接口

@@ -1,4 +1,4 @@
-import { requestWithSession } from "./session-request";
+import { requestMessageWithSession, requestWithSession } from "./session-request";
 
 export type UserRole = "admin" | "member";
 
@@ -120,8 +120,11 @@ export function revokeAdmin(userId: number): Promise<AdminMutation> {
  * 二次确认（输入目标用户名）由调用方负责；后端另有三重守卫：
  * 非创始 403、不能注销自己、创始互不注销。
  */
-export function deleteAdminUser(userId: number): Promise<void> {
-  return requestWithSession<void>(`/api/v1/admin/users/${userId}`, {
+export function deleteAdminUser(userId: number): Promise<string> {
+  // 后端删除端点返回 OKWithMsg(..., nil)，data 被 omitempty 省略。
+  // requestWithSession 会把「data 缺失」当成服务不可用，成功的注销于是弹出
+  // 「服务暂时不可用」——所以走 message 出口拿后端的提示语。
+  return requestMessageWithSession(`/api/v1/admin/users/${userId}`, {
     method: "DELETE",
   });
 }

@@ -87,6 +87,11 @@ const navGroups: AdminNavGroup[] = [
         to: "/studio/knowledge",
         icon: "M5 4.75h9l4 4V19.25H5z M14 4.75v4.5h4.5 M8.5 12h6 M8.5 15.5h6",
       },
+      {
+        label: "项目管理",
+        to: "/studio/projects",
+        icon: "M3 4.75h18 M3 9.5h18 M3 14.25h18 M3 19h18",
+      },
     ],
   },
   {

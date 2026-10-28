@@ -192,6 +192,73 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 		t.Fatalf("修订外键应为 ON DELETE CASCADE（c），实际 %q", cascadeDelete)
 	}
 
+	// 0014 的项目与参与两张表必须真的落地（#198）：项目名唯一、
+	// 参与行的 (project_id, name) 唯一、角色 CHECK 约束，都是本次实现
+	// 直接按列名/约束名读写的东西，缺一个就会在运行时 500。
+	for _, column := range []string{"name", "year", "summary", "status"} {
+		var dataType string
+		if err := db.QueryRow(
+			`SELECT data_type FROM information_schema.columns
+			 WHERE table_name='studio_projects' AND column_name=$1`, column,
+		).Scan(&dataType); err != nil {
+			t.Fatalf("0014 的 studio_projects.%s 列未创建: %v", column, err)
+		}
+	}
+	// 项目名全局唯一：同名会让「哪个是哪个」永远说不清。
+	var projectIndexDef string
+	if err := db.QueryRow(
+		"SELECT indexdef FROM pg_indexes WHERE tablename='studio_projects' AND indexname='idx_studio_projects_name'",
+	).Scan(&projectIndexDef); err != nil {
+		t.Fatalf("0014 的项目名唯一索引未创建: %v", err)
+	}
+	if !strings.Contains(projectIndexDef, "UNIQUE") {
+		t.Fatalf("项目名索引应为唯一索引，实际 %q", projectIndexDef)
+	}
+	// 参与行的角色取值由 CHECK 约束强制；少了它，非法角色会被静默写进去。
+	var roleConstraint string
+	if err := db.QueryRow(
+		`SELECT conname FROM pg_constraint
+		 WHERE conrelid='studio_project_members'::regclass AND contype='c'
+		 AND conname='chk_studio_project_members_role'`,
+	).Scan(&roleConstraint); err != nil {
+		t.Fatalf("0014 的角色 CHECK 约束未创建: %v", err)
+	}
+	// (project_id, name) 唯一：同项目下同名会让「谁是 lead」有两份答案。
+	var participationIndexDef string
+	if err := db.QueryRow(
+		"SELECT indexdef FROM pg_indexes WHERE tablename='studio_project_members' AND indexname='idx_studio_project_members_project_name'",
+	).Scan(&participationIndexDef); err != nil {
+		t.Fatalf("0014 的 (project_id, name) 唯一索引未创建: %v", err)
+	}
+	if !strings.Contains(participationIndexDef, "UNIQUE") {
+		t.Fatalf("参与行索引应为唯一索引，实际 %q", participationIndexDef)
+	}
+	// 删除项目必须级联删除参与行，否则会留下无人归属的孤儿参与记录。
+	// confkey[1] 在两张被引用表里都是 id 列的 attnum（都是 1），
+	// 所以还必须限定 confrelid（被引用表），否则会同时匹配到 member_id 那个外键。
+	var participationCascade string
+	if err := db.QueryRow(
+		`SELECT confdeltype FROM pg_constraint
+		 WHERE conrelid='studio_project_members'::regclass AND contype='f'
+		 AND confrelid='studio_projects'::regclass`,
+	).Scan(&participationCascade); err != nil {
+		t.Fatalf("0014 的参与行外键未创建: %v", err)
+	}
+	if participationCascade != "c" {
+		t.Fatalf("参与行外键应为 ON DELETE CASCADE（c），实际 %q", participationCascade)
+	}
+	// member_id 可空是 ADR 0001 §2 的硬约束：允许记录没有成员档案的外部参与者。
+	var memberIDNullable string
+	if err := db.QueryRow(
+		`SELECT is_nullable FROM information_schema.columns
+		 WHERE table_name='studio_project_members' AND column_name='member_id'`,
+	).Scan(&memberIDNullable); err != nil {
+		t.Fatal(err)
+	}
+	if memberIDNullable != "YES" {
+		t.Fatalf("studio_project_members.member_id 必须可空，实际 is_nullable=%s", memberIDNullable)
+	}
+
 	// 扫描主查询「未冻结 + 未注销 + 注册早于 N 天」需要部分索引支撑，
 	// 否则用户表增长后会退化成全表扫描。
 	var freezeIndexDef string

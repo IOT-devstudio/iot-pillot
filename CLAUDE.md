@@ -139,6 +139,7 @@ iot-pillot/
 | 招新邀请与候选人流程（BE-04） | `POST /api/v1/admin/invitations/send`、`GET /api/v1/admin/invitations`、`POST /api/v1/admin/invitations/:id/revoke`、`GET /api/v1/admin/candidates`、`GET /api/v1/admin/candidates/:id`、`POST /api/v1/admin/candidates/:id/advance`、`GET /api/v1/me/invitations`、`POST /api/v1/me/invitations/accept`、`GET /api/v1/me/candidates` | 后端已交付，前端未接入 | `packages/shared-types` 的 BE-04 段是真实契约（number ID）；邀请邮件复用 MailModule 模板发送 |
 | 工作室成员名录（#195） | `GET/POST /api/v1/admin/studio/members`、`GET/PUT /api/v1/admin/studio/members/:id`、`POST /api/v1/admin/studio/members/:id/archive` | 前端已对接 | 仅 admin（ADR 0001）；`user_id` 可空以收录无账号校友，`(name, birth_year)` 唯一；归档不物理删除。工作室项目仍是草案（#198） |
 | hired 转工作室成员（#197） | `POST /api/v1/admin/studio/members/from-candidate` | 前端已对接 | 仅 admin；**只有 hired 可转入**，姓名与方向取自申请，出生年/届别/职能由管理员补全；`source_candidate_id` 部分唯一索引防重复转入；**不改招新状态机** |
+| 工作室项目管理（#198） | `GET/POST /api/v1/admin/studio/projects`、`GET/PUT/DELETE /:id`、`GET/POST /:id/members`、`PUT/DELETE /:id/members/:member_id` | 前端已对接 | 仅 admin；项目名全局唯一；参与行带姓名快照，可关联成员档案或仅记外部姓名；角色枚举 + `ended_at \/= started_at` 校验；删除项目级联删参与行 |
 | 工作室知识库（#196） | `GET/POST /api/v1/admin/studio/knowledge`、`GET/PUT/DELETE /api/v1/admin/studio/knowledge/:id`、`GET /:id/revisions`、`GET /:id/revisions/:version` | 前端已对接 | 仅 admin；每次保存 `version+1` 并写入修订快照，**无自动回滚**（恢复 = 带回旧版内容再保存）；`version` 必填做乐观锁；`is_public` 由 `permission` 派生 |
 | 表单、模板、用户权限、SMTP 设置 | 部分尚无路由 | 阻塞 | 共享 TS 类型中未标 BE-04 的招新类型与表单类型仍是领域草案，不能直接当作已交付 API |
 

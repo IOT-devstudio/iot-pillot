@@ -203,6 +203,15 @@ definitions:
         description: Value 是解析出的值；Set 为 true 且 Value 为 nil 表示显式传了 null。
         type: integer
     type: object
+  request.OptionalString:
+    properties:
+      set:
+        description: Set 表示请求体里出现过这个键（无论值是不是 null）。
+        type: boolean
+      value:
+        description: Value 是解析出的值；Set 为 true 且 Value 为 nil 表示显式传了 null。
+        type: string
+    type: object
   request.RecruitmentCreateDirectionReq:
     properties:
       code:
@@ -453,6 +462,59 @@ definitions:
           UserID 三态：键不出现 = 不改；传 null = 解除绑定；传数字 = 绑定该账号。
           必须用 OptionalInt —— **int 会把 null 与「没传」解成同一个 nil，
           「解除绑定」于是被静默忽略（见 optional_int.go 的说明）。
+    type: object
+  request.StudioProjectCreateReq:
+    properties:
+      name:
+        type: string
+      status:
+        type: string
+      summary:
+        type: string
+      year:
+        type: string
+    required:
+    - name
+    - year
+    type: object
+  request.StudioProjectMemberAddReq:
+    properties:
+      ended_at:
+        type: string
+      member_id:
+        type: integer
+      name:
+        type: string
+      role:
+        type: string
+      started_at:
+        type: string
+    required:
+    - name
+    type: object
+  request.StudioProjectMemberUpdateReq:
+    properties:
+      ended_at:
+        $ref: '#/definitions/request.OptionalString'
+      member_id:
+        $ref: '#/definitions/request.OptionalInt'
+      name:
+        type: string
+      role:
+        type: string
+      started_at:
+        type: string
+    type: object
+  request.StudioProjectUpdateReq:
+    properties:
+      name:
+        type: string
+      status:
+        type: string
+      summary:
+        type: string
+      year:
+        type: string
     type: object
   request.UpdateMePatch:
     properties:
@@ -1197,6 +1259,76 @@ definitions:
         type: string
       user_id:
         type: integer
+    type: object
+  response.StudioProjectDetailResp:
+    properties:
+      members:
+        items:
+          $ref: '#/definitions/response.StudioProjectMemberResp'
+        type: array
+      project:
+        $ref: '#/definitions/response.StudioProjectResp'
+    type: object
+  response.StudioProjectListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.StudioProjectResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.StudioProjectMemberListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.StudioProjectMemberResp'
+        type: array
+      total:
+        type: integer
+    type: object
+  response.StudioProjectMemberResp:
+    properties:
+      created_at:
+        type: string
+      ended_at:
+        description: |-
+          EndedAt 为 null 表示「仍在参与」；用 *string 而不是空串，
+          前端靠 null 判断，与成员档案的 archived_at 同一口径。
+        type: string
+      id:
+        type: integer
+      member_id:
+        type: integer
+      name:
+        type: string
+      project_id:
+        type: integer
+      role:
+        type: string
+      started_at:
+        type: string
+    type: object
+  response.StudioProjectResp:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      status:
+        type: string
+      summary:
+        type: string
+      updated_at:
+        type: string
+      year:
+        type: string
     type: object
   response.SubmitFormResp:
     properties:
@@ -2688,6 +2820,383 @@ paths:
       summary: 将 hired 候选人转为工作室成员
       tags:
       - 管理端-工作室成员
+  /api/v1/admin/studio/projects:
+    get:
+      description: 分页列出项目，支持关键词（名称/简介）、状态与年份筛选。仅管理员可读。
+      parameters:
+      - description: 关键词（名称/简介模糊匹配）
+        in: query
+        name: q
+        type: string
+      - description: 状态：active / completed / archived
+        in: query
+        name: status
+        type: string
+      - description: 年份精确匹配
+        in: query
+        name: year
+        type: string
+      - default: 1
+        description: 页码，从 1 开始
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioProjectListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 工作室项目列表
+      tags:
+      - 管理端-工作室项目
+    post:
+      consumes:
+      - application/json
+      description: 管理员创建项目；项目名全局唯一，冲突返回 400。
+      parameters:
+      - description: 项目信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.StudioProjectCreateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioProjectResp'
+              type: object
+        "400":
+          description: 字段不合法 / 项目名已存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 创建工作室项目
+      tags:
+      - 管理端-工作室项目
+  /api/v1/admin/studio/projects/{id}:
+    delete:
+      description: 删除项目；参与行由数据库级联删除。
+      parameters:
+      - description: 项目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 项目不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 删除工作室项目
+      tags:
+      - 管理端-工作室项目
+    get:
+      description: 按 id 取项目元数据与完整参与名单。仅管理员可读。
+      parameters:
+      - description: 项目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioProjectDetailResp'
+              type: object
+        "400":
+          description: 项目不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 工作室项目详情
+      tags:
+      - 管理端-工作室项目
+    put:
+      consumes:
+      - application/json
+      description: 补丁式更新：只传要改的项。
+      parameters:
+      - description: 项目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.StudioProjectUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioProjectResp'
+              type: object
+        "400":
+          description: 字段不合法 / 项目不存在 / 项目名已存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 更新工作室项目
+      tags:
+      - 管理端-工作室项目
+  /api/v1/admin/studio/projects/{id}/members:
+    get:
+      description: 按开始时间升序列出某项目的参与行。
+      parameters:
+      - description: 项目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioProjectMemberListResp'
+              type: object
+        "400":
+          description: 项目不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 项目参与列表
+      tags:
+      - 管理端-工作室项目
+    post:
+      consumes:
+      - application/json
+      description: 姓名为必填快照；可关联已有成员或仅记外部姓名。
+      parameters:
+      - description: 项目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 参与信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.StudioProjectMemberAddReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioProjectMemberResp'
+              type: object
+        "400":
+          description: 字段不合法 / 项目不存在 / 同名冲突 / 成员不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 添加项目参与
+      tags:
+      - 管理端-工作室项目
+  /api/v1/admin/studio/projects/{id}/members/{member_id}:
+    delete:
+      description: 删除一条参与行；不影响成员档案本身。
+      parameters:
+      - description: 项目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 参与行 ID
+        in: path
+        name: member_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 参与行不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 移除项目参与
+      tags:
+      - 管理端-工作室项目
+    put:
+      consumes:
+      - application/json
+      description: 补丁式更新。ended_at 传 null 表示仍在参与，传时间表示已结束。
+      parameters:
+      - description: 项目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 参与行 ID
+        in: path
+        name: member_id
+        required: true
+        type: integer
+      - description: 更新内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.StudioProjectMemberUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioProjectMemberResp'
+              type: object
+        "400":
+          description: 字段不合法 / 参与行不存在 / 同名冲突 / 结束早于开始
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 更新项目参与
+      tags:
+      - 管理端-工作室项目
   /api/v1/admin/users:
     get:
       description: |-

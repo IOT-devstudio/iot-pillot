@@ -125,7 +125,9 @@ const defaultDeps: AdminPermissionsDeps = {
   listAdmins: () => listAdmins(),
   grantAdmin: (userId) => grantAdmin(userId),
   revokeAdmin: (userId) => revokeAdmin(userId),
-  deleteAdminUser: (userId) => deleteAdminUser(userId),
+  // 后端删除端点不返回 data（见 api/admin.ts 的说明），真实调用返回后端提示语。
+  // 这里转成 void：调用方展示自己的确认文案，不需要后端的 message。
+  deleteAdminUser: (userId) => deleteAdminUser(userId).then(() => undefined),
   unfreezeAdminUser: (userId) => unfreezeAdminUser(userId),
 };
 
