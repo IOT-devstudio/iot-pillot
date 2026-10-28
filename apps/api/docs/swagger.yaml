@@ -174,6 +174,15 @@ definitions:
     additionalProperties:
       type: string
     type: object
+  request.OptionalInt:
+    properties:
+      set:
+        description: Set 表示请求体里出现过这个键（无论值是不是 null）。
+        type: boolean
+      value:
+        description: Value 是解析出的值；Set 为 true 且 Value 为 nil 表示显式传了 null。
+        type: integer
+    type: object
   request.RecruitmentCreateDirectionReq:
     properties:
       code:
@@ -337,6 +346,42 @@ definitions:
     - template_id
     - to_user_id
     type: object
+  request.StudioKnowledgeCreateReq:
+    properties:
+      body:
+        type: string
+      parent_id:
+        type: integer
+      permission:
+        type: string
+      title:
+        type: string
+    required:
+    - title
+    type: object
+  request.StudioKnowledgeUpdateReq:
+    properties:
+      body:
+        type: string
+      parent_id:
+        allOf:
+        - $ref: '#/definitions/request.OptionalInt'
+        description: |-
+          ParentID 三态：键不出现 = 不改；传 null = 移到顶层；传数字 = 挂到该条目下。
+          与成员档案的 user_id 同一个坑：**int 会把 null 与「没传」解成同一个 nil，
+          「移到顶层」于是被静默忽略。必须用 OptionalInt。
+      permission:
+        type: string
+      title:
+        type: string
+      version:
+        description: |-
+          Version 乐观锁：调用方带上看过的版本号。
+
+          不传（0）时服务层退化成「用当前版本」，即总是覆盖——
+          管理端页面必须传，否则并发编辑会静默丢改动。
+        type: integer
+    type: object
   request.StudioMemberCreateReq:
     properties:
       birth_year:
@@ -382,10 +427,12 @@ definitions:
       role_in_studio:
         type: string
       user_id:
+        allOf:
+        - $ref: '#/definitions/request.OptionalInt'
         description: |-
-          UserID 三态：不传（nil）= 不改；传 null = 解除绑定；传数字 = 绑定该账号。
-          **int 在 gin 绑定里天然支持这三种输入。
-        type: integer
+          UserID 三态：键不出现 = 不改；传 null = 解除绑定；传数字 = 绑定该账号。
+          必须用 OptionalInt —— **int 会把 null 与「没传」解成同一个 nil，
+          「解除绑定」于是被静默忽略（见 optional_int.go 的说明）。
     type: object
   request.UpdateMePatch:
     properties:
@@ -1021,6 +1068,68 @@ definitions:
         type: integer
       submitted:
         type: boolean
+    type: object
+  response.StudioKnowledgeEntryResp:
+    properties:
+      author_id:
+        type: integer
+      body:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      is_public:
+        type: boolean
+      parent_id:
+        type: integer
+      permission:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      version:
+        type: integer
+    type: object
+  response.StudioKnowledgeListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.StudioKnowledgeEntryResp'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.StudioKnowledgeRevisionListResp:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/response.StudioKnowledgeRevisionResp'
+        type: array
+      total:
+        type: integer
+    type: object
+  response.StudioKnowledgeRevisionResp:
+    properties:
+      body:
+        type: string
+      created_at:
+        type: string
+      editor_id:
+        type: integer
+      entry_id:
+        type: integer
+      id:
+        type: integer
+      title:
+        type: string
+      version:
+        type: integer
     type: object
   response.StudioMemberListResp:
     properties:
@@ -2015,6 +2124,295 @@ paths:
       summary: 设置轮次开放状态
       tags:
       - 管理端-招新
+  /api/v1/admin/studio/knowledge:
+    get:
+      description: 分页列出知识库条目，支持关键词（标题/正文）、权限与父条目筛选。仅管理员可读。
+      parameters:
+      - description: 关键词（标题/正文模糊匹配）
+        in: query
+        name: q
+        type: string
+      - description: 权限：admin / member / public
+        in: query
+        name: permission
+        type: string
+      - description: 父条目筛选：缺省不筛选，none 只看顶层，数字看直接子条目
+        in: query
+        name: parent_id
+        type: string
+      - default: 1
+        description: 页码，从 1 开始
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页条数，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioKnowledgeListResp'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 知识库条目列表
+      tags:
+      - 管理端-工作室知识库
+    post:
+      consumes:
+      - application/json
+      description: 管理员创建条目，版本从 1 起并同时写入 v1 修订快照。作者取自登录身份。
+      parameters:
+      - description: 条目内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.StudioKnowledgeCreateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioKnowledgeEntryResp'
+              type: object
+        "400":
+          description: 字段不合法 / 父条目不可用
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 创建知识库条目
+      tags:
+      - 管理端-工作室知识库
+  /api/v1/admin/studio/knowledge/{id}:
+    delete:
+      description: 删除条目；修订由数据库级联删除，子条目的 parent 置空（不连带删子树）。
+      parameters:
+      - description: 条目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/response.Result'
+        "400":
+          description: 条目不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 删除知识库条目
+      tags:
+      - 管理端-工作室知识库
+    get:
+      description: 按 id 取条目当前正文与版本号。仅管理员可读。
+      parameters:
+      - description: 条目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioKnowledgeEntryResp'
+              type: object
+        "400":
+          description: 条目不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 知识库条目详情
+      tags:
+      - 管理端-工作室知识库
+    put:
+      consumes:
+      - application/json
+      description: |-
+        补丁式保存：只传要改的项。每次成功保存版本 +1 并写入对应修订快照。
+        version 是乐观锁：带上你读到的版本号，被他人抢先保存时返回 400 冲突。
+      parameters:
+      - description: 条目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新内容
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.StudioKnowledgeUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioKnowledgeEntryResp'
+              type: object
+        "400":
+          description: 字段不合法 / 条目不存在 / 父条目不可用 / 版本冲突
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 保存知识库条目
+      tags:
+      - 管理端-工作室知识库
+  /api/v1/admin/studio/knowledge/{id}/revisions:
+    get:
+      description: 按版本倒序列出某条目的全部修订快照。
+      parameters:
+      - description: 条目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioKnowledgeRevisionListResp'
+              type: object
+        "400":
+          description: 条目不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 知识库修订列表
+      tags:
+      - 管理端-工作室知识库
+  /api/v1/admin/studio/knowledge/{id}/revisions/{version}:
+    get:
+      description: 取某条目的指定版本快照（用于「看看上一版写了什么」）。
+      parameters:
+      - description: 条目 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 版本号
+        in: path
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Result'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.StudioKnowledgeRevisionResp'
+              type: object
+        "400":
+          description: 该版本不存在
+          schema:
+            $ref: '#/definitions/response.Result'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/response.Result'
+        "403":
+          description: 非管理员
+          schema:
+            $ref: '#/definitions/response.Result'
+      security:
+      - BearerAuth: []
+      summary: 知识库修订详情
+      tags:
+      - 管理端-工作室知识库
   /api/v1/admin/studio/members:
     get:
       description: 分页列出成员名录，支持关键词（姓名/届别/方向/职能）、方向与在读状态筛选。仅管理员可读。

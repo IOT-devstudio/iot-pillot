@@ -1557,6 +1557,479 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/admin/studio/knowledge": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "分页列出知识库条目，支持关键词（标题/正文）、权限与父条目筛选。仅管理员可读。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室知识库"
+                ],
+                "summary": "知识库条目列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "关键词（标题/正文模糊匹配）",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "权限：admin / member / public",
+                        "name": "permission",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "父条目筛选：缺省不筛选，none 只看顶层，数字看直接子条目",
+                        "name": "parent_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码，从 1 开始",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页条数，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioKnowledgeListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "管理员创建条目，版本从 1 起并同时写入 v1 修订快照。作者取自登录身份。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室知识库"
+                ],
+                "summary": "创建知识库条目",
+                "parameters": [
+                    {
+                        "description": "条目内容",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.StudioKnowledgeCreateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioKnowledgeEntryResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "字段不合法 / 父条目不可用",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/studio/knowledge/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按 id 取条目当前正文与版本号。仅管理员可读。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室知识库"
+                ],
+                "summary": "知识库条目详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "条目 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioKnowledgeEntryResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "条目不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "补丁式保存：只传要改的项。每次成功保存版本 +1 并写入对应修订快照。\nversion 是乐观锁：带上你读到的版本号，被他人抢先保存时返回 400 冲突。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室知识库"
+                ],
+                "summary": "保存知识库条目",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "条目 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新内容",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/request.StudioKnowledgeUpdateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioKnowledgeEntryResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "字段不合法 / 条目不存在 / 父条目不可用 / 版本冲突",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除条目；修订由数据库级联删除，子条目的 parent 置空（不连带删子树）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室知识库"
+                ],
+                "summary": "删除知识库条目",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "条目 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "条目不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/studio/knowledge/{id}/revisions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按版本倒序列出某条目的全部修订快照。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室知识库"
+                ],
+                "summary": "知识库修订列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "条目 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioKnowledgeRevisionListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "条目不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/studio/knowledge/{id}/revisions/{version}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "取某条目的指定版本快照（用于「看看上一版写了什么」）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "管理端-工作室知识库"
+                ],
+                "summary": "知识库修订详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "条目 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "版本号",
+                        "name": "version",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Result"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/response.StudioKnowledgeRevisionResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "该版本不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    },
+                    "403": {
+                        "description": "非管理员",
+                        "schema": {
+                            "$ref": "#/definitions/response.Result"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/studio/members": {
             "get": {
                 "security": [
@@ -3814,6 +4287,19 @@ const docTemplate = `{
                 "type": "string"
             }
         },
+        "request.OptionalInt": {
+            "type": "object",
+            "properties": {
+                "set": {
+                    "description": "Set 表示请求体里出现过这个键（无论值是不是 null）。",
+                    "type": "boolean"
+                },
+                "value": {
+                    "description": "Value 是解析出的值；Set 为 true 且 Value 为 nil 表示显式传了 null。",
+                    "type": "integer"
+                }
+            }
+        },
         "request.RecruitmentCreateDirectionReq": {
             "type": "object",
             "required": [
@@ -4045,6 +4531,52 @@ const docTemplate = `{
                 }
             }
         },
+        "request.StudioKnowledgeCreateReq": {
+            "type": "object",
+            "required": [
+                "title"
+            ],
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "permission": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "request.StudioKnowledgeUpdateReq": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "parent_id": {
+                    "description": "ParentID 三态：键不出现 = 不改；传 null = 移到顶层；传数字 = 挂到该条目下。\n与成员档案的 user_id 同一个坑：**int 会把 null 与「没传」解成同一个 nil，\n「移到顶层」于是被静默忽略。必须用 OptionalInt。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/request.OptionalInt"
+                        }
+                    ]
+                },
+                "permission": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "version": {
+                    "description": "Version 乐观锁：调用方带上看过的版本号。\n\n不传（0）时服务层退化成「用当前版本」，即总是覆盖——\n管理端页面必须传，否则并发编辑会静默丢改动。",
+                    "type": "integer"
+                }
+            }
+        },
         "request.StudioMemberCreateReq": {
             "type": "object",
             "required": [
@@ -4110,8 +4642,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user_id": {
-                    "description": "UserID 三态：不传（nil）= 不改；传 null = 解除绑定；传数字 = 绑定该账号。\n**int 在 gin 绑定里天然支持这三种输入。",
-                    "type": "integer"
+                    "description": "UserID 三态：键不出现 = 不改；传 null = 解除绑定；传数字 = 绑定该账号。\n必须用 OptionalInt —— **int 会把 null 与「没传」解成同一个 nil，\n「解除绑定」于是被静默忽略（见 optional_int.go 的说明）。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/request.OptionalInt"
+                        }
+                    ]
                 }
             }
         },
@@ -5048,6 +5584,101 @@ const docTemplate = `{
                 },
                 "submitted": {
                     "type": "boolean"
+                }
+            }
+        },
+        "response.StudioKnowledgeEntryResp": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "integer"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_public": {
+                    "type": "boolean"
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "permission": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.StudioKnowledgeListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.StudioKnowledgeEntryResp"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.StudioKnowledgeRevisionListResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/response.StudioKnowledgeRevisionResp"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "response.StudioKnowledgeRevisionResp": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "editor_id": {
+                    "type": "integer"
+                },
+                "entry_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },

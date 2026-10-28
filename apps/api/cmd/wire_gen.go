@@ -86,10 +86,13 @@ func InitializeApp() (*handler.Router, func(), error) {
 	studioMemberAccountDirectory := service.NewStudioMemberAccountDirectory(userRepo)
 	studioMemberUseCase := service.NewStudioMemberUseCase(studioMemberRepo, studioMemberAccountDirectory)
 	studioMemberHandler := handler.NewStudioMemberHandler(studioMemberUseCase)
+	studioKnowledgeRepo := repository.NewStudioKnowledgeRepo(db)
+	studioKnowledgeUseCase := service.NewStudioKnowledgeUseCase(studioKnowledgeRepo)
+	studioKnowledgeHandler := handler.NewStudioKnowledgeHandler(studioKnowledgeUseCase)
 	freezeMailer := service.NewFreezeMailer(mailUseCase)
 	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker, adminDirectory)
 	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, freezeScheduler, tokenManager, adminStore)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, freezeScheduler, tokenManager, adminStore)
 	return router, func() {
 		cleanup()
 	}, nil

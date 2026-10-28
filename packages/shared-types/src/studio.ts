@@ -9,7 +9,10 @@
  * - **成员（StudioMember）已联调**（#195）：apps/api 的
  *   domain.StudioMember / dto.StudioMemberResp 与本文件的字段一一对应，
  *   端点 /api/v1/admin/studio/members*。改字段必须两边一起改。
- * - 项目与知识库仍是**草案**（#198 / #196 尚未实现），不得当作已交付 API。
+ * - **知识库（Knowledge）已联调**（#196）：domain.StudioKnowledgeEntry /
+ *   StudioKnowledgeRevision 与本文件一一对应，端点
+ *   /api/v1/admin/studio/knowledge*。is_public 是 permission 的派生只读值。
+ * - 项目仍是**草案**（#198 尚未实现），不得当作已交付 API。
  * - 首期路由仅 admin；permission 字段预留 member/public。
  */
 
@@ -190,18 +193,51 @@ export interface StudioKnowledgeRevision {
   created_at: ISODateTime;
 }
 
+/**
+ * 创建知识库条目（POST /admin/studio/knowledge）。
+ *
+ * 刻意**不含 is_public**：它是 permission 的派生值（后端按
+ * permission === "public" 算出），请求里带它只会被静默忽略。
+ * author_id 同理不接受——作者一律取自登录身份，防止「替别人署名」。
+ */
 export interface CreateStudioKnowledgeInput {
   title: string;
-  body: string;
-  is_public?: boolean;
+  body?: string;
+  /** 缺省按 admin（与迁移 0015 的列默认值一致）。 */
   permission?: StudioKnowledgePermission;
+  /** 可选树形归属；缺省 = 顶层条目。 */
   parent_id?: number | null;
 }
 
+/**
+ * 保存知识库条目（PUT /admin/studio/knowledge/:id）：补丁语义。
+ *
+ * parent_id 是三态，必须用可选 + null 表达：
+ *   不传（undefined）= 不改父子关系；
+ *   传 null         = 移到顶层；
+ *   传 number       = 挂到该条目下。
+ *
+ * version 是乐观锁：带上你读到的版本号，被他人抢先保存时后端返回冲突。
+ * 不传会退化成「总是覆盖」，并发编辑会静默丢改动。
+ */
 export interface UpdateStudioKnowledgeInput {
   title?: string;
   body?: string;
-  is_public?: boolean;
   permission?: StudioKnowledgePermission;
   parent_id?: number | null;
+  version?: number;
+}
+
+/** 知识库条目分页（GET /admin/studio/knowledge）。 */
+export interface StudioKnowledgeEntryPage {
+  items: StudioKnowledgeEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** 修订列表（GET /admin/studio/knowledge/:id/revisions，版本倒序）。 */
+export interface StudioKnowledgeRevisionList {
+  items: StudioKnowledgeRevision[];
+  total: number;
 }

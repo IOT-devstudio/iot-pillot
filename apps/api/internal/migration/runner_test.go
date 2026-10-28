@@ -157,6 +157,41 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 		t.Fatalf("姓名+出生年索引应为唯一索引，实际 %q", memberIndexDef)
 	}
 
+	// 0015 的知识库两张表必须真的落地（#196）：条目读写、修订历史、
+	// 级联删除与 (entry_id, version) 唯一键全靠它们。
+	for _, column := range []string{"title", "body", "author_id", "permission", "parent_id", "version", "is_public"} {
+		var dataType string
+		if err := db.QueryRow(
+			`SELECT data_type FROM information_schema.columns
+			 WHERE table_name='studio_knowledge_entries' AND column_name=$1`, column,
+		).Scan(&dataType); err != nil {
+			t.Fatalf("0015 的 studio_knowledge_entries.%s 列未创建: %v", column, err)
+		}
+	}
+	// (entry_id, version) 唯一是「版本号就是历史索引」这一设计的强制前提：
+	// 少了它，同一版本可能有两份快照，历史读取会出现歧义。
+	var revisionIndexDef string
+	if err := db.QueryRow(
+		"SELECT indexdef FROM pg_indexes WHERE tablename='studio_knowledge_revisions' AND indexname='idx_studio_knowledge_revisions_entry_version'",
+	).Scan(&revisionIndexDef); err != nil {
+		t.Fatalf("0015 的 (entry_id, version) 唯一索引未创建: %v", err)
+	}
+	if !strings.Contains(revisionIndexDef, "UNIQUE") {
+		t.Fatalf("修订版本索引应为唯一索引，实际 %q", revisionIndexDef)
+	}
+	// 删除条目时修订必须级联清理（服务层不手动删）：
+	// ON DELETE CASCADE 缺失会让删掉的条目留下孤儿修订，永远读不到也删不掉。
+	var cascadeDelete string
+	if err := db.QueryRow(
+		`SELECT confdeltype FROM pg_constraint
+		 WHERE conrelid='studio_knowledge_revisions'::regclass AND contype='f'`,
+	).Scan(&cascadeDelete); err != nil {
+		t.Fatalf("0015 的修订外键未创建: %v", err)
+	}
+	if cascadeDelete != "c" {
+		t.Fatalf("修订外键应为 ON DELETE CASCADE（c），实际 %q", cascadeDelete)
+	}
+
 	// 扫描主查询「未冻结 + 未注销 + 注册早于 N 天」需要部分索引支撑，
 	// 否则用户表增长后会退化成全表扫描。
 	var freezeIndexDef string

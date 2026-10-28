@@ -53,6 +53,10 @@ vi.mock("@/modules/user-settings/views/UserSettingsView.vue", () => ({
 vi.mock("@/modules/studio-members/views/StudioMembersView.vue", () => ({
   default: { name: "StudioMembersView" },
 }));
+// 工作室知识库（#196）同样只验路由元信息
+vi.mock("@/modules/studio-knowledge/views/StudioKnowledgeView.vue", () => ({
+  default: { name: "StudioKnowledgeView" },
+}));
 
 import { routes } from "./routes";
 
@@ -166,6 +170,21 @@ describe("application routes", () => {
     expect(roster[0]?.meta?.allowRoles).toEqual(["admin"]);
     // 成员名录在统一管理外壳里，不另起顶栏。
     expect(roster[0]?.meta?.adminShell).toBe(true);
+  });
+
+  it("mounts the studio knowledge base as an admin-only page (issue #196)", () => {
+    const knowledge = routes.filter(
+      (route) => route.path === "/studio/knowledge",
+    );
+
+    expect(knowledge).toHaveLength(1);
+    expect(knowledge[0]?.name).toBe("studio-knowledge");
+    expect(knowledge[0]?.component).toMatchObject({
+      name: "StudioKnowledgeView",
+    });
+    // 知识库首期仅 admin（ADR 0001 §3）；permission 字段可写但不挂公开读接口。
+    expect(knowledge[0]?.meta?.allowRoles).toEqual(["admin"]);
+    expect(knowledge[0]?.meta?.adminShell).toBe(true);
   });
 
   it("mounts the mail center as a member-only real page", () => {
