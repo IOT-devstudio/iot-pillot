@@ -62,6 +62,9 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 		"GET /api/v1/admin/studio/members/:id":          false,
 		"PUT /api/v1/admin/studio/members/:id":          false,
 		"POST /api/v1/admin/studio/members/:id/archive": false,
+		// hired 转成员（#197）：静态段 from-candidate 与 :id 同层共存，
+		// 两条都必须注册上，否则请求会打到错的 handler 上。
+		"POST /api/v1/admin/studio/members/from-candidate": false,
 	}
 	for _, route := range router.eng.Routes() {
 		key := route.Method + " " + route.Path

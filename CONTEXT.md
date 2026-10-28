@@ -50,10 +50,23 @@
 - 删除条目级联删修订（`ON DELETE CASCADE`）；子条目的 `parent_id` 置空，**不**连带删子树。
 - 前端：`/studio/knowledge`（仅 admin），api 在 `apps/web/src/api/studio-knowledge.ts`。
 
+## #197 hired 转成员交付口径（2026-10-28）
+
+- 端点：`POST /api/v1/admin/studio/members/from-candidate`（仅 admin）。
+- **只有 hired 可转入**：其他状态返回 400 并带上当前状态，管理员据此知道该先做什么动作。
+- **姓名与方向取自申请**，不让管理员重填——重填就有「两个地方不一致」的机会。
+  出生年 / 届别 / 职能在招新数据里不存在，必须由管理员补全。
+- **防重复转入两道闸**：服务层前置检查 `GetBySourceCandidateID`（写库前就拒绝，
+  提示「已转为工作室成员」）+ 数据库 `idx_studio_members_source_candidate` 部分唯一索引
+  （并发窗口下的最后防线）。
+- **不改招新状态机**：候选人转入后仍是 hired，转入只是「另建一份成员档案」；
+  要撤销就删成员档案，招新侧无副作用。
+- 前端：候选人详情页在 hired 时显示「转为工作室成员」；逻辑在
+  `apps/web/src/modules/recruitment/convert.ts`。
+
 ## 下一步
 
 - 工作室运营剩余实现票：
-  - Frontier：**#198** 项目与参与（#195/#196 已完成）
-  - 阻塞于 #195 且仍未做：**#197** hired 转成员
+  - Frontier：**#198** 项目与参与（#195/#196/#197 已完成）
   - 阻塞于 195+196+198：**#199** 文档回填
 - #91 与工作室实现可并行，无 schema 冲突。

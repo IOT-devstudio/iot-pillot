@@ -6,6 +6,7 @@ import type {
   AdvanceCandidateInput,
 } from "@iot-pillot/shared-types";
 import { getCandidate, advanceCandidate } from "@/api/invitations";
+import { convertCandidateToMember } from "@/api/studio-members";
 import { readAuthSession } from "@/auth/session";
 import RecruitmentMailFields from "../components/RecruitmentMailFields.vue";
 import {
@@ -15,6 +16,13 @@ import {
   dateTime,
   errorMessage,
 } from "../workflow";
+import {
+  EMPTY_CONVERT_DRAFT,
+  canConvertToMember,
+  convertDraftErrors,
+  toConvertInput,
+  type ConvertDraft,
+} from "../convert";
 import "../recruitment.css";
 const route = useRoute(),
   userId = readAuthSession()?.user_id;
@@ -28,6 +36,22 @@ const action = ref<AdvanceCandidateInput["action"]>(),
   mail = ref<{ template_id?: number; vars: Record<string, string> }>({
     vars: {},
   });
+
+/**
+ * 「转为工作室成员」（#197）。
+ *
+ * 只在 hired 时给入口：其他状态后端会拒绝，但把注定失败的按钮摆出来
+ * 只会让管理员点一次、读一遍错误、再退回来。
+ * 姓名与方向不需要填 —— 后端从申请带过来。
+ */
+const convertOpen = ref(false),
+  convertBusy = ref(false),
+  convertError = ref(""),
+  convertDraft = ref<ConvertDraft>({ ...EMPTY_CONVERT_DRAFT }),
+  convertFieldErrors = ref<Record<string, string>>({});
+const canConvert = computed(
+  () => detail.value !== undefined && canConvertToMember(detail.value.candidate.status),
+);
 onBeforeRouteLeave(() => !busy.value);
 onBeforeRouteUpdate(() => !busy.value);
 const actions = computed(() =>
@@ -91,11 +115,42 @@ async function submit() {
     busy.value = false;
   }
 }
+function openConvert() {
+  convertDraft.value = { ...EMPTY_CONVERT_DRAFT };
+  convertFieldErrors.value = {};
+  convertError.value = "";
+  convertOpen.value = true;
+}
+
+async function submitConvert() {
+  if (convertBusy.value || !detail.value) return;
+  convertFieldErrors.value = convertDraftErrors(convertDraft.value);
+  if (Object.keys(convertFieldErrors.value).length > 0) return;
+
+  convertBusy.value = true;
+  convertError.value = "";
+  try {
+    const member = await convertCandidateToMember(
+      toConvertInput(detail.value.candidate.id, convertDraft.value),
+    );
+    convertOpen.value = false;
+    // 转入成功后候选人状态不变（本票明确不改招新状态机），
+    // 所以这里只提示，并指路到成员名录。
+    success.value = `已转为工作室成员（成员 #${member.id}）。可在「成员名录」查看。`;
+  } catch (e) {
+    // 非 hired / 已转入 / 缺字段都是 400，message 可直接展示。
+    convertError.value = errorMessage(e);
+  } finally {
+    convertBusy.value = false;
+  }
+}
+
 watch(
   () => route.params.id,
   () => {
     action.value = undefined;
     success.value = "";
+    convertOpen.value = false;
     void load();
   },
   { immediate: true },
@@ -153,6 +208,18 @@ watch(
           >
         </div>
         <p v-if="!actions.length">该候选人流程已结束。</p>
+        <!--
+          转成员入口只在 hired 出现（#197）：其他状态后端会拒绝，
+          把注定失败的按钮摆出来只会让人点一次、读一遍错误。
+        -->
+        <div v-if="canConvert" class="recruitment-toolbar">
+          <el-button type="success" :disabled="busy || loading" @click="openConvert"
+            >转为工作室成员</el-button
+          >
+        </div>
+        <p v-if="canConvert">
+          转入后会新建一份成员档案，候选人状态保持不变；同一人只能转入一次。
+        </p>
       </section>
       <section class="recruitment-card">
         <h2>处理时间线</h2>
@@ -176,6 +243,79 @@ watch(
         >
       </section></template
     >
+    <!-- 转成员弹窗（#197）：姓名与方向由后端从申请带过来，不需要填 -->
+    <el-dialog
+      v-model="convertOpen"
+      title="转为工作室成员"
+      width="min(560px, 94vw)"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!convertBusy"
+      :show-close="!convertBusy"
+      destroy-on-close
+    >
+      <p>{{ detail?.candidate.name }} · {{ detail?.candidate.email }}</p>
+      <p>
+        姓名与方向会从招新申请带过来。以下三项在招新数据里没有，需要在这里补全。
+      </p>
+      <el-alert
+        v-if="convertError"
+        :title="convertError"
+        type="error"
+        :closable="false"
+        role="alert"
+      />
+      <el-form label-position="top">
+        <el-form-item
+          label="出生年"
+          required
+          :error="convertFieldErrors.birth_year"
+          ><el-input
+            v-model="convertDraft.birth_year"
+            inputmode="numeric"
+            placeholder="如 2003（与姓名共同构成唯一标识）"
+            :disabled="convertBusy"
+        /></el-form-item>
+        <el-form-item label="届别" required :error="convertFieldErrors.cohort"
+          ><el-input
+            v-model="convertDraft.cohort"
+            placeholder="如 2024 级"
+            :disabled="convertBusy"
+        /></el-form-item>
+        <el-form-item
+          label="工作室职能"
+          required
+          :error="convertFieldErrors.role_in_studio"
+          ><el-input
+            v-model="convertDraft.role_in_studio"
+            placeholder="如 前端成员"
+            :disabled="convertBusy"
+        /></el-form-item>
+        <el-form-item label="实习去向" :error="convertFieldErrors.internship"
+          ><el-input
+            v-model="convertDraft.internship"
+            placeholder="选填"
+            :disabled="convertBusy"
+        /></el-form-item>
+        <el-form-item label="就业去向" :error="convertFieldErrors.employment"
+          ><el-input
+            v-model="convertDraft.employment"
+            placeholder="选填"
+            :disabled="convertBusy"
+        /></el-form-item>
+      </el-form>
+      <template #footer
+        ><el-button :disabled="convertBusy" @click="convertOpen = false"
+          >取消</el-button
+        ><el-button
+          type="primary"
+          :loading="convertBusy"
+          :disabled="convertBusy"
+          @click="submitConvert"
+          >确认转入</el-button
+        ></template
+      >
+    </el-dialog>
+
     <el-dialog
       :model-value="!!action"
       :title="action ? actionLabels[action] : ''"

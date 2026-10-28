@@ -95,13 +95,20 @@ export interface StudioMemberPage {
   page_size: number;
 }
 
-/** hired 候选人 → 工作室成员（#197 尚未实现，草案） */
+/**
+ * hired 候选人 → 工作室成员（POST /admin/studio/members/from-candidate，#197）。
+ *
+ * 只收候选人 id 与需要**人工补全**的字段：
+ * 姓名与方向由后端从申请带过来（不让前端重填，重填就有填错的可能），
+ * 出生年 / 届别 / 职能在招新数据里不存在，必须由管理员给出。
+ *
+ * 所以这里没有 direction —— 它不在请求体里，由服务端按申请填入。
+ */
 export interface ConvertCandidateToMemberInput {
   candidate_id: number;
-  role_in_studio?: string;
-  cohort?: string;
-  birth_year?: number;
-  direction?: StudioDirectionCode;
+  birth_year: number;
+  cohort: string;
+  role_in_studio: string;
   internship?: string;
   employment?: string;
 }

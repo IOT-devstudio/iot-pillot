@@ -209,6 +209,9 @@ func NewRouter(
 		studio.PUT("/members/:id", studioMemberHandler.UpdateStudioMember)
 		// 归档用 POST 而不是 DELETE：它不是删除，档案仍要在名录里可见。
 		studio.POST("/members/:id/archive", studioMemberHandler.ArchiveStudioMember)
+		// hired 候选人转成员（#197）。静态段 from-candidate 与 :id 同层共存
+		// （gin v1.10 允许，已由 router_test 锁住），不会互相吞掉。
+		studio.POST("/members/from-candidate", studioMemberHandler.ConvertCandidateToMember)
 
 		// 知识库（#196）：条目 + 修订历史。
 		//
