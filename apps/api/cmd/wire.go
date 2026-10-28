@@ -58,6 +58,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		repository.NewFormRepo,
 		repository.NewStudioMemberRepo,
 		repository.NewStudioKnowledgeRepo,
+		repository.NewStudioProjectRepo,
 
 		service.NewStudioMemberAccountDirectory,
 		service.NewStudioMemberCandidateDirectory,
@@ -74,6 +75,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		service.NewFormUseCase,
 		service.NewStudioMemberUseCase,
 		service.NewStudioKnowledgeUseCase,
+		service.NewStudioProjectUseCase,
 
 		// 资料不合规账号的定时冻结（0012）
 		service.NewFreezeMailer,
@@ -89,6 +91,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		handler.NewFormHandler,
 		handler.NewStudioMemberHandler,
 		handler.NewStudioKnowledgeHandler,
+		handler.NewStudioProjectHandler,
 
 		handler.NewRouter,
 	)

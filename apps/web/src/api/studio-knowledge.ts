@@ -16,7 +16,7 @@ import type {
   StudioKnowledgeRevisionList,
   UpdateStudioKnowledgeInput,
 } from "@iot-pillot/shared-types";
-import { requestWithSession } from "./session-request";
+import { requestMessageWithSession, requestWithSession } from "./session-request";
 
 // 直接复用共享包的契约类型，不在这里复制一份：
 // 后端字段一旦变化，typecheck 会在这一层就报出来，而不是等页面渲染时才炸。
@@ -109,8 +109,11 @@ export function updateStudioKnowledge(
 }
 
 /** 删除条目（修订由后端级联删除，子条目的 parent 置空）。 */
-export function deleteStudioKnowledge(id: number): Promise<void> {
-  return requestWithSession<void>(`/api/v1/admin/studio/knowledge/${id}`, {
+export function deleteStudioKnowledge(id: number): Promise<string> {
+  // 后端删除端点返回 OKWithMsg(..., nil)，data 被 omitempty 省略成
+  // {"code":0,"message":"..."}。requestWithSession 会把「data 缺失」当成
+  // 服务不可用，成功的删除于是弹出「服务暂时不可用」——所以走 message 出口。
+  return requestMessageWithSession(`/api/v1/admin/studio/knowledge/${id}`, {
     method: "DELETE",
   });
 }

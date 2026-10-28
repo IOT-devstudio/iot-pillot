@@ -35,6 +35,7 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 		nil, // form
 		nil, // studio member（#195）
 		nil, // studio knowledge（#196）
+		nil, // studio project（#198）
 		nil, // freeze scheduler：允许为空（Run 里有 nil 判断）
 		nil, // token manager
 		nil, // admin store
@@ -99,6 +100,33 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 		}
 	}
 	for key, registered := range wantKnowledgeRoutes {
+		if !registered {
+			t.Errorf("未注册 %s", key)
+		}
+	}
+
+	// 项目与参与（#198）九条端点必须真的挂上。
+	//
+	// 特别锁住 /projects/:id 与 /projects/:id/members/:member_id 这两组
+	// 同层共存：顺序写错会让 :id 吞掉 members 段，那种错误只在请求时暴露。
+	wantProjectRoutes := map[string]bool{
+		"GET /api/v1/admin/studio/projects":                           false,
+		"POST /api/v1/admin/studio/projects":                          false,
+		"GET /api/v1/admin/studio/projects/:id":                       false,
+		"PUT /api/v1/admin/studio/projects/:id":                       false,
+		"DELETE /api/v1/admin/studio/projects/:id":                    false,
+		"GET /api/v1/admin/studio/projects/:id/members":               false,
+		"POST /api/v1/admin/studio/projects/:id/members":              false,
+		"PUT /api/v1/admin/studio/projects/:id/members/:member_id":    false,
+		"DELETE /api/v1/admin/studio/projects/:id/members/:member_id": false,
+	}
+	for _, route := range router.eng.Routes() {
+		key := route.Method + " " + route.Path
+		if _, ok := wantProjectRoutes[key]; ok {
+			wantProjectRoutes[key] = true
+		}
+	}
+	for key, registered := range wantProjectRoutes {
 		if !registered {
 			t.Errorf("未注册 %s", key)
 		}

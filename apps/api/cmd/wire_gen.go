@@ -90,10 +90,13 @@ func InitializeApp() (*handler.Router, func(), error) {
 	studioKnowledgeRepo := repository.NewStudioKnowledgeRepo(db)
 	studioKnowledgeUseCase := service.NewStudioKnowledgeUseCase(studioKnowledgeRepo)
 	studioKnowledgeHandler := handler.NewStudioKnowledgeHandler(studioKnowledgeUseCase)
+	studioProjectRepo := repository.NewStudioProjectRepo(db)
+	studioProjectUseCase := service.NewStudioProjectUseCase(studioProjectRepo)
+	studioProjectHandler := handler.NewStudioProjectHandler(studioProjectUseCase)
 	freezeMailer := service.NewFreezeMailer(mailUseCase)
 	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker, adminDirectory)
 	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, freezeScheduler, tokenManager, adminStore)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, tokenManager, adminStore)
 	return router, func() {
 		cleanup()
 	}, nil
