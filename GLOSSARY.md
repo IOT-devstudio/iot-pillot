@@ -49,7 +49,7 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 
 招新问答与工作室内部论坛共用一套内容模型，靠内容域分区。决策见 `docs/adr/0003-content-scope-shared-model.md`；附件上传与正文图片引用见 `docs/adr/0004-attachment-upload-chain.md`。
 
-正文的渲染方式见 `docs/adr/0005-markdown-rendering.md`。
+正文的渲染方式见 `docs/adr/0005-markdown-rendering.md`，学习路线的数据模型见 `docs/adr/0006-learning-roadmap.md`。
 
 - **内容域 (Content Scope)**：帖子的分区维度，取值 `recruitment`（招新问答）/ `studio`（内部论坛）。**不是**权限等级，也不是知识库的 **权限分级 (Permission)**（`admin` / `member` / `public`），两者不可互相套用。
 - **帖子 (Post)**：一条带标题的独立话题，属于且仅属于一个内容域。
@@ -59,6 +59,9 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 - **上传配额 (Upload Quota)**：单账号每 24 小时最多上传 50 张的上限，窗口自首次上传起算（不是自然日零点）。
 - **招新问答 (Recruitment Q&A)**：`scope = recruitment` 的帖子集合。登录用户可提问、可回复、可浏览；管理员额外可标记已解决、可删除任何内容。
 - **内部论坛 (Internal Forum)**：`scope = studio` 的帖子集合。本期仅管理员可见可写，与招新问答的差异**只在可见性**，回复与图片能力完全共用。
-- **学习路线 (Learning Roadmap)**：按招新方向组织的学习路径推荐，由管理员维护、登录后按方向查看。是独立实体，**不带内容域**——它没有回复、没有已解决，与帖子不是同一种东西。
+- **学习路线 (Learning Roadmap)**：按招新方向组织的学习路径推荐，由管理员维护、登录后按方向查看。是独立实体，**不带内容域**——它没有回复、没有已解决，与帖子不是同一种东西。一条路线属于一个方向（`direction_code` 软引用，不建外键）。决策见 `docs/adr/0006-learning-roadmap.md`。
+- **阶段 (Roadmap Stage)**：学习路线内部的一个有序步骤，含标题、一句话说明与资源列表。每个阶段有一个**服务端生成的稳定 id**（`s_xxx`），前端只当不透明字符串——用户进度记的是它而不是序号，所以管理员重排阶段不会让进度指错。
+- **资源 (Roadmap Resource)**：阶段里的一条学习材料，就是一个标题加一个链接。链接协议受与 Markdown 相同的白名单约束（`http:` / `https:` / 站内 `/` 开头），不合规拒绝保存。
+- **学习进度 (Roadmap Progress)**：用户在某条路线上标记的「学到哪个阶段」，一人一路线至多一行，只属于本人，管理员也看不到。撤销 = 再点同一个阶段。
 - **Markdown 渲染器 (Markdown Renderer)**：把正文与回复的 Markdown 原文变成页面内容的唯一实现，位于前端 `apps/web/src/components/markdown/`。只解析成 VNode，**不产生 HTML 字符串**，因此不走 `v-html`、不需要 sanitizer。支持语法是明确子集，未知写法降级为纯文本而不是丢弃。决策见 `docs/adr/0005-markdown-rendering.md`。
 - **正文摘要 (Body Excerpt)**：列表页里对正文的一行预览。先剥掉 Markdown 标记（图片整体替换成 `[图]`、链接只留文字），再交给既有的 `bodyExcerpt` 压空白并截断；列表页**不渲染**正文，摘要不带排版。
