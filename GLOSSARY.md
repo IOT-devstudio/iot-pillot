@@ -15,7 +15,9 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 
 ## 邮件域
 
-- **邮件模板 (Mail Template)**：统一配置的可复用邮件正文，类型 `invitation` / `offer` / `rejection` / `custom`；渲染统一走 `TemplateModule`。
+- **邮件模板 (Mail Template)**：统一配置的可复用邮件正文，类型 `invitation` / `offer` / `rejection` / `custom` / `qa_reply`，另有 `deletion` / `freeze` 两个**只在内置兜底时使用**的类型；渲染统一走 `TemplateModule`。
+- **回复通知 (Reply Notification)**：问答与论坛里「我发的帖子被人回复」时发出的邮件，类型 `qa_reply`，两个内容域共用。走有界队列异步发送，**失败不影响回复本身**；自己回自己的帖子不发；模板未配置时用内置文案照发。决策见 `docs/adr/0007-forum-reply-notification.md`。
+- **内置兜底模板 (Built-in Fallback Template)**：当某类型模板未被管理员配置时，系统改用代码里写死的文案照常发送，而不是报错或静默不发。当前有 `deletion` / `freeze` / `qa_reply` 三个。兜底文案只能引用渲染时**自动预填**的变量（`{{name}}` 等），不能引用调用方额外传的变量 —— 缺变量会让兜底本身变成失败点。
 - **邀请函 (Invitation)**：发给 Prospect、引导其成为 Candidate 的邮件动作。
 - **Offer**：发给通过面试 Candidate 的录用邮件动作。
 - **感谢信 (Rejection)**：发给未通过面试 Candidate 的邮件动作。
@@ -53,7 +55,7 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 
 - **内容域 (Content Scope)**：帖子的分区维度，取值 `recruitment`（招新问答）/ `studio`（内部论坛）。**不是**权限等级，也不是知识库的 **权限分级 (Permission)**（`admin` / `member` / `public`），两者不可互相套用。
 - **帖子 (Post)**：一条带标题的独立话题，属于且仅属于一个内容域。
-- **回复 (Reply)**：挂在帖子下的一条无标题发言，继承帖子的内容域，没有独立的可见性。
+- **回复 (Reply)**：挂在帖子下的一条无标题发言，继承帖子的内容域，没有独立的可见性。**新建**回复会通知帖子作者（见邮件域「回复通知」）；编辑回复不再通知。
 - **附件 (Attachment)**：挂在帖子、回复或学习路线上的图片，存于对象存储。上传后到被绑定前是**孤儿态**，超过 24 小时未绑定会被清理；内容软删除时附件保留。读取时按归属判定：孤儿态仅上传者可读，内部论坛的图需管理员，招新问答与学习路线的图登录即可读；无权访问一律按「不存在」处理。
 - **正文图片引用 (Inline Image Reference)**：正文里用标准 Markdown 图片语法指向附件读取端点。**正文是绑定关系的唯一真源**——服务端按正文里仍出现的附件 id 重算绑定集合，未出现的解绑回孤儿态。外链图片不参与绑定。
 - **上传配额 (Upload Quota)**：单账号每 24 小时最多上传 50 张的上限，窗口自首次上传起算（不是自然日零点）。
