@@ -57,4 +57,4 @@
 
 已同步团队主线 `091d703`，保留表单模块、申请审核开关修复和个人设置更新。规范与需求两轴审查未发现本次前端引入的阻塞缺陷；327 项单测、工作区类型检查、生产构建和上述双尺寸浏览器流程通过。
 
-另发现既有后端 `RecruitmentInvitationUseCase.existingCandidateView` 未校验 `userID`：持有已接受邀请 token 的其他登录账号可能读取该候选结果。前端始终从本人邀请列表选择 token，未提供跨账号接受入口；此项属于后端既有缺陷，需要独立修复，不能将前端检查视为服务端鉴权保证。本次不修改后端，也不关闭 #91 的完整验收。
+既有后端 `RecruitmentInvitationUseCase.existingCandidateView` 曾未校验 `userID`：持有已接受邀请 token 的其他登录账号可读取该候选结果（#91 验收项「其他账号访问」因此不通过）。**已修复**：`AcceptInvitation` 把申请归属校验前移到所有状态分支之前，已接受幂等分支与并发回退分支都无法绕过；`existingCandidateView` 去掉无用的 `userID` 形参，只按已核验归属的 `applicationID` 取数。回归测试 `TestAcceptInvitationRejectsNonOwnerOnAccepted`（修复前失败）与 `TestAcceptInvitationConflictFallbackRejectsNonOwner` 覆盖两条路径。前端始终从本人邀请列表选择 token，不提供跨账号接受入口。
