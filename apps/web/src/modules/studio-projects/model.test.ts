@@ -227,6 +227,18 @@ describe("project presentation helpers", () => {
     expect(formatDay("not-a-date")).toBe("not-a-date");
   });
 
+  it("formats the day in the string's own offset, not the viewer's zone", () => {
+    // 同一个瞬间的两种写法：UTC 与 +08:00。
+    // 若按本地时区（或按 UTC）统一格式化，两者会给出同一个日期，
+    // 这条断言就会失败——它锁住「按字符串自带偏移取日期」这个口径。
+    expect(formatDay("2024-03-01T00:00:00+08:00")).toBe("2024-03-01");
+    expect(formatDay("2024-02-29T16:00:00Z")).toBe("2024-02-29");
+  });
+
+  it("keeps a half-hour offset's date stable", () => {
+    expect(formatDay("2024-03-01T00:30:00-05:30")).toBe("2024-03-01");
+  });
+
   it("flattens newlines before truncating the excerpt", () => {
     expect(projectExcerpt("第一行\n\n第二行")).toBe("第一行 第二行");
     expect(projectExcerpt("字".repeat(200), 10)).toBe("字字字字字字字字字字…");
