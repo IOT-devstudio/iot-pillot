@@ -266,17 +266,37 @@ export function memberEndSummary(member: StudioProjectMember): string {
   return "已结束 · " + formatDay(member.ended_at);
 }
 
-/** ISO 时间 → YYYY-MM-DD；解析失败时退回原字符串前 10 位。 */
+/**
+ * ISO 时间 → YYYY-MM-DD；解析失败时退回原字符串前 10 位。
+ *
+ * 按字符串**自带的时区偏移**取日期，而不是按运行环境的本地时区。
+ * 参与行的 started_at 存的是 "2024-03-01T00:00:00+08:00"，按本地时区格式化
+ * 会在 UTC 的机器上得到 "2024-02-29"——同一个日期在不同部署时区显示成不同日期。
+ */
 export function formatDay(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  // 墙上时间 = UTC 瞬间 + 该串自己的偏移量（+08:00 要加，不是减）。
+  const shifted = new Date(date.getTime() + offsetMinutes(iso) * 60_000);
   return (
-    date.getFullYear() +
+    shifted.getUTCFullYear() +
     "-" +
-    String(date.getMonth() + 1).padStart(2, "0") +
+    String(shifted.getUTCMonth() + 1).padStart(2, "0") +
     "-" +
-    String(date.getDate()).padStart(2, "0")
+    String(shifted.getUTCDate()).padStart(2, "0")
   );
+}
+
+/**
+ * ISO 串末尾时区偏移的分钟数："+08:00" → 480，"-05:30" → -330；
+ * 无偏移（"Z" 或裸日期）按 0 处理。
+ */
+function offsetMinutes(iso: string): number {
+  const match = iso.match(/(?:Z|[+-]\d{2}:?\d{2})$/);
+  if (!match || match[0] === "Z") return 0;
+  const sign = match[0][0] === "-" ? -1 : 1;
+  const digits = match[0].slice(1).replace(":", "");
+  return sign * (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2, 4)));
 }
 
 /**
