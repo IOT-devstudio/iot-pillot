@@ -56,6 +56,7 @@ iot-pillot/
 - `recruitment.ts`：BE-04 邀请/候选人 DTO（number ID）+ `Prospect`、`Candidate` 草案与状态机（详见下）
 - `form.ts`：`FormDefinition`、`FormField`、`FormSubmission`、`CreateFormInput`
 - `template.ts`：`EmailTemplate`、`CreateTemplateInput`
+- `studio.ts`：工作室运营域 DTO（成员 / 项目 / 参与 / 知识库；number ID）
 
 被 `apps/web` 通过 `workspace:*` 协议引用，类型导入示例：
 
@@ -73,9 +74,30 @@ import type { ApiResponse, Prospect, EmailTemplate } from "@iot-pillot/shared-ty
 
 Branch protection：`enforce_admins=true`、`required_approving_review_count=0`、`required_linear_history=true`、`allow_force_pushes=false`。
 
+### 工作室运营域（#195–#198）
+
+招新之外的工作室运营能力已落地，**全部仅 admin 可读写**（挂在 `RequireAdmin` 上），首期不向 member/游客开放
+（决策见 [ADR 0001](adr/0001-studio-member-project-model.md)）。与招新域的边界：工作室成员档案**独立**于 `candidates`，
+`hired` 不会自动建档案，只提供管理员手动「转为成员」。
+
+| 能力 | 端点（全部 `/api/v1/admin/studio/*`） | 迁移 | 前端页面 |
+| --- | --- | --- | --- |
+| 成员名录（#195） | `GET/POST /members`、`GET/PUT /members/:id`、`POST /members/:id/archive` | `0013_studio_members` | `/studio/members` |
+| hired 转成员（#197） | `POST /members/from-candidate` | 复用 `0013` | 候选人详情页 |
+| 知识库与修订历史（#196） | `GET/POST /knowledge`、`GET/PUT/DELETE /knowledge/:id`、`GET /knowledge/:id/revisions`、`GET /knowledge/:id/revisions/:version` | `0015_studio_knowledge` | `/studio/knowledge` |
+| 项目与参与（#198） | `GET/POST /projects`、`GET/PUT/DELETE /projects/:id`、`GET/POST /projects/:id/members`、`PUT/DELETE /projects/:id/members/:member_id` | `0014_studio_projects` | `/studio/projects` |
+
+四张表一次 `migrate up` 建出（schema 版本推到 15）。业务错误统一 400 + 可读中文（含「同名」「版本冲突」「未 hired」等）；
+删除类端点返回 `OKWithMsg(..., nil)`，前端走 message 出口（响应里的 `data` 被 `omitempty` 省略，见
+`apps/api/internal/dto/response/response_shape_test.go` 锁住的契约）。
+
+`GLOSSARY.md`「工作室运营域」是术语唯一源；`CONTEXT.md` 逐票记录交付口径。
+
 ---
 
 ## 业务模块规划（待开工）
+
+> **工作室运营域已落地**：成员名录 / 知识库 / 项目与参与见上文「已落地」的「工作室运营域」小节，不在本待开工清单内。
 
 按依赖关系排序：
 
@@ -192,6 +214,12 @@ CandidateStatus:  interviewing ─► offered ─► hired
 - 国际化范围（仅中文 / 中英双语）
 - Postgres 备份策略
 - Docker 镜像发布到 ghcr.io 的 release workflow（当前 `deploy.yml` 走 SCP 直推，不依赖镜像仓库）
+
+工作室运营域的范围边界（详见 ADR 0001 §4）：
+
+- 例会签到系统（用飞书外链或知识库备注替代）
+- member/游客可见的工作室只读 API（首期仅 admin 读写）
+- 关于页成果 / 成员自动接库（仍用静态 fixture）
 
 每项开工前会单独 PR + 决策记录。
 
