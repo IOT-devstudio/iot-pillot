@@ -49,6 +49,8 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 
 招新问答与工作室内部论坛共用一套内容模型，靠内容域分区。决策见 `docs/adr/0003-content-scope-shared-model.md`；附件上传与正文图片引用见 `docs/adr/0004-attachment-upload-chain.md`。
 
+正文的渲染方式见 `docs/adr/0005-markdown-rendering.md`。
+
 - **内容域 (Content Scope)**：帖子的分区维度，取值 `recruitment`（招新问答）/ `studio`（内部论坛）。**不是**权限等级，也不是知识库的 **权限分级 (Permission)**（`admin` / `member` / `public`），两者不可互相套用。
 - **帖子 (Post)**：一条带标题的独立话题，属于且仅属于一个内容域。
 - **回复 (Reply)**：挂在帖子下的一条无标题发言，继承帖子的内容域，没有独立的可见性。
@@ -58,4 +60,5 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 - **招新问答 (Recruitment Q&A)**：`scope = recruitment` 的帖子集合。登录用户可提问、可回复、可浏览；管理员额外可标记已解决、可删除任何内容。
 - **内部论坛 (Internal Forum)**：`scope = studio` 的帖子集合。本期仅管理员可见可写，与招新问答的差异**只在可见性**，回复与图片能力完全共用。
 - **学习路线 (Learning Roadmap)**：按招新方向组织的学习路径推荐，由管理员维护、登录后按方向查看。是独立实体，**不带内容域**——它没有回复、没有已解决，与帖子不是同一种东西。
-
+- **Markdown 渲染器 (Markdown Renderer)**：把正文与回复的 Markdown 原文变成页面内容的唯一实现，位于前端 `apps/web/src/components/markdown/`。只解析成 VNode，**不产生 HTML 字符串**，因此不走 `v-html`、不需要 sanitizer。支持语法是明确子集，未知写法降级为纯文本而不是丢弃。决策见 `docs/adr/0005-markdown-rendering.md`。
+- **正文摘要 (Body Excerpt)**：列表页里对正文的一行预览。先剥掉 Markdown 标记（图片整体替换成 `[图]`、链接只留文字），再交给既有的 `bodyExcerpt` 压空白并截断；列表页**不渲染**正文，摘要不带排版。
