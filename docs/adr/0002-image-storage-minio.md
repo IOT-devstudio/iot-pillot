@@ -70,7 +70,7 @@
 - 生产部署多一个容器 + 一个 license 文件挂载，`deploy.yml` 与 `smoke.sh` 都要相应扩展。
 - 对象名用 `crypto/rand` 生成、扩展名从嗅探结果推导，**绝不用用户文件名做 key**（路径穿越 / 同名覆盖 / 泄漏真实姓名）。
 - 业务表存 `object_key` 而非完整 URL，换 endpoint 时不用刷数据。
-- 孤儿对象回收策略**尚未定**（删帖/删回复后 MinIO 对象谁回收、何时回收），已记录在地图 #207 的 Not yet specified。
+- 孤儿对象回收策略已由 `docs/adr/0004-attachment-upload-chain.md` 定稿：未绑定附件超过 24 小时由进程内 ticker（每小时、单批 500）回收；内容软删时附件行与对象都**保留**，不做回收。
 
 ## 参考
 
