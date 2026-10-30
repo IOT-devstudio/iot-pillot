@@ -424,6 +424,50 @@ func TestAcceptInvitationIsIdempotent(t *testing.T) {
 // 验收场景 3：过期 / 撤销不可接受
 // ------------------------------------------------------------------ *
 
+// 回归：已接受的邀请，其他登录账号持 token 再次调用必须被拒，
+// 不能借幂等分支读到他人候选人视图（docs/recruitment-fe04.md 记录的既有越权）。
+func TestAcceptInvitationRejectsNonOwnerOnAccepted(t *testing.T) {
+	h := newHarness()
+	inv := h.seedInvitation(t)
+	token := h.tokenOf(t, inv.ID)
+
+	if _, err := h.uc.AcceptInvitation(context.Background(), 7, &request.AcceptInvitationReq{Token: token}); err != nil {
+		t.Fatalf("归属人首次接受失败: %v", err)
+	}
+
+	resp, err := h.uc.AcceptInvitation(context.Background(), 8, &request.AcceptInvitationReq{Token: token})
+	if err == nil {
+		t.Fatalf("他人对已接受邀请应被拒，却拿到了候选人视图: %+v", resp)
+	}
+	if !errors.Is(err, ErrNotApplicationOwner) {
+		t.Fatalf("应报 ErrNotApplicationOwner，实际: %v", err)
+	}
+}
+
+// 回归：并发回退分支同样不得绕过归属校验。
+func TestAcceptInvitationConflictFallbackRejectsNonOwner(t *testing.T) {
+	h := newHarness()
+	inv := h.seedInvitation(t)
+	token := h.tokenOf(t, inv.ID)
+
+	// 先由归属人接受，模拟"另一请求已建候选人"的落点。
+	if _, err := h.uc.AcceptInvitation(context.Background(), 7, &request.AcceptInvitationReq{Token: token}); err != nil {
+		t.Fatalf("归属人首次接受失败: %v", err)
+	}
+	// 再把邀请改回 pending，让非归属人走完整路径（此时候选人已存在）。
+	row, _ := h.invs.GetByID(context.Background(), inv.ID)
+	row.Status = domain.InvitationPending
+	row.AcceptedAt = nil
+	if err := h.invs.Update(context.Background(), row); err != nil {
+		t.Fatalf("重置邀请状态失败: %v", err)
+	}
+
+	_, err := h.uc.AcceptInvitation(context.Background(), 8, &request.AcceptInvitationReq{Token: token})
+	if !errors.Is(err, ErrNotApplicationOwner) {
+		t.Fatalf("并发回退路径应拒绝非归属人，实际: %v", err)
+	}
+}
+
 func TestAcceptInvitationExpiredRejected(t *testing.T) {
 	h := newHarness()
 	inv := h.seedInvitation(t)

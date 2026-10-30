@@ -325,18 +325,8 @@ func (uc *RecruitmentInvitationUseCase) AcceptInvitation(
 		return nil, err
 	}
 
-	now := time.Now()
-	if invitation.Status == domain.InvitationRevoked {
-		return nil, ErrInvitationRevoked
-	}
-	if invitation.Status == domain.InvitationAccepted {
-		// 幂等：重复接受返回当前候选人视图（不报错，不重复流转）。
-		return uc.existingCandidateView(ctx, userID, invitation.ApplicationID)
-	}
-	if invitation.Expired(now) {
-		return nil, ErrInvitationExpired
-	}
-
+	// 归属校验必须先于任何状态分支：已接受/并发回退分支都会返回候选人视图，
+	// 若放在状态判断之后，持有他人 token 的登录账号可越权读取候选结果。
 	app, err := uc.applications.GetApplicationByID(ctx, invitation.ApplicationID)
 	if err != nil {
 		if errors.Is(err, repository.ErrApplicationNotFound) {
@@ -346,6 +336,18 @@ func (uc *RecruitmentInvitationUseCase) AcceptInvitation(
 	}
 	if app.UserID != userID {
 		return nil, ErrNotApplicationOwner
+	}
+
+	now := time.Now()
+	if invitation.Status == domain.InvitationRevoked {
+		return nil, ErrInvitationRevoked
+	}
+	if invitation.Status == domain.InvitationAccepted {
+		// 幂等：重复接受返回当前候选人视图（不报错，不重复流转）。
+		return uc.existingCandidateView(ctx, app.ID)
+	}
+	if invitation.Expired(now) {
+		return nil, ErrInvitationExpired
 	}
 
 	// 已是候选人（如历史数据重复接受）：幂等返回，不重复建行。
@@ -375,7 +377,7 @@ func (uc *RecruitmentInvitationUseCase) AcceptInvitation(
 	if err := uc.candidates.Create(ctx, candidate); err != nil {
 		if errors.Is(err, repository.ErrCandidateConflict) {
 			// 并发接受：另一请求已建候选人。落回幂等视图。
-			return uc.existingCandidateView(ctx, userID, app.ID)
+			return uc.existingCandidateView(ctx, app.ID)
 		}
 		return nil, err
 	}
@@ -636,10 +638,9 @@ func (uc *RecruitmentInvitationUseCase) mailerTemplateCheck(ctx context.Context,
 		return nil, ErrTemplateNotInvitation
 	}
 	return model, nil
-}// existingCandidateView 幂等接受返回：查既有候选人并组装响应。
+} // existingCandidateView 幂等接受返回：查既有候选人并组装响应。
 func (uc *RecruitmentInvitationUseCase) existingCandidateView(
 	ctx context.Context,
-	userID int,
 	applicationID int,
 ) (*response.AcceptInvitationResp, error) {
 	candidate, err := uc.candidates.GetByApplicationID(ctx, applicationID)
@@ -654,7 +655,6 @@ func (uc *RecruitmentInvitationUseCase) existingCandidateView(
 	if err != nil {
 		return nil, ErrApplicationMissing
 	}
-	_ = userID
 	return toAcceptResp(candidate, app), nil
 }
 
