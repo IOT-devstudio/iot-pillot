@@ -54,7 +54,7 @@ Garage 与 SeaweedFS 探针同样通过，但都被否决：Garage 全新实例�
 
 ### 5. 上传走服务端中转，不做客户端直传
 
-浏览器 → Go → MinIO。体量小（单图几 MB）、同源单镜像、无 CORS 需求；中转能在服务端做真实字节嗅探（`http.DetectContentType`）与体积闸门，直传省下的带宽换不来这些。
+浏览器 → Go → S3 服务（RustFS）。体量小（单图几 MB）、同源单镜像、无 CORS 需求；中转能在服务端做真实字节嗅探（`http.DetectContentType`）与体积闸门，直传省下的带宽换不来这些。
 
 ## 拒绝的方案
 
@@ -73,9 +73,9 @@ Garage 与 SeaweedFS 探针同样通过，但都被否决：Garage 全新实例�
 
 **上线前必须同时改三处，否则大图必然失败**（调研第 6 节）：
 
-1. `deploy/nginx.conf` 加 `client_max_body_size 6m`（默认 1m，超限 413，且官方文档明确说浏览器无法正确显示该错误）。nginx 限制必须**大于**应用层限制，否则用户拿到的是 nginx 的纯 HTML 413 而不是 `{code, message}`。
+1. `deploy/nginx.conf` 加 `client_max_body_size 12m`（默认 1m，超限 413，且官方文档明确说浏览器无法正确显示该错误）。**数值以 ADR 0004 为准**：三层限制 nginx `12m` > 应用层单请求 `12MiB` > 单文件 `10MiB`，nginx 限制必须**大于**应用层限制，否则用户拿到的是 nginx 的纯 HTML 413 而不是 `{code, message}`。
 2. Go 侧真正的闸门是 `http.MaxBytesReader` + `fh.Size`。Gin 的 `MaxMultipartMemory` 默认 32MB **只是「多少进内存」的阈值，完全不限制上传大小**——超出部分整体落 `os.TempDir()` 临时文件。
-3. MinIO 容器必须挂数据卷。`deploy.yml` 现在的 `docker run` 没有任何 `-v`，照现状跑每次发布都会丢图。
+3. S3 服务（RustFS）容器必须挂数据卷。`deploy.yml` 现在的 `docker run` 没有任何 `-v`，照现状跑每次发布都会丢图。
 
 其他后果：
 

@@ -8,7 +8,7 @@
 
 ## 上下文
 
-ADR 0003 已定 `content_attachments` 表：`post_id` / `reply_id` / `roadmap_id` 三列全可空，三列全空即**孤儿态**，24 小时未绑定即清理。ADR 0002 已定图片存 MinIO 私有 bucket、经 Go 代理转发、上传走服务端中转。
+ADR 0003 已定 `content_attachments` 表：`post_id` / `reply_id` / `roadmap_id` 三列全可空，三列全空即**孤儿态**，24 小时未绑定即清理。ADR 0002 已定图片存 S3 私有 bucket（RustFS）、经 Go 代理转发、上传走服务端中转。
 
 剩下没定的是**链路**：端点长什么样、正文怎么引用图片、绑定集合以谁为准、失败与配额怎么处理。
 
@@ -26,11 +26,11 @@ ADR 0003 已定 `content_attachments` 表：`post_id` / `reply_id` / `roadmap_id
 | 端点 | 用途 | 鉴权 |
 | --- | --- | --- |
 | `POST /api/v1/attachments` | 上传一张图 | 只要求登录 |
-| `GET /api/v1/attachments/:id` | 读取一张图 | 只要求登录，**归属在 handler 里解析** |
+| `GET /api/v1/attachments/:id` | 读取一张图 | 只要求登录，**归属判定在 service**（handler 只解析 id 与映射错误） |
 
 上传端点**不分 scope**：附件表没有 scope 列，上传时服务端根本不知道这张图将来会落到招新问答、内部论坛还是学习路线（用户是「边写边传」，正文还没提交）。让上传带 scope 就必须给附件表加列，与 ADR 0003 已定稿的迁移冲突。
 
-读取端点同样只有一条路由，归属判定在 handler 内：
+读取端点同样只有一条路由。按 ADR 0003 决策 3 的分层，**归属判定在 service 内**，handler 只做参数解析与错误映射，不 if-else 角色：
 
 | 附件状态 | 谁能读 |
 | --- | --- |
@@ -88,7 +88,7 @@ ADR 0003 已定 `content_attachments` 表：`post_id` / `reply_id` / `roadmap_id
 
 ### 9. 服务端用 `MultipartReader` 流式读，不用 `c.FormFile`
 
-边读边写 MinIO，只把前 512 字节留在内存做 `http.DetectContentType`，全程不落磁盘、不整块进内存。
+边读边写 S3，只把前 512 字节留在内存做 `http.DetectContentType`，全程不落磁盘、不整块进内存。
 
 `c.FormFile` 会先 `ParseMultipartForm`：默认 `MaxMultipartMemory` 是 32MB，12MiB 请求整个进内存；调小阈值则超出部分落 `os.TempDir()` 临时文件，容器 `/tmp` 有写满风险，且超限时文件已经落盘才被拒。
 
@@ -132,7 +132,7 @@ ADR 0003 已定 `content_attachments` 表：`post_id` / `reply_id` / `roadmap_id
 
 **新增 1 个前端基础设施改动**：`requestBackend` 加可选 `timeoutMs`（默认值不变，不影响既有接口与测试）。
 
-**上线前必须同时改三处**（与 ADR 0002 一致，本文细化了数值）：`deploy/nginx.conf` 加 `client_max_body_size 12m`、Go 侧 `http.MaxBytesReader` + 单文件 10MiB 校验、MinIO 容器挂数据卷。
+**上线前必须同时改三处**（与 ADR 0002 一致，本文细化了数值）：`deploy/nginx.conf` 加 `client_max_body_size 12m`、Go 侧 `http.MaxBytesReader` + 单文件 10MiB 校验、S3 服务（RustFS）容器挂数据卷。
 
 **已知可接受风险**：
 
