@@ -152,6 +152,16 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 5
+      rustfs:
+        image: ghcr.io/rustfs/rustfs:1.0.4
+        env:
+          RUSTFS_VOLUMES: /data
+          RUSTFS_ACCESS_KEY: ci_s3_key
+          RUSTFS_SECRET_KEY: ci_s3_secret
+        ports: ["9010:9000"]
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9000/health/ready"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - name: Checkout 待部署的 sha
         uses: actions/checkout@v4
@@ -231,7 +241,11 @@ jobs:
             -e IOT_PILOT_DB_NAME=iot_pillot \
             -e IOT_PILOT_REDIS_HOST=host.docker.internal \
             -e IOT_PILOT_REDIS_PORT=6379 \
-            -e IOT_PILOT_JWT_SECRET=ci-only-not-a-real-secret \
+            -e IOT_PILOT_JWT_SECRET=ci-only-not-a-real-secret \            -e IOT_PILOT_S3_ENDPOINT=host.docker.internal:9010 \
+            -e IOT_PILOT_S3_SECURE=false \
+            -e IOT_PILOT_S3_BUCKET=iot-pillot \
+            -e IOT_PILOT_S3_ACCESS_KEY=ci_s3_key \
+            -e IOT_PILOT_S3_SECRET_KEY=ci_s3_secret \
             -e IOT_PILOT_MODE=release \
             "iot-pillot-api:${{ steps.meta.outputs.short }}"
           bash deploy/smoke.sh http://127.0.0.1:18080
@@ -299,6 +313,14 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM:     ${{ secrets.SMTP_FROM }}
+          # 对象存储连接配置。存储容器本身与 Postgres / Redis 同级常驻，
+          # 由运维手工创建，部署脚本不碰它（见 docs/adr/0002-image-storage-minio.md）；
+          # 这里只把连接配置注入应用容器。凭据走 secrets，ssh-action 会遮蔽取值。
+          S3_ENDPOINT:     ${{ secrets.S3_ENDPOINT }}
+          S3_SECURE:       ${{ vars.S3_SECURE }}
+          S3_BUCKET:       ${{ vars.S3_BUCKET }}
+          S3_ACCESS_KEY:   ${{ secrets.S3_ACCESS_KEY }}
+          S3_SECRET_KEY:   ${{ secrets.S3_SECRET_KEY }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -309,7 +331,7 @@ jobs:
           # ssh-action 不会自动把 step env 转发进远程 shell —— 必须用 envs
           # 显式点名。缺了这行,变量只存在于 action 容器里,远程脚本里全部为空,
           # 上线时会以「缺少配置：DB_HOST」快速失败。
-          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,REDIS_HOST,REDIS_PORT,REDIS_PASSWORD,REDIS_DB,JWT_SECRET,ADMIN_USERS,SMTP_HOST,SMTP_PORT,SMTP_USERNAME,SMTP_PASSWORD,SMTP_FROM
+          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,REDIS_HOST,REDIS_PORT,REDIS_PASSWORD,REDIS_DB,JWT_SECRET,ADMIN_USERS,SMTP_HOST,SMTP_PORT,SMTP_USERNAME,SMTP_PASSWORD,SMTP_FROM,S3_ENDPOINT,S3_SECURE,S3_BUCKET,S3_ACCESS_KEY,S3_SECRET_KEY
           script: |
             set -euo pipefail
 
@@ -324,7 +346,8 @@ jobs:
             # DB 与 Redis 是启动期硬依赖，jwt.secret 为空会被 Config.validate 拒绝。
             # 这里显式检查，让失败信息出现在部署日志顶部，而不是埋在容器日志里。
             for v in DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME \
-                     REDIS_HOST REDIS_PORT REDIS_DB JWT_SECRET ADMIN_USERS; do
+                     REDIS_HOST REDIS_PORT REDIS_DB JWT_SECRET ADMIN_USERS \
+                     S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY; do
               [ -n "${!v:-}" ] || { echo "缺少配置：$v（GitHub secret/variable 未设置）"; exit 1; }
             done
 
@@ -411,6 +434,11 @@ jobs:
                 -e IOT_PILOT_SMTP_USERNAME="${SMTP_USERNAME:-}" \
                 -e IOT_PILOT_SMTP_PASSWORD="${SMTP_PASSWORD:-}" \
                 -e IOT_PILOT_SMTP_FROM="${SMTP_FROM:-}" \
+                -e IOT_PILOT_S3_ENDPOINT="${S3_ENDPOINT:-}" \
+                -e IOT_PILOT_S3_SECURE="${S3_SECURE:-false}" \
+                -e IOT_PILOT_S3_BUCKET="${S3_BUCKET:-iot-pillot}" \
+                -e IOT_PILOT_S3_ACCESS_KEY="${S3_ACCESS_KEY:-}" \
+                -e IOT_PILOT_S3_SECRET_KEY="${S3_SECRET_KEY:-}" \
                 "$1"
             }
 

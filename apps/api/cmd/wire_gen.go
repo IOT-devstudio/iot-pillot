@@ -11,6 +11,7 @@ import (
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/handler"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/service"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/storage"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 )
 
@@ -41,7 +42,13 @@ func InitializeApp() (*handler.Router, func(), error) {
 	client := utils.ConnectRedis(configConfig)
 	redisPinger := utils.NewRedisPinger(client)
 	handlerRedisPinger := handler.NewRedisPinger(redisPinger)
-	healthHandler := handler.NewHealthHandler(handlerDatabasePinger, handlerRedisPinger)
+	s3Storage, err := storage.ProvideS3Storage(configConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	storagePinger := handler.NewStoragePinger(s3Storage)
+	healthHandler := handler.NewHealthHandler(handlerDatabasePinger, handlerRedisPinger, storagePinger)
 	userRepo := repository.NewUserRepo(db)
 	tokenManager := utils.NewTokenManager(client, configConfig)
 	tokenIssuer := service.NewTokenIssuer(tokenManager)

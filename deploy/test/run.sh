@@ -88,6 +88,8 @@ export JWT_SECRET=stub-jwt-secret-not-for-production
 export ADMIN_USERS=1
 export SMTP_HOST=stub-smtp SMTP_PORT=587 SMTP_USERNAME=stub_user
 export SMTP_PASSWORD=stub_smtp_pw SMTP_FROM=stub@example.com
+export S3_ENDPOINT=stub-s3:9000 S3_SECURE=false S3_BUCKET=iot-pillot
+export S3_ACCESS_KEY=stub_s3_key S3_SECRET_KEY=stub_s3_secret
 
 # --- 场景 0：应用配置注入 ----------------------------------------------------
 run_deploy "sha256:OLDIMAGE" "8080" "ok"
@@ -102,11 +104,16 @@ for kv in 'IOT_PILOT_MODE=release' 'IOT_PILOT_DB_HOST=stub-postgres' \
           'IOT_PILOT_SMTP_HOST=stub-smtp' 'IOT_PILOT_SMTP_PORT=587' \
           'IOT_PILOT_SMTP_USERNAME=stub_user' \
           'IOT_PILOT_SMTP_PASSWORD=stub_smtp_pw' \
-          'IOT_PILOT_SMTP_FROM=stub@example.com'; do
+          'IOT_PILOT_SMTP_FROM=stub@example.com' \
+          'IOT_PILOT_S3_ENDPOINT=stub-s3:9000' \
+          'IOT_PILOT_S3_SECURE=false' \
+          'IOT_PILOT_S3_BUCKET=iot-pillot' \
+          'IOT_PILOT_S3_ACCESS_KEY=stub_s3_key' \
+          'IOT_PILOT_S3_SECRET_KEY=stub_s3_secret'; do
   printf '%s' "$last_run" | grep -qF -- "$kv" || missing="$missing $kv"
 done
 if [ -z "$missing" ]; then
-  ok "docker run 注入了全部应用配置（mode/db/redis/jwt/admin/smtp）"
+  ok "docker run 注入了全部应用配置（mode/db/redis/jwt/admin/smtp/s3）"
 else
   bad "docker run 缺少应用配置" "缺：$missing"
 fi
@@ -127,6 +134,9 @@ assert_rejected_before_docker \
 assert_rejected_before_docker \
   "非法 Redis DB 在操作 Docker 前被拒绝" \
   REDIS_DB "配置错误：REDIS_DB 必须为 1" invalid
+assert_rejected_before_docker \
+  "缺少对象存储配置时在操作 Docker 前明确报错（S3_ENDPOINT）" \
+  S3_ENDPOINT "缺少配置：S3_ENDPOINT"
 assert_rejected_before_docker \
   "缺少管理员名单时在操作 Docker 前明确报错（ADMIN_USERS）" \
   ADMIN_USERS "缺少配置：ADMIN_USERS"

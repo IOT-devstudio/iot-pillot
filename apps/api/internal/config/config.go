@@ -22,6 +22,7 @@ type Config struct {
 	CACHE   *CacheConfig
 	AUTH    *AuthConfig
 	DOCS    *DocsConfig
+	S3      *S3Config
 }
 
 // AuthConfig 授权相关的配置。
@@ -85,6 +86,27 @@ type CacheConfig struct {
 	Expire  int
 }
 
+// S3Config S3 兼容对象存储（图片存储）的连接配置。
+//
+// 命名刻意中性：业务代码只依赖 S3 API，换 RustFS / Garage / 云厂商 OSS
+// 只需要改 endpoint 与凭据（见 docs/adr/0002-image-storage-minio.md）。
+//
+// Endpoint **不带 scheme**：协议由 Secure 开关单独决定。
+// 写成 "http://s3:9000" 这类带 scheme 的值时，minio-go 会把它当成
+// "带端口的主机名"再拼一次路径，结果连不上 —— 而报错信息很难看懂。
+// 拆成两个字段后，"用 HTTP 还是 HTTPS" 与 "连到哪里" 互不干扰。
+type S3Config struct {
+	// Endpoint 主机名[:端口]，不带 scheme。例如 "s3:9000"（容器内）或 "localhost:9010"（本地 go run）。
+	Endpoint string
+	// Secure 是否走 HTTPS。false = HTTP。
+	Secure bool
+	// Bucket 目标桶名。应用启动时自动创建。
+	Bucket string
+	// AccessKey / SecretKey 访问凭据。
+	AccessKey string
+	SecretKey string
+}
+
 // Dump 返回脱敏后的配置摘要，用于启动时打印排查。
 // 密码类字段只显示长度和首尾字符，避免日志泄露。
 func (c *Config) Dump() string {
@@ -146,6 +168,13 @@ func (c *Config) Dump() string {
 	b.WriteString("[docs]\n")
 	writeLine("enabled", strconv.FormatBool(c.DOCS.Enabled))
 
+	b.WriteString("[s3]\n")
+	writeLine("endpoint", c.S3.Endpoint)
+	writeLine("secure", strconv.FormatBool(c.S3.Secure))
+	writeLine("bucket", c.S3.Bucket)
+	writeLine("access_key", c.S3.AccessKey)
+	writeLine("secret_key", mask(c.S3.SecretKey))
+
 	b.WriteString("========================\n")
 
 	return b.String()
@@ -205,6 +234,13 @@ func Load() (*Config, error) {
 		},
 		DOCS: &DocsConfig{
 			Enabled: viper.GetBool("docs.enabled"),
+		},
+		S3: &S3Config{
+			Endpoint:  viper.GetString("s3.endpoint"),
+			Secure:    viper.GetBool("s3.secure"),
+			Bucket:    viper.GetString("s3.bucket"),
+			AccessKey: viper.GetString("s3.access_key"),
+			SecretKey: viper.GetString("s3.secret_key"),
 		},
 	}
 
@@ -333,6 +369,20 @@ func (c *Config) validate() error {
 	if c.JWT.Expire <= 0 {
 		return fmt.Errorf("配置无效：jwt.expire 必须为正整数秒，当前为 %d", c.JWT.Expire)
 	}
+	// 对象存储是启动期硬依赖：应用启动时要连上去建桶，连不上就该立刻失败。
+	// 但这几项**有明确的默认值**（见 setDefaults），所以缺配置不是问题 ——
+	// 缺了才要报错的是「配了但明显不合法」的值（比如 endpoint 带了 scheme，
+	// 那会让 minio-go 连到一个错误的主机上，报错信息还很难看懂）。
+	if c.S3.Endpoint == "" {
+		return errors.New("配置缺失：s3.endpoint（环境变量 IOT_PILOT_S3_ENDPOINT）。" +
+			"对象存储是启动期硬依赖，应用启动时要连上去建桶")
+	}
+	if strings.Contains(c.S3.Endpoint, "://") {
+		return fmt.Errorf("配置无效：s3.endpoint 不得带 scheme，当前为 %q。请只写主机名与端口（如 s3:9000），协议由 s3.secure 决定", c.S3.Endpoint)
+	}
+	if c.S3.Bucket == "" {
+		return errors.New("配置缺失：s3.bucket（环境变量 IOT_PILOT_S3_BUCKET）")
+	}
 	return nil
 }
 
@@ -356,6 +406,17 @@ func setDefaults() {
 	viper.SetDefault("redis.conn_with_timeout", 5*time.Second)
 	viper.SetDefault("jwt.expire", 3600)
 	viper.SetDefault("auth.admin_users", "")
+
+	// 对象存储。默认值对齐本地 compose 的 RustFS 服务（端口 9010 是宿主映射端口，
+	// 容器内互访走 9000 —— .env.example 里两种写法都注明了）。
+	viper.SetDefault("s3.endpoint", "localhost:9010")
+	viper.SetDefault("s3.secure", false)
+	viper.SetDefault("s3.bucket", "iot-pillot")
+	// 凭据默认值与本地 compose 的 RustFS 服务一致 —— 这样
+	// "docker compose up -d s3 && go run ./cmd" 不需要额外准备就能连上。
+	// 生产环境必须用 GitHub secrets 覆盖（默认凭据只是本地开发便利）。
+	viper.SetDefault("s3.access_key", "iot-pilot-local")
+	viper.SetDefault("s3.secret_key", "iot-pilot-local-secret")
 
 	// 接口文档默认跟随运行模式：debug 开、release 关。
 	// 这里用 GetString 取 mode 是安全的 —— 上面刚设过它的默认值，
