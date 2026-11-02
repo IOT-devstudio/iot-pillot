@@ -153,3 +153,13 @@ func (m *MemoryStorage) GetObject(ctx context.Context, objectKey string) (io.Rea
 
 // defaultMemoryBucket 内存替身里默认使用的桶名。
 const defaultMemoryBucket = "iot-pillot"
+
+// DeleteObject 实现 Storage 端口的删除语义（孤儿清理用）。
+//
+// 对象不存在时返回 nil（幂等删除），与真实 S3 客户端一致，让清理任务可重试。
+func (m *MemoryStorage) DeleteObject(_ context.Context, objectKey string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.objects, objectKey)
+	return nil
+}

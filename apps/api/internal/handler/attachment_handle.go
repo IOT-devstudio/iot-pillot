@@ -51,6 +51,11 @@ func failAttachment(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrRequestTooLarge):
 		// 请求体过大：统一业务错误，不让 nginx 甩裸 413 HTML。
 		response.FailInvalidParam(c, err.Error())
+	// 读取端点：NotFound / Forbidden 都压成 404（防枚举，见 ADR 0004 §1）。
+	case errors.Is(err, domain.ErrAttachmentNotFound):
+		response.FailNotFound(c, "附件不存在")
+	case errors.Is(err, domain.ErrAttachmentForbidden):
+		response.FailNotFound(c, "附件不存在")
 	default:
 		failInternal(c, err)
 	}
@@ -118,6 +123,80 @@ func (h *AttachmentHandler) UploadAttachment(c *gin.Context) {
 	}
 
 	response.OK(c, response.NewAttachmentUploadResp(att))
+}
+
+// GetAttachment 读取一张图（#217）。
+// @Summary 读取内容附件（图片）
+// @Description 登录用户按 id 读取图片；归属判定在 service（孤儿仅上传者 / studio 需管理员 / 路线与招新问答登录即可），无权或不存在一律 404 防枚举。响应经 Go 代理转发字节流并带 Cache-Control: private, max-age=31536000, immutable（见 ADR 0004 §8）。
+// @Tags 内容附件
+// @Produce image/jpeg,image/png,image/webp
+// @Success 200 {file} file "图片字节流"
+// @Failure 401 {object} response.Result "未认证"
+// @Failure 404 {object} response.Result "附件不存在或无权限"
+// @Security BearerAuth
+// @Router /api/v1/attachments/{id} [get]
+func (h *AttachmentHandler) GetAttachment(c *gin.Context) {
+	userID, _, _, ok := middleware.CurrentUser(c)
+	if !ok {
+		response.FailUnauthorized(c, "请先登录")
+		return
+	}
+
+	// 解析 id：非法 id（非数字 / <=0）按 404，不暴露「解析失败」与「不存在」的差异。
+	id, ok := parseAttachmentID(c.Param("id"))
+	if !ok {
+		response.FailNotFound(c, "附件不存在")
+		return
+	}
+
+	// 管理员身份来自鉴权链写入的 role（中间件只认 Redis 名单，撤销管理员立即生效）。
+	isAdmin := middleware.RoleAdmin == roleOf(c)
+
+	att, err := h.uc.GetAttachment(c.Request.Context(), userID, isAdmin, id)
+	if err != nil {
+		failAttachment(c, err)
+		return
+	}
+
+	rc, contentType, size, err := h.uc.ReadObject(c.Request.Context(), att.ObjectKey)
+	if err != nil {
+		failInternal(c, err)
+		return
+	}
+	defer rc.Close()
+
+	// ADR 0004 §8：图片内容不可变，长期私有缓存。
+	c.Header("Cache-Control", "private, max-age=31536000, immutable")
+	c.DataFromReader(http.StatusOK, size, contentType, rc, nil)
+}
+
+// parseAttachmentID 解析路由里的附件 id：非正整数一律返回 (0, false)。
+func parseAttachmentID(raw string) (int, bool) {
+	id := 0
+	for i := 0; i < len(raw); i++ {
+		ch := raw[i]
+		if ch < '0' || ch > '9' {
+			return 0, false
+		}
+		id = id*10 + int(ch-'0')
+		if id > 1<<30 {
+			return 0, false
+		}
+	}
+	if id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+// roleOf 读出 AuthRequired 写入的角色（"admin" / "member"）。
+func roleOf(c *gin.Context) string {
+	if v, ok := c.Get(middleware.ContextRole); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 // isRequestTooLarge 判断底层 reader 是否因超过 MaxBytesReader 上限而失败。

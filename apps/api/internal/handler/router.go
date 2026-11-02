@@ -31,6 +31,8 @@ type Router struct {
 	// （启动/收到 SIGTERM 后收尾）本来就由 Run 掌握。main 里再加一份
 	// Start/Stop 只会让「谁负责停」出现两个答案。
 	freeze *service.FreezeScheduler
+	// attachmentCleanup 孤儿附件清理（#217）：与 freeze 同生命周期。
+	attachmentCleanup *service.AttachmentCleanupScheduler
 }
 
 func NewRouter(
@@ -47,6 +49,7 @@ func NewRouter(
 	studioProjectHandler *StudioProjectHandler,
 	freezeScheduler *service.FreezeScheduler,
 	attachmentHandler *AttachmentHandler,
+	attachmentCleanup *service.AttachmentCleanupScheduler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -263,8 +266,10 @@ func NewRouter(
 		// 两个端点都只挂 authRequired：上传任何登录用户都能发图（不分 scope、无 requireAdmin）；
 		// 读取的归属判定在 service，handler 只解析 id 并一律 404（防枚举，见 ADR 0004）。
 		apiV1.POST("/attachments", authRequired, attachmentHandler.UploadAttachment)
+		// 读取：仅 authRequired，归属判定全在 service（handler 只解析 id，错误一律 404 防枚举）。
+		apiV1.GET("/attachments/:id", authRequired, attachmentHandler.GetAttachment)
 	}
-	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler}
+	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler, attachmentCleanup: attachmentCleanup}
 }
 
 // Run 启动 HTTP 服务，并在收到 SIGINT/SIGTERM 时优雅退出。
@@ -291,6 +296,11 @@ func (r *Router) Run() error {
 	if r.freeze != nil {
 		r.freeze.Start()
 		defer r.freeze.Stop()
+	}
+	// 孤儿附件清理（#217）：随服务启动，退出时先收尾再等 GracePeriod。
+	if r.attachmentCleanup != nil {
+		r.attachmentCleanup.Start()
+		defer r.attachmentCleanup.Stop()
 	}
 
 	serveErr := make(chan error, 1)

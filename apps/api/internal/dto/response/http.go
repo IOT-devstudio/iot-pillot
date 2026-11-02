@@ -57,3 +57,11 @@ func FailSessionInvalidated(c *gin.Context, msg string) {
 func FailTooManyRequests(c *gin.Context, msg string) {
 	Fail(c, http.StatusTooManyRequests, CodeTooManyRequests, msg)
 }
+
+// FailNotFound 资源不存在（HTTP 404）
+//
+// 附件读取端点用它统一表达「不存在 / 无权看」：按 ADR 0004 §1，归属判定失败时
+// 一律 404 而非 403，不泄漏「这个 id 存在但你没权限」，避免被用来枚举内部论坛规模。
+func FailNotFound(c *gin.Context, msg string) {
+	Fail(c, http.StatusNotFound, CodeNotFound, msg)
+}

@@ -84,11 +84,12 @@ type UploadAttachmentInput struct {
  * 用例
  * ------------------------------------------------------------------ */
 
-// AttachmentUseCase 内容附件（#216 上传）用例。
+// AttachmentUseCase 内容附件（#216 上传 / #217 读取）用例。
 type AttachmentUseCase struct {
-	repo     repository.AttachmentRepo
-	storage  storage.Storage
-	limiter  *utils.Limiter
+	repo          repository.AttachmentRepo
+	storage       storage.Storage
+	limiter       *utils.Limiter
+	scopeResolver AttachmentScopeResolver
 }
 
 // NewAttachmentUseCase 构造附件用例。
@@ -97,7 +98,16 @@ func NewAttachmentUseCase(
 	storage storage.Storage,
 	limiter *utils.Limiter,
 ) *AttachmentUseCase {
-	return &AttachmentUseCase{repo: repo, storage: storage, limiter: limiter}
+	return &AttachmentUseCase{repo: repo, storage: storage, limiter: limiter, scopeResolver: defaultScopeResolver{}}
+}
+
+// SetScopeResolver 让 #218 / #223 在 forum / roadmap 表落地后注入真实归属判定。
+//
+// #217 阶段用默认实现（只认孤儿 / 路线），post / reply 绑定一律按 404（未判定）。
+func (uc *AttachmentUseCase) SetScopeResolver(r AttachmentScopeResolver) {
+	if r != nil {
+		uc.scopeResolver = r
+	}
 }
 
 // UploadAttachment 处理一次图片上传。

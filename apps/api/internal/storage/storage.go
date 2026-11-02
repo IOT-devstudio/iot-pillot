@@ -38,7 +38,7 @@ const (
 // 固定重试几次比"一次失败就退出"稳，但必须有上限 —— 存储真的挂了时
 // 应用要尽快失败，而不是无限期挂着（容器编排会一直重启它，表现为 crash-loop 而非清晰的启动错误）。
 const (
-	ensureAttempts     = 5
+	ensureAttempts      = 5
 	ensureRetryInterval = 2 * time.Second
 	ensureTimeout       = 30 * time.Second
 )
@@ -55,6 +55,8 @@ type Storage interface {
 	PutObject(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) error
 	// GetObject 读取一个对象；返回的 ReadCloser 由调用方关闭。
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, string, int64, error)
+	// DeleteObject 删除一个对象（孤儿清理时连同数据库行一起删）。
+	DeleteObject(ctx context.Context, objectKey string) error
 }
 
 // BucketAPI 建桶与查桶所需的最小方法集。
@@ -73,6 +75,8 @@ type BucketAPI interface {
 type ObjectAPI interface {
 	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts minio.PutObjectOptions) (minio.UploadInfo, error)
 	GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (io.ReadCloser, minio.ObjectInfo, error)
+	// DeleteObject 删除对象；对象不存在不算错误（幂等删除，孤儿清理可重试）。
+	DeleteObject(ctx context.Context, bucketName, objectName string, opts minio.RemoveObjectOptions) error
 }
 
 // S3Storage 基于 S3 协议的对象存储实现。
@@ -129,6 +133,11 @@ func (c objectAPIClient) GetObject(ctx context.Context, bucketName, objectName s
 		return nil, minio.ObjectInfo{}, err
 	}
 	return obj, stat, nil
+}
+
+// DeleteObject 适配 *minio.Client 的删除（幂等：对象不存在也成功）。
+func (c objectAPIClient) DeleteObject(ctx context.Context, bucketName, objectName string, opts minio.RemoveObjectOptions) error {
+	return c.Client.RemoveObject(ctx, bucketName, objectName, opts)
 }
 
 // ProvideS3Storage 是给 wire 用的 provider：它吃整份配置，内部取 S3 段。
@@ -239,4 +248,12 @@ func (s *S3Storage) GetObject(ctx context.Context, objectKey string) (io.ReadClo
 		return nil, "", 0, err
 	}
 	return rc, info.ContentType, info.Size, nil
+}
+
+// DeleteObject 删除一个对象（孤儿清理用）。
+//
+// 对象不存在时返回 nil：清理任务要能幂等重试，孤儿行被并发删掉一条不该让
+// 下一轮崩在 NotFound 上。
+func (s *S3Storage) DeleteObject(ctx context.Context, objectKey string) error {
+	return s.objects.DeleteObject(ctx, s.bucket, objectKey, minio.RemoveObjectOptions{})
 }

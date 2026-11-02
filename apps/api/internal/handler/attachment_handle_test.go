@@ -81,6 +81,11 @@ func (s *memStorage) GetObject(_ context.Context, objectKey string) (io.ReadClos
 	return io.NopCloser(bytes.NewReader(data)), "image/png", int64(len(data)), nil
 }
 
+func (s *memStorage) DeleteObject(_ context.Context, objectKey string) error {
+	delete(s.objects, objectKey)
+	return nil
+}
+
 /* ------------------------------------------------------------------ *
  * 内存桩：限流计数器（固定窗口，计数不自动过期也能被测试直接驱动）
  * ------------------------------------------------------------------ */
@@ -165,6 +170,20 @@ func doReq(r *gin.Engine, req *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
+}
+
+// withBearer 把 Bearer 头写进请求（middleware 从 Authorization 头读令牌）。
+func withBearer(token string) context.Context {
+	// 这里返回 context 只是占位；真正注入在 req 上做。测试统一用 reqWithToken。
+	return context.Background()
+}
+
+func reqWithToken(method, path, token string) *http.Request {
+	req := httptest.NewRequest(method, path, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return req
 }
 
 /* ------------------------------------------------------------------ *
@@ -358,5 +377,298 @@ func TestUploadAttachment_DailyQuotaCountedAndExceeded(t *testing.T) {
 	// 超限后不落库。
 	if len(repo.orphans) != 50 {
 		t.Errorf("超限后孤儿行不应增加，实际 %d", len(repo.orphans))
+	}
+}
+
+
+/* ------------------------------------------------------------------ *
+ * 内存桩扩展：支撑 #217 读取 / 绑定 / 清理测试
+ * ------------------------------------------------------------------ */
+
+// memAttachmentRepoFull 在 CreateOrphan 基础上补齐 Get / BindForBody /
+// ListOrphans / DeleteAttachment，全部走内存 map，模拟真实事务语义。
+type memAttachmentRepoFull struct {
+	*memAttachmentRepo
+
+	// bound 记录每个 owner 列当前绑定的 id 集合（用于 BindForBody 校验占用）。
+	byID map[int]*domain.Attachment
+}
+
+func newMemAttachmentRepoFull() *memAttachmentRepoFull {
+	return &memAttachmentRepoFull{
+		memAttachmentRepo: newMemAttachmentRepo(),
+		byID:              make(map[int]*domain.Attachment),
+	}
+}
+
+func (s *memAttachmentRepoFull) Get(_ context.Context, id int) (*domain.Attachment, error) {
+	att, ok := s.byID[id]
+	if !ok {
+		// 孤儿行也存在 byID 中；这里统一从 byID 读。
+		return nil, repository.ErrAttachmentNotFound
+	}
+	return att, nil
+}
+
+func (s *memAttachmentRepoFull) BindForBody(_ context.Context, col string, ownerID int64, authorID int, ids []int) error {
+	// 校验：存在 / UploaderID==authorID / 未被其他 owner 占用。
+	for _, id := range ids {
+		att, ok := s.byID[id]
+		if !ok {
+			return domain.ErrAttachmentInvalid
+		}
+		if att.UploaderID != authorID {
+			return domain.ErrAttachmentInvalid
+		}
+		// 占用检查：该 id 已绑定到别的 owner（同列不同 owner，或任意绑定列非空）。
+		if occupiedByOther(att, col, ownerID) {
+			return domain.ErrAttachmentInvalid
+		}
+	}
+	// 简单实现：把 ids 设到对应列，旧绑定（同列）清掉。
+	for _, att := range s.byID {
+		clearCol(att, col)
+	}
+	for _, id := range ids {
+		att := s.byID[id]
+		switch col {
+		case "post_id":
+			att.PostID = &ownerID
+		case "reply_id":
+			att.ReplyID = &ownerID
+		case "roadmap_id":
+			att.RoadmapID = &ownerID
+		}
+	}
+	return nil
+}
+
+func occupiedByOther(att *domain.Attachment, col string, ownerID int64) bool {
+	bound := att.PostID != nil || att.ReplyID != nil || att.RoadmapID != nil
+	if !bound {
+		return false
+	}
+	switch col {
+	case "post_id":
+		return att.PostID == nil || *att.PostID != ownerID
+	case "reply_id":
+		return att.ReplyID == nil || *att.ReplyID != ownerID
+	case "roadmap_id":
+		return att.RoadmapID == nil || *att.RoadmapID != ownerID
+	}
+	return false
+}
+
+func clearCol(att *domain.Attachment, col string) {
+	switch col {
+	case "post_id":
+		att.PostID = nil
+	case "reply_id":
+		att.ReplyID = nil
+	case "roadmap_id":
+		att.RoadmapID = nil
+	}
+}
+
+func (s *memAttachmentRepoFull) ListOrphans(_ context.Context, olderThan time.Time, limit int) ([]*domain.Attachment, error) {
+	out := make([]*domain.Attachment, 0, limit)
+	for _, att := range s.byID {
+		bound := att.PostID != nil || att.ReplyID != nil || att.RoadmapID != nil
+		if bound {
+			continue
+		}
+		if !att.CreatedAt.Before(olderThan) {
+			continue
+		}
+		out = append(out, att)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (s *memAttachmentRepoFull) DeleteAttachment(_ context.Context, id int) error {
+	delete(s.byID, id)
+	delete(s.orphans, id)
+	return nil
+}
+
+// 补齐 CreateOrphan：同步写 byID。
+func (s *memAttachmentRepoFull) CreateOrphan(ctx context.Context, att *domain.Attachment) error {
+	if err := s.memAttachmentRepo.CreateOrphan(ctx, att); err != nil {
+		return err
+	}
+	att.CreatedAt = time.Now()
+	cp := *att
+	s.byID[att.ID] = &cp
+	return nil
+}
+
+
+/* ------------------------------------------------------------------ *
+ * 验收项（#217）：正文正则提取、读取归属、绑定、清理
+ * ------------------------------------------------------------------ */
+
+func TestExtractAttachmentIDs_DedupAndOrder(t *testing.T) {
+	body := "看图 ![a](/api/v1/attachments/3) 和 ![b](/api/v1/attachments/1) 还有 /api/v1/attachments/3 重复；外链 https://x.com/i/9.png 不应计入"
+	got := service.ExtractAttachmentIDs(body)
+	want := []int{3, 1}
+	if len(got) != len(want) {
+		t.Fatalf("应去重保序为 [3,1]，实际 %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("第 %d 个应为 %d，实际 %d", i, want[i], got[i])
+		}
+	}
+}
+
+// newGetEngine 构造带 GET 端点的引擎，使用完整内存桩。
+func newGetEngine(t *testing.T) (*gin.Engine, *memAttachmentRepoFull, *memStorage, *memCounter) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	repo := newMemAttachmentRepoFull()
+	sto := newMemStorage()
+	counter := newMemCounter()
+	uc := service.NewAttachmentUseCase(repo, sto, utils.NewLimiter(counter))
+	h := NewAttachmentHandler(uc)
+
+	r := gin.New()
+	authRequired := middleware.AuthRequired(stubValidator{accept: "good-token", userID: 1})
+	r.POST("/api/v1/attachments", authRequired, h.UploadAttachment)
+	r.GET("/api/v1/attachments/:id", authRequired, h.GetAttachment)
+	return r, repo, sto, counter
+}
+
+func TestGetAttachment_OrphanOnlyUploader(t *testing.T) {
+	r, repo, sto, _ := newGetEngine(t)
+
+	// 上传一张图（userID=1），得到孤儿行 id=1。
+	_ = doReq(r, uploadReq(t, "/api/v1/attachments", "good-token", "a.png", pngBytes))
+	att := repo.orphans[1]
+	sto.objects[att.ObjectKey] = pngBytes
+
+	// 上传者本人读：200。
+	w := doReq(r, reqWithToken(http.MethodGet, "/api/v1/attachments/1", "good-token"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("上传者应能读(200)，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Cache-Control") != "private, max-age=31536000, immutable" {
+		t.Errorf("缓存头缺失或错误: %q", w.Header().Get("Cache-Control"))
+	}
+	if !bytes.Equal(w.Body.Bytes(), pngBytes) {
+		t.Errorf("返回字节应与上传一致")
+	}
+
+	// 非上传者（userID=2）读：404（防枚举）。
+	r2 := gin.New()
+	uc := service.NewAttachmentUseCase(repo, sto, utils.NewLimiter(newMemCounter()))
+	h := NewAttachmentHandler(uc)
+	r2.GET("/api/v1/attachments/:id", middleware.AuthRequired(stubValidator{accept: "other", userID: 2}), h.GetAttachment)
+	w2 := doReq(r2, reqWithToken(http.MethodGet, "/api/v1/attachments/1", "other"))
+	if w2.Code != http.StatusNotFound {
+		t.Fatalf("他人读孤儿应 404，实际 %d，body=%s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestGetAttachment_NonexistentIs404(t *testing.T) {
+	r, _, _, _ := newGetEngine(t)
+	w := doReq(r, reqWithToken(http.MethodGet, "/api/v1/attachments/999", "good-token"))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("不存在的附件应 404，实际 %d", w.Code)
+	}
+}
+
+func TestGetAttachment_InvalidIDIs404(t *testing.T) {
+	r, _, _, _ := newGetEngine(t)
+	// 非数字 / 非正整数都按 404，不暴露解析失败。
+	for _, id := range []string{"abc", "0", "-1", ""} {
+		w := doReq(r, reqWithToken(http.MethodGet, "/api/v1/attachments/"+id, "good-token"))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("非法 id %q 应 404，实际 %d", id, w.Code)
+		}
+	}
+}
+
+func TestGetAttachment_RoadmapLoginOK(t *testing.T) {
+	r, repo, sto, _ := newGetEngine(t)
+	_ = doReq(r, uploadReq(t, "/api/v1/attachments", "good-token", "a.png", pngBytes))
+	att := repo.orphans[1]
+	sto.objects[att.ObjectKey] = pngBytes
+
+	// 模拟绑定到某条学习路线（roadmap_id 非空）→ 登录即可读。
+	rid := int64(7)
+	att.RoadmapID = &rid
+	repo.byID[att.ID] = att
+
+	w := doReq(r, reqWithToken(http.MethodGet, "/api/v1/attachments/1", "good-token"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("路线绑定应登录可读(200)，实际 %d，body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetAttachment_UnboundPostIs404(t *testing.T) {
+	r, repo, sto, _ := newGetEngine(t)
+	_ = doReq(r, uploadReq(t, "/api/v1/attachments", "good-token", "a.png", pngBytes))
+	att := repo.orphans[1]
+	sto.objects[att.ObjectKey] = pngBytes
+
+	// post_id 非空但论坛表未建 → 默认 resolver 返回 "" 未判定 → 404。
+	pid := int64(5)
+	att.PostID = &pid
+	repo.byID[att.ID] = att
+
+	w := doReq(r, reqWithToken(http.MethodGet, "/api/v1/attachments/1", "good-token"))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("论坛未建时 post 绑定应 404（未判定），实际 %d", w.Code)
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * 验收项（#217）：孤儿清理幂等
+ * ------------------------------------------------------------------ */
+
+func TestCleanupOrphans_DeletesOnlyOldOrphans(t *testing.T) {
+	repo := newMemAttachmentRepoFull()
+	sto := newMemStorage()
+	uc := service.NewAttachmentUseCase(repo, sto, utils.NewLimiter(newMemCounter()))
+	_ = uc  // 清理走调度器，直接构造
+
+	sched := service.NewAttachmentCleanupScheduler(repo, sto)
+
+	// 老孤儿（>24h）和刚上传的孤儿。
+	old := &domain.Attachment{ID: 1, ObjectKey: "old.key", UploaderID: 1, ContentType: "image/png", SizeBytes: 10}
+	old.CreatedAt = time.Now().Add(-48 * time.Hour)
+	repo.byID[1] = old
+	repo.orphans[1] = old
+	sto.objects["old.key"] = pngBytes
+
+	fresh := &domain.Attachment{ID: 2, ObjectKey: "new.key", UploaderID: 1, ContentType: "image/png", SizeBytes: 10}
+	fresh.CreatedAt = time.Now()
+	repo.byID[2] = fresh
+	repo.orphans[2] = fresh
+	sto.objects["new.key"] = pngBytes
+
+	if _, err := sched.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce 失败: %v", err)
+	}
+	if _, ok := sto.objects["old.key"]; ok {
+		t.Errorf("老孤儿对象应被删")
+	}
+	if _, ok := sto.objects["new.key"]; !ok {
+		t.Errorf("新孤儿对象应保留")
+	}
+	if _, ok := repo.byID[1]; ok {
+		t.Errorf("老孤儿行应被删")
+	}
+	if _, ok := repo.byID[2]; !ok {
+		t.Errorf("新孤儿行应保留")
+	}
+
+	// 幂等：再跑一次不应出错，且无对象遗留。
+	if _, err := sched.RunOnce(context.Background()); err != nil {
+		t.Fatalf("第二次 RunOnce 失败: %v", err)
 	}
 }

@@ -103,10 +103,11 @@ func InitializeApp() (*handler.Router, func(), error) {
 attachmentRepo := repository.NewAttachmentRepo(db)
 attachmentUseCase := service.NewAttachmentUseCase(attachmentRepo, s3Storage, limiter)
 attachmentHandler := handler.NewAttachmentHandler(attachmentUseCase)
+attachmentCleanup := service.NewAttachmentCleanupScheduler(attachmentRepo, s3Storage)
 	freezeMailer := service.NewFreezeMailer(mailUseCase)
 	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker, adminDirectory)
 	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, tokenManager, adminStore)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore)
 	return router, func() {
 		cleanup()
 	}, nil
