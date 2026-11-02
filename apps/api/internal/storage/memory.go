@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"sync"
 
 	"github.com/minio/minio-go/v7"
@@ -25,6 +27,7 @@ var ErrStorageUnavailable = errors.New("对象存储不可用")
 type MemoryStorage struct {
 	mu      sync.Mutex
 	buckets map[string]bool
+	objects map[string]memoryObject
 
 	// ExistsErr / MakeErr 非 nil 时对应操作直接失败，用于构造故障场景。
 	ExistsErr error
@@ -42,7 +45,16 @@ type MemoryStorage struct {
 
 // NewMemoryStorage 造一个空的存储替身。
 func NewMemoryStorage() *MemoryStorage {
-	return &MemoryStorage{buckets: map[string]bool{}}
+	return &MemoryStorage{
+		buckets: map[string]bool{},
+		objects: map[string]memoryObject{},
+	}
+}
+
+// memoryObject 内存里存的一个对象。
+type memoryObject struct {
+	data        []byte
+	contentType string
 }
 
 // BucketExists 返回桶是否存在。
@@ -114,6 +126,29 @@ func (m *MemoryStorage) HasBucket(name string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.buckets[name]
+}
+
+// PutObject 实现 Storage 端口的写入语义（流式读完整）。
+func (m *MemoryStorage) PutObject(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) error {
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.objects[objectKey] = memoryObject{data: data, contentType: contentType}
+	return nil
+}
+
+// GetObject 实现 Storage 端口的读取语义。
+func (m *MemoryStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, string, int64, error) {
+	m.mu.Lock()
+	obj, ok := m.objects[objectKey]
+	m.mu.Unlock()
+	if !ok {
+		return nil, "", 0, ErrStorageUnavailable
+	}
+	return io.NopCloser(bytes.NewReader(obj.data)), obj.contentType, int64(len(obj.data)), nil
 }
 
 // defaultMemoryBucket 内存替身里默认使用的桶名。

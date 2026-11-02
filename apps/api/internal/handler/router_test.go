@@ -37,6 +37,7 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 		nil, // studio knowledge（#196）
 		nil, // studio project（#198）
 		nil, // freeze scheduler：允许为空（Run 里有 nil 判断）
+		nil, // attachment handler（#216 上传 / #217 读取）
 		nil, // token manager
 		nil, // admin store
 	)

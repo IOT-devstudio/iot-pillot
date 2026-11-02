@@ -7,6 +7,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
@@ -50,6 +51,10 @@ type Storage interface {
 	EnsureBucket(ctx context.Context) error
 	// Ping 探活存储：连不上或 bucket 不在都算不可用。
 	Ping(ctx context.Context) error
+	// PutObject 写入一个对象（流式：不落临时文件、不整块进内存）。
+	PutObject(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) error
+	// GetObject 读取一个对象；返回的 ReadCloser 由调用方关闭。
+	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, string, int64, error)
 }
 
 // BucketAPI 建桶与查桶所需的最小方法集。
@@ -61,11 +66,25 @@ type BucketAPI interface {
 	MakeBucket(ctx context.Context, bucketName string, opts minio.MakeBucketOptions) error
 }
 
+// ObjectAPI 读写对象所需的最小方法集。
+//
+// 同样从 *minio.Client 上抽：业务代码只依赖 Storage 端口，
+// 真实客户端的具体类型（含它的多重重试、分片逻辑）不外泄。
+type ObjectAPI interface {
+	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts minio.PutObjectOptions) (minio.UploadInfo, error)
+	GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (io.ReadCloser, minio.ObjectInfo, error)
+}
+
 // S3Storage 基于 S3 协议的对象存储实现。
+//
+// client 只负责建桶/探活，objects 负责对象读写：两者是同一台 *minio.Client
+// 的不同方法集，拆开是为了让「桶不存在时不该建桶」这类语义可以在没有
+// 对象存储的情况下测（client 用内存替身），而对象读写走另一个适配层。
 type S3Storage struct {
-	client BucketAPI
-	bucket string
-	region string
+	client  BucketAPI
+	objects ObjectAPI
+	bucket  string
+	region  string
 }
 
 // NewS3Storage 建立对象存储客户端（不发起任何网络请求）。
@@ -82,7 +101,34 @@ func NewS3Storage(cfg *config.S3Config) (*S3Storage, error) {
 		return nil, fmt.Errorf("对象存储客户端初始化失败（endpoint=%q）：%w", cfg.Endpoint, err)
 	}
 
-	return &S3Storage{client: client, bucket: cfg.Bucket, region: defaultRegion}, nil
+	return &S3Storage{
+		client:  client,
+		objects: objectAPIClient{client},
+		bucket:  cfg.Bucket,
+		region:  defaultRegion,
+	}, nil
+}
+
+// objectAPIClient 把 *minio.Client 适配成 ObjectAPI。
+//
+// *minio.Client 的 GetObject 返回 *minio.Object（带自己的 Stat/Close），
+// 而 ObjectAPI 要的是「直接能读的流 + 元信息」——这里在适配层把 Stat 提前做掉，
+// 让上层不用知道 minio 的对象模型。
+type objectAPIClient struct {
+	*minio.Client
+}
+
+func (c objectAPIClient) GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (io.ReadCloser, minio.ObjectInfo, error) {
+	obj, err := c.Client.GetObject(ctx, bucketName, objectName, opts)
+	if err != nil {
+		return nil, minio.ObjectInfo{}, err
+	}
+	stat, err := obj.Stat()
+	if err != nil {
+		obj.Close()
+		return nil, minio.ObjectInfo{}, err
+	}
+	return obj, stat, nil
 }
 
 // ProvideS3Storage 是给 wire 用的 provider：它吃整份配置，内部取 S3 段。
@@ -170,4 +216,27 @@ func (s *S3Storage) Ping(ctx context.Context) error {
 		return fmt.Errorf("对象存储 bucket %q 不存在", s.bucket)
 	}
 	return nil
+}
+
+// PutObject 写入一个对象（流式，不落临时文件、不整块进内存）。
+//
+// contentType 必须是**按真实字节嗅探**出来的类型，而不是客户端声明的：
+// 声明与真实不符时以真实为准（见 service 的 UploadAttachment）。
+func (s *S3Storage) PutObject(ctx context.Context, objectKey string, reader io.Reader, size int64, contentType string) error {
+	_, err := s.objects.PutObject(ctx, s.bucket, objectKey, reader, size, minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	return err
+}
+
+// GetObject 读取一个对象。
+//
+// 返回的 io.ReadCloser 由调用方负责关闭（通常是 defer Close）。
+// contentType 与 size 取自对象元信息，不额外请求一次。
+func (s *S3Storage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, string, int64, error) {
+	rc, info, err := s.objects.GetObject(ctx, s.bucket, objectKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, "", 0, err
+	}
+	return rc, info.ContentType, info.Size, nil
 }

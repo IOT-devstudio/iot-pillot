@@ -46,6 +46,7 @@ func NewRouter(
 	studioKnowledgeHandler *StudioKnowledgeHandler,
 	studioProjectHandler *StudioProjectHandler,
 	freezeScheduler *service.FreezeScheduler,
+	attachmentHandler *AttachmentHandler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 ) *Router {
@@ -257,6 +258,11 @@ func NewRouter(
 		apiV1.PATCH("/forms/:id", authRequired, requireAdmin, formHandler.UpdateForm)
 		apiV1.GET("/forms/:id/submissions", authRequired, requireAdmin, formHandler.ListFormSubmissions)
 		apiV1.GET("/forms/:id/submissions/:submission_id", authRequired, requireAdmin, formHandler.GetFormSubmission)
+
+		// ── 内容附件（#216 上传 / #217 读取）──
+		// 两个端点都只挂 authRequired：上传任何登录用户都能发图（不分 scope、无 requireAdmin）；
+		// 读取的归属判定在 service，handler 只解析 id 并一律 404（防枚举，见 ADR 0004）。
+		apiV1.POST("/attachments", authRequired, attachmentHandler.UploadAttachment)
 	}
 	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler}
 }
