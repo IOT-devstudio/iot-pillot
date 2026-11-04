@@ -8,6 +8,7 @@ import (
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/storage"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +27,14 @@ type RedisPinger interface {
 	Ping(ctx context.Context) error
 }
 
+// StoragePinger 对象存储的健康检查要求。
+//
+// 同样刻意与前两个拆开：方法集完全相同，名字必须不同，
+// 否则 wire 无法判断哪个实现该注入哪个参数。
+type StoragePinger interface {
+	Ping(ctx context.Context) error
+}
+
 // NewDatabasePinger / NewRedisPinger 把具体实现作为上面两个接口提供给装配层。
 //
 // 与 utils.NewAdminDirectory 同理：wire 按类型连线，隐式接口满足对它无效
@@ -40,13 +49,19 @@ func NewRedisPinger(pinger *utils.RedisPinger) RedisPinger {
 	return pinger
 }
 
+// NewStoragePinger 把对象存储实现作为 StoragePinger 提供给装配层。
+func NewStoragePinger(storage *storage.S3Storage) StoragePinger {
+	return storage
+}
+
 type HealthHandler struct {
 	database DatabasePinger
 	redis    RedisPinger
+	storage  StoragePinger
 }
 
-func NewHealthHandler(database DatabasePinger, redis RedisPinger) *HealthHandler {
-	return &HealthHandler{database: database, redis: redis}
+func NewHealthHandler(database DatabasePinger, redis RedisPinger, storage StoragePinger) *HealthHandler {
+	return &HealthHandler{database: database, redis: redis, storage: storage}
 }
 
 // Health 存活探针：只回答"进程还活着吗"。
@@ -65,9 +80,9 @@ func (h *HealthHandler) Health(c *gin.Context) {
 	})
 }
 
-// Ready 就绪探针：真正探活 DB 与 Redis。
+// Ready 就绪探针：真正探活 DB、Redis 与对象存储。
 // @Summary 健康检查（就绪）
-// @Description 探活 PostgreSQL 与 Redis；任一不可用返回 503。
+// @Description 探活 PostgreSQL、Redis 与对象存储；任一不可用返回 503。
 // 原来的 /health 恒返回 ok，依赖全挂时容器与冒烟测试仍报健康。
 // @Tags 系统
 // @Produce json
@@ -85,6 +100,13 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	}
 	if err := h.redis.Ping(ctx); err != nil {
 		failures["redis"] = err.Error()
+	}
+	// 对象存储（#215）：图片上传的依赖。存储挂了就绪探针必须变红 ——
+	// 否则用户会填完一整篇帖子、上传图片时才看到失败。
+	if h.storage != nil {
+		if err := h.storage.Ping(ctx); err != nil {
+			failures["storage"] = err.Error()
+		}
 	}
 
 	if len(failures) > 0 {

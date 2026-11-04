@@ -11,6 +11,7 @@ import (
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/handler"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/service"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/storage"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 )
 
@@ -41,7 +42,13 @@ func InitializeApp() (*handler.Router, func(), error) {
 	client := utils.ConnectRedis(configConfig)
 	redisPinger := utils.NewRedisPinger(client)
 	handlerRedisPinger := handler.NewRedisPinger(redisPinger)
-	healthHandler := handler.NewHealthHandler(handlerDatabasePinger, handlerRedisPinger)
+	s3Storage, err := storage.ProvideS3Storage(configConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	storagePinger := handler.NewStoragePinger(s3Storage)
+	healthHandler := handler.NewHealthHandler(handlerDatabasePinger, handlerRedisPinger, storagePinger)
 	userRepo := repository.NewUserRepo(db)
 	tokenManager := utils.NewTokenManager(client, configConfig)
 	tokenIssuer := service.NewTokenIssuer(tokenManager)
@@ -93,10 +100,14 @@ func InitializeApp() (*handler.Router, func(), error) {
 	studioProjectRepo := repository.NewStudioProjectRepo(db)
 	studioProjectUseCase := service.NewStudioProjectUseCase(studioProjectRepo)
 	studioProjectHandler := handler.NewStudioProjectHandler(studioProjectUseCase)
+attachmentRepo := repository.NewAttachmentRepo(db)
+attachmentUseCase := service.NewAttachmentUseCase(attachmentRepo, s3Storage, limiter)
+attachmentHandler := handler.NewAttachmentHandler(attachmentUseCase)
+attachmentCleanup := service.NewAttachmentCleanupScheduler(attachmentRepo, s3Storage)
 	freezeMailer := service.NewFreezeMailer(mailUseCase)
 	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker, adminDirectory)
 	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, tokenManager, adminStore)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore)
 	return router, func() {
 		cleanup()
 	}, nil

@@ -37,6 +37,8 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 		nil, // studio knowledge（#196）
 		nil, // studio project（#198）
 		nil, // freeze scheduler：允许为空（Run 里有 nil 判断）
+		nil, // attachment handler（#216 上传 / #217 读取）
+		nil, // attachment cleanup scheduler（#217）
 		nil, // token manager
 		nil, // admin store
 	)
@@ -54,6 +56,23 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("未注册 POST /api/v1/admin/users/:user_id/unfreeze")
+	}
+
+	// 内容附件端点（#216 / #217）必须真的挂上：POST 上传 + GET 读取。
+	attachmentRoutes := map[string]bool{
+		"POST /api/v1/attachments":     false,
+		"GET /api/v1/attachments/:id":  false,
+	}
+	for _, route := range router.eng.Routes() {
+		key := route.Method + " " + route.Path
+		if _, ok := attachmentRoutes[key]; ok {
+			attachmentRoutes[key] = true
+		}
+	}
+	for k, v := range attachmentRoutes {
+		if !v {
+			t.Fatalf("未注册 %s", k)
+		}
 	}
 
 	// 工作室成员（#195）五条端点必须真的挂上，且都在 admin 组内。

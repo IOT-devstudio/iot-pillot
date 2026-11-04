@@ -60,6 +60,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      s3:
+        condition: service_healthy
     ports:
       - "8080:80"
     environment:
@@ -71,6 +73,13 @@ services:
       IOT_PILOT_DB_NAME: iot_pillot
       IOT_PILOT_REDIS_HOST: redis
       IOT_PILOT_REDIS_PORT: "6379"
+      # 对象存储：容器内用服务名互访，不能写 localhost（那是容器自己）。
+      # 本地 go run 时改用 localhost:9010（见 .env.example）。
+      IOT_PILOT_S3_ENDPOINT: s3:9000
+      IOT_PILOT_S3_SECURE: "false"
+      IOT_PILOT_S3_BUCKET: iot-pillot
+      IOT_PILOT_S3_ACCESS_KEY: ${IOT_PILOT_S3_ACCESS_KEY:-iot-pilot-local}
+      IOT_PILOT_S3_SECRET_KEY: ${IOT_PILOT_S3_SECRET_KEY:-iot-pilot-local-secret}
       IOT_PILOT_MODE: ${IOT_PILOT_MODE:-release}
       # JWT secret 没有默认值（留空会被 Config.validate 拒绝），这里是本地占位值。
       # 需要固定密钥就在 .env 里设 IOT_PILOT_JWT_SECRET。
@@ -82,6 +91,34 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+  # S3 兼容对象存储：招新问答与内部论坛的图片附件落在桶里。
+  #
+  # 应用启动期就要连上去建桶（见 apps/api/internal/storage），所以它是 app 的硬依赖，
+  # 和 postgres / redis 一样：连不上应用直接启动失败，而不是等到第一次上传才炸。
+  #
+  # 只用 minio-go 说 S3 协议，不绑定这个发行版：换 Garage / 云厂商 OSS 只要改 endpoint 与凭据。
+  # 控制台在 9011 端口，S3 API 在 9010 端口。
+  s3:
+    image: ghcr.io/rustfs/rustfs:1.0.4
+    container_name: iot-pillot-s3
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ACCESS_KEY: ${IOT_PILOT_S3_ACCESS_KEY:-iot-pilot-local}
+      RUSTFS_SECRET_KEY: ${IOT_PILOT_S3_SECRET_KEY:-iot-pilot-local-secret}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "9010:9000"
+      - "9011:9001"
+    volumes:
+      # 命名卷：down 之后重起数据还在（附件不能随容器一起消失）。
+      - s3_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   registry:
     image: registry:2
     container_name: registry
@@ -95,3 +132,4 @@ services:
 
 volumes:
   postgres_data:
+  s3_data:

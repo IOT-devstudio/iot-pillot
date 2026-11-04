@@ -14,6 +14,7 @@ const (
 	CodeUnauthorized       = 4002 // 未认证 / token 失效（通用）
 	CodeForbidden          = 4003 // 无权限
 	CodeTooManyRequests    = 4004 // 请求过于频繁（限流）
+	CodeNotFound           = 4005 // 资源不存在
 	CodeTokenExpired       = 4010 // token 已过期，需要刷新
 	CodeSessionInvalidated = 4011 // 会话已失效（登出/顶替/凭据变更）
 	CodeServerError        = 5000 // 服务器内部错误

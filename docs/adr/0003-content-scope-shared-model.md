@@ -1,0 +1,168 @@
+# ADR 0003：招新问答与内部论坛共用一套内容模型（内容域 scope）
+
+## 状态
+
+已确认（2026-10-30）。来自地图 #207「招新问答与学习路线」的决策票 #208「[问答] 内容模型与权限矩阵定稿」。
+
+**修订（2026-10-31）**：来自决策票 #226「[问答] 帖子检索与回复权限收口」——补上方向列（决策 7）、关键词检索口径（决策 7）、谁能回复与「官方回答」的判定方式（决策 8）。
+
+**未落地**：本文只记录内容模型与权限矩阵的决策，建表见后续迁移票。
+
+## 上下文
+
+用户需求原话是「提问（可以发图片）（这个和工作室人员内部论坛放一起用权限隔开，两个大体逻辑相同）」。也就是说：两块功能在交互上是同构的（标题 + 正文 + 回复 + 图片），区别只在**谁能看、谁能写**。
+
+调研确认的事实：
+
+- 全仓「论坛 / 提问 / 问答 / post / topic / comment / attachment / upload」**0 命中**，`packages/shared-types` 无任何草案 —— 本域从零开始。
+- 仓内**没有「工作室人员」身份**：`member` 是任何注册用户（`apps/api/internal/service/auth_usec.go:141`），`MEMBER_ONLY` 实际等于 `["admin"]`（`apps/web/src/router/route-specs.ts:9`）。「工作室成员」是独立表 `studio_members`，`user_id` 可空。
+- 最接近的既有模型是知识库（`apps/api/migrations/0015_studio_knowledge.up.sql`）：它是**单向的、带版本修订的文档**，没有回复、没有作者-读者互动，不能复用。
+
+本票的取舍全部围绕一个判断：**把「两块功能」做成两个模块，还是做成一个模型的两个分区**。
+
+## 决策
+
+### 1. 一套内容模型，用 `scope` 分区
+
+`forum_posts.scope` 取值 `recruitment` | `studio`，带 `CHECK` 约束。回复不单独存 scope，经 `post_id` 继承。
+
+`scope` 是**分区维度**，不是权限等级 —— 它与知识库的 `permission`（`admin`/`member`/`public`）不是同一个概念，两者不可互相套用。
+
+### 2. 帖子与回复是两张表，不是一张自引用表
+
+`forum_posts`（`title NOT NULL`、`scope NOT NULL`、`direction_code`（可空，见决策 7）、`resolved_at`、`resolved_by`）与 `forum_replies`（`post_id NOT NULL`，**没有** `title` / `scope` / `direction_code` / `resolved_*`）。
+
+一张自引用表会让 `title` / `scope` / `resolved_at` / `resolved_by` 四列在回复行上必须可空，且所有「只看主帖」的查询都要带 `parent_id IS NULL`——漏写一次就把回复混进列表。两张表让每一列都能 `NOT NULL` 在该在的地方。
+
+**代价**：将来要做「楼中楼」得给 `forum_replies` 加一列 `parent_reply_id`。本期已明确不做嵌套回复，这个代价换得的是当下的模型清晰。
+
+### 3. 权限的粗粒度真源是路由分组，细粒度在 service
+
+| 粒度 | 真源 | 内容 |
+| --- | --- | --- |
+| 粗：哪个 scope 要什么角色 | `apps/api/internal/handler/router.go` 的路由分组 | `recruitment` 挂 `apiV1.Group("/forum", authRequired)`；`studio` 挂 `admin.Group("/studio/forum")` |
+| 中：handler 怎么知道自己是哪个 scope | `middleware.WithScope(scope)` 写入 gin context | handler 从 context 读，**永不解析 URL** |
+| 细：谁能改/删/标记这一条 | `internal/service` | 只有作者本人或管理员；中间件看不到具体资源 |
+
+两条并存不矛盾：中间件管「这个 scope 要什么角色」，service 管「这条记录归不归你」。`CLAUDE.md` 的「权限判断统一走 `AuthModule` 的守卫/中间件，不在 handler 里 if-else 角色」说的是前者。
+
+**将来开放 `studio` 给普通成员**：把那一组从 `admin.Group` 挪到 `apiV1.Group`，**一处改动**。这是选 A 而非「路径带 `:scope` + service 权限矩阵」的核心理由。
+
+### 4. 状态列成对出现，都不加原因
+
+| 语义 | 列 | 规则 |
+| --- | --- | --- |
+| 已解决 | `resolved_at` + `resolved_by` | 有值即已解决；撤销 = 置 NULL；两 scope 通用，后端不按 scope 拒绝，UI 只在招新问答暴露 |
+| 软删除 | `deleted_at` + `deleted_by` | 作者可删自己的，管理员可删任何人的；不加 `deleted_reason` |
+| 已编辑 | `edited_at` | 作者编辑后置位，界面显示「已编辑」；编辑**不影响** `resolved_*` |
+
+`resolved_*` 与 `deleted_*` 正交：软删的帖子保留它原来的已解决状态，只是不再出现在列表里。
+
+不设 `status` 枚举列：它丢失「何时/谁」，且与 `deleted_at` 两个状态列并存时容易产生非法组合。不加 `deleted_reason`：本期没有申诉或复核流程会消费它。
+
+### 5. 附件独立表 `content_attachments`，允许孤儿，24 小时清理
+
+```
+content_attachments(
+  id, object_key, uploader_id, content_type, size_bytes,
+  post_id, reply_id, roadmap_id,   -- 三列全可空
+  created_at
+)
+CHECK (num_nonnulls(post_id, reply_id, roadmap_id) <= 1)
+```
+
+PostgreSQL 16 内置 `num_nonnulls`，不需要写三个 `IS NULL` 的组合。
+
+- 上传时三列全空 = **孤儿态**，这是支撑「边写边传」的前提。
+- 发帖 / 回复 / 建路线时绑定，**只允许绑定自己上传的、尚未归属的附件**（防止把别人的图挂到自己帖子下）。
+- 内容软删时**附件行与 S3 对象都保留**——软删可逆的前提就是对象还在。
+- 定时清理任务只看附件自身三列：`post_id / reply_id / roadmap_id` 全空且 `created_at < now() - interval '24 hours'` → 删行 + 删对象。**不 JOIN 任何内容表**，因此不会因内容表结构变化而失效，也不会误删软删帖子的图。
+
+表名不用 `forum_attachments`：它也服务学习路线（见决策 6 的反面——路线**内容**不用 scope，但**附件**共用这张表）。
+
+### 6. 学习路线不带 `scope`
+
+`learning_roadmaps` 只挂 `direction_code`（与 `recruitment_directions.code` 对齐）。
+
+`scope` 是「帖子分区」的概念。路线不是帖子：它没有作者-读者双向互动，没有回复，没有已解决。为了复用一张附件表而把 `scope` 扩散到第三张表，只会让一个本期永远取单值的列被误读成权限。
+
+### 7. 帖子带方向列，关键词检索走 ILIKE
+
+**方向**：`forum_posts.direction_code`（可空）软引用 `recruitment_directions.code`，不建外键 —— 与学习路线的 `direction_code` 同一套口径：方向是招新运营数据，帖子是长期内容，运营数据被删不该牵连历史帖子。
+
+取值优先级：
+
+1. 发帖时用户显式选的方向；
+2. 未选则取发帖人资料里的方向 `users.detail_direction`；
+3. 发帖人投递了多个方向时取**第一条**（报名记录按 ID 倒序的第一条，与个人设置页「方向取本人最新报名记录」同一规则）；
+4. 资料也没有方向则留空。
+
+**留空是合法状态**：列表的方向筛选只在用户选了某个方向时加 `WHERE direction_code = ?`；选「全部」不加条件。空方向的帖子在「全部」里可见，在任何具体方向筛选下不可见。这与 `users.detail_direction` 的取值域（多出 `all` / `game` / `other`）无关——帖子方向列存的是招新方向码，不直接抄用户资料字段的原始值。
+
+**检索**：关键词走 `ILIKE` 扫标题与正文，不做索引、不做全文检索、不搜回复正文。
+
+- 帖子量级是「一个工作室一届几十到几百条」，顺序扫描远快于维护索引的成本；
+- 不搜回复是为了让「搜到什么」与「列表里显示什么」一致：列表项显示的是主帖标题与正文摘要，如果命中藏在回复里，用户点进去会找不到关键词，属于更坏的体验；
+- 关键词为空时不加条件。ILIKE 的 `%` / `_` 在用户输入里做转义，避免用户输入的 `%` 变成通配符。
+
+**两个内容域共用这套检索与方向**，`scope = studio` 不例外：`direction_code` 在内部论坛可以留空（内部讨论不一定属于招新方向），留空的帖子在方向筛选下不可见、在「全部」里可见，行为与招新问答一致。
+
+### 8. 谁能回复：所有登录用户；「官方回答」现算不落库
+
+**回复权限**：任何登录用户都能回复招新问答；内部论坛的回复权限仍由路由分组决定（本期仅管理员）。
+
+**官方回答**：管理员发的回复算官方回答，在回复列表里置顶显示（同组内按时间正序）。
+
+**关键取舍：不新增数据库列标记官方回答。** 判定方式是在服务层读 `utils.AdminDirectory.IsAdmin(ctx, reply.AuthorID)` —— 管理员名单本来就存在 Redis 里、每次请求现算（`apps/api/internal/utils/admin_store.go` 的 `adminSetKey = "auth:admins"`，`IsAdmin` 走 `SISMEMBER`），所以「查缓存」这件事**不需要新机制**。
+
+为什么坚持不落库：
+
+- `apps/api/internal/config/config.go:32` 已经写明「曾经的 `AuthConfig.IsAdmin` 已经被删除：它会成为『谁是管理员』的第二个判定入口」。在回复行上存一个 `is_official` 布尔就是同一个错误：撤销管理员之后，他历史上发的回复仍然声称官方，而新的判定又说不是，两份真源开始打架。
+- 现算的代价是列表页每页最多 N 条回复各查一次 Redis。回复数在一页内是有界的（分页 20 条），且 Redis `SISMEMBER` 是 O(1)；如需进一步压，服务层可先 `ListAdmins()` 一次拿到整份名单再在内存里比对——**这是实现细节，不改变契约**。
+- 管理员身份变化后，历史回复的官方标记自动跟着变，不需要回填脚本。
+
+**边界**：官方回答只影响**排序与展示**，不影响任何权限判定。删除、编辑、标记已解决的判定仍是决策 3 与决策 4 的「作者本人或管理员」。
+
+## 拒绝的方案
+
+| 方案 | 原因 |
+| --- | --- |
+| 两个独立模块（`forum` + `qa`） | 交互同构，「列表 / 详情 / 回复 / 附件 / 软删 / 已解决」整套逻辑复制两份 |
+| 一张自引用表 `parent_id` | `title` / `scope` / `resolved_*` 在回复行必须可空；所有主帖查询都要带过滤条件 |
+| 路径带 `:scope` + service 层权限矩阵 | 把角色判定从中间件挪进 service，违反 `CLAUDE.md` 工作约定 |
+| handler 内 `if-else` 角色 | `CLAUDE.md` 明确禁止；新增 scope 要改每个 handler |
+| `status` 枚举列代替 `resolved_at` | 丢失「何时/谁」；与 `deleted_at` 并存易产生非法状态组合 |
+| 独立事件表记录状态变更 | 本期只有两态，属于过度设计 |
+| 加 `deleted_reason` 列 | 本期没有申诉/复核流程消费它，管理员每次删帖多一步输入 |
+| 正文内嵌对象名（`![](object:xxx)`） | 无法枚举帖子附件、无法安全清理对象；正文解析失败则图片永久泄漏在 bucket |
+| 附件表禁止孤儿（先建帖再传图） | 与「边写边传」直接冲突，用户必须先发一个空帖 |
+| 学习路线独立附件表 | 「上传 / 绑定 / 孤儿清理 / 代理转发」整套逻辑复制一份 |
+| 学习路线带 `scope` | 本期永远单值，且会被误读成权限 |
+| 用「知识库条目」承载问答 | 知识库是单向文档 + 版本修订，没有回复与作者-读者互动 |
+| 帖子不加方向列，筛选时 JOIN 用户资料 | 帖子方向是**发布时**的意图，用户资料方向会随改资料/再报名而变；JOIN 出来的结果是「这个人现在是什么方向」而不是「这个帖子问的是哪个方向」 |
+| 帖子方向建外键指向 `recruitment_directions` | 方向是招新运营数据（可关闭、可增删），帖子是长期内容；外键会让删方向时连带卡住历史帖子，与学习路线同一取舍 |
+| 关键词检索建 GIN / tsvector 索引 | 量级是每届几十到几百条，索引维护成本高于收益；真有需要时再加，届时只是加一个迁移 |
+| 关键词同时搜回复正文 | 列表项只显示主帖摘要，命中藏在回复里会让用户点进去找不到关键词 |
+| 回复表加 `is_official` 布尔列 | 与 `config.go:32` 已删除的 `AuthConfig.IsAdmin` 是同一个错误：撤销管理员后历史回复仍声称官方，出现第二个判定入口 |
+| 用独立的「官方回答」表记录 | 本期只有「是/不是管理员」一个维度，一张表换不来任何查询能力，只增加一致性问题 |
+
+## 后果
+
+**新增 4 张表**：`forum_posts`、`forum_replies`、`content_attachments`、`learning_roadmaps`（含索引）。迁移号接 `0016` 起。
+
+`forum_posts` 的索引：`(scope, deleted_at, created_at DESC)` 支撑列表分页；`(scope, direction_code)` 支撑方向筛选。**关键词检索不建索引**（见决策 7）。
+
+**新增 1 个中间件**：`middleware.WithScope` 与对应的 context key，风格对齐现有 `ContextUserID` / `ContextRole`。
+
+**新增 1 个后台任务**：24 小时孤儿附件清理，进程内 ticker 模式参考 `0012` 的 `FreezeScheduler`（放在 `Router` 里随 HTTP 服务同生共死）。
+
+**术语**：`GLOSSARY.md` 新增「内容域」「帖子」「回复」「附件」「招新问答」「内部论坛」「学习路线」7 个词（决策 7、8 另加「官方回答」「帖子检索」2 词，并把方向写进「帖子」词条）。
+
+**可逆性边界**：开放 `studio` 给普通成员只需改 `router.go` 一处；但「帖子分区」这个概念已经扩散到路由分组、`WithScope` 中间件与 `content_attachments` 的三列。**若将来要三个以上 scope，需要重新审视分组方式**（分组会退化成 `if` 分支，届时该换成一个 scope → 角色要求的表驱动配置）。
+
+## 参考
+
+- 地图：#207「[探索地图] 招新问答与学习路线」；本票：#208；修订票：#226
+- 图片存储：`docs/adr/0002-image-storage-minio.md`、`docs/research/minio-image-storage.md`
+- 仓库约束：`CLAUDE.md`「工作约定」、`GLOSSARY.md`
+- 既有迁移范式：`apps/api/migrations/0013_studio_members.up.sql`、`0015_studio_knowledge.up.sql`

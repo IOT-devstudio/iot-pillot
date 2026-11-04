@@ -8,6 +8,7 @@ import (
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/handler"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/repository"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/service"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/storage"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
 	"github.com/google/wire"
 )
@@ -39,6 +40,9 @@ func InitializeApp() (*handler.Router, func(), error) {
 		repository.NewDatabasePinger,
 		utils.NewRedisPinger,
 
+		// 对象存储（#215）：启动期连上去建桶，连不上直接让装配失败。
+		storage.ProvideS3Storage,
+
 		utils.NewAdminDirectory,
 		utils.NewCounter,
 		service.NewTokenIssuer,
@@ -48,6 +52,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		service.NewAccountMailer,
 		handler.NewDatabasePinger,
 		handler.NewRedisPinger,
+		handler.NewStoragePinger,
 
 		repository.NewUserRepo,
 		repository.NewMailModelRepo,
@@ -59,6 +64,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		repository.NewStudioMemberRepo,
 		repository.NewStudioKnowledgeRepo,
 		repository.NewStudioProjectRepo,
+repository.NewAttachmentRepo,
 
 		service.NewStudioMemberAccountDirectory,
 		service.NewStudioMemberCandidateDirectory,
@@ -76,6 +82,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		service.NewStudioMemberUseCase,
 		service.NewStudioKnowledgeUseCase,
 		service.NewStudioProjectUseCase,
+service.NewAttachmentUseCase,
 
 		// 资料不合规账号的定时冻结（0012）
 		service.NewFreezeMailer,
@@ -92,6 +99,7 @@ func InitializeApp() (*handler.Router, func(), error) {
 		handler.NewStudioMemberHandler,
 		handler.NewStudioKnowledgeHandler,
 		handler.NewStudioProjectHandler,
+handler.NewAttachmentHandler,
 
 		handler.NewRouter,
 	)

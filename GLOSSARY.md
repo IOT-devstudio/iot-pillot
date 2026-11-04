@@ -15,7 +15,9 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 
 ## 邮件域
 
-- **邮件模板 (Mail Template)**：统一配置的可复用邮件正文，类型 `invitation` / `offer` / `rejection` / `custom`；渲染统一走 `TemplateModule`。
+- **邮件模板 (Mail Template)**：统一配置的可复用邮件正文，类型 `invitation` / `offer` / `rejection` / `custom` / `qa_reply`，另有 `deletion` / `freeze` 两个**只在内置兜底时使用**的类型；渲染统一走 `TemplateModule`。
+- **回复通知 (Reply Notification)**：问答与论坛里「我发的帖子被人回复」时发出的邮件，类型 `qa_reply`，两个内容域共用。走有界队列异步发送，**失败不影响回复本身**；自己回自己的帖子不发；模板未配置时用内置文案照发。决策见 `docs/adr/0007-forum-reply-notification.md`。
+- **内置兜底模板 (Built-in Fallback Template)**：当某类型模板未被管理员配置时，系统改用代码里写死的文案照常发送，而不是报错或静默不发。当前有 `deletion` / `freeze` / `qa_reply` 三个。兜底文案只能引用渲染时**自动预填**的变量（`{{name}}` 等），不能引用调用方额外传的变量 —— 缺变量会让兜底本身变成失败点。
 - **邀请函 (Invitation)**：发给 Prospect、引导其成为 Candidate 的邮件动作。
 - **Offer**：发给通过面试 Candidate 的录用邮件动作。
 - **感谢信 (Rejection)**：发给未通过面试 Candidate 的邮件动作。
@@ -45,3 +47,25 @@ iot-pillot 的领域术语表（single-context 布局，仓库根唯一术语源
 - **成果统计范围 (Achievement Scope)**：成果数字的统计截止口径，当前为「截至 2022 级」。数字必须与它同屏出现。
 - **历史项目 (Historical Project)**：资料里只列了名称的项目。其 `source` 是**资料来源时间**（如「2025 年宣讲资料」），不是项目实施年份，页面不得把 `source` 放进「年份」位。
 
+## 内容域
+
+招新问答与工作室内部论坛共用一套内容模型，靠内容域分区。决策见 `docs/adr/0003-content-scope-shared-model.md`；附件上传与正文图片引用见 `docs/adr/0004-attachment-upload-chain.md`。
+
+正文的渲染方式见 `docs/adr/0005-markdown-rendering.md`，学习路线的数据模型见 `docs/adr/0006-learning-roadmap.md`。
+
+- **内容域 (Content Scope)**：帖子的分区维度，取值 `recruitment`（招新问答）/ `studio`（内部论坛）。**不是**权限等级，也不是知识库的 **权限分级 (Permission)**（`admin` / `member` / `public`），两者不可互相套用。
+- **帖子 (Post)**：一条带标题的独立话题，属于且仅属于一个内容域。帖子带一个可空的**方向**（软引用招新方向码，不建外键）：发帖时可自己选，不选则回落发帖人资料里的方向（投递多个方向取最新报名记录的第一条），都没有则留空。空方向的帖子在「全部」里可见、在任何具体方向筛选下不可见。
+- **回复 (Reply)**：挂在帖子下的一条无标题发言，继承帖子的内容域，没有独立的可见性。**新建**回复会通知帖子作者（见邮件域「回复通知」）；编辑回复不再通知。
+- **附件 (Attachment)**：挂在帖子、回复或学习路线上的图片，存于对象存储。上传后到被绑定前是**孤儿态**，超过 24 小时未绑定会被清理；内容软删除时附件保留。读取时按归属判定：孤儿态仅上传者可读，内部论坛的图需管理员，招新问答与学习路线的图登录即可读；无权访问一律按「不存在」处理。
+- **正文图片引用 (Inline Image Reference)**：正文里用标准 Markdown 图片语法指向附件读取端点。**正文是绑定关系的唯一真源**——服务端按正文里仍出现的附件 id 重算绑定集合，未出现的解绑回孤儿态。外链图片不参与绑定。
+- **上传配额 (Upload Quota)**：单账号每 24 小时最多上传 50 张的上限，窗口自首次上传起算（不是自然日零点）。
+- **招新问答 (Recruitment Q&A)**：`scope = recruitment` 的帖子集合。登录用户可提问、可回复、可浏览；管理员额外可标记已解决、可删除任何内容。
+- **官方回答 (Official Reply)**：管理员发出的回复，在回复列表里置顶显示。**不落库**——判定方式是服务层每次现查管理员名单（Redis），因此撤销管理员后其历史回复自动不再算官方，不存在第二个判定入口。只影响排序与展示，不影响任何权限。
+- **帖子检索 (Post Search)**：列表页的关键词过滤，用 `ILIKE` 扫主帖标题与正文，不建索引、不做全文检索、**不搜回复正文**（列表只显示主帖摘要，命中藏在回复里会让用户点进去找不到）。用户输入里的 `%` / `_` 做转义。决策见 `docs/adr/0003-content-scope-shared-model.md` 决策 7。
+- **内部论坛 (Internal Forum)**：`scope = studio` 的帖子集合。本期仅管理员可见可写，与招新问答的差异**只在可见性**，回复与图片能力完全共用。
+- **学习路线 (Learning Roadmap)**：按招新方向组织的学习路径推荐，由管理员维护、登录后按方向查看。是独立实体，**不带内容域**——它没有回复、没有已解决，与帖子不是同一种东西。一条路线属于一个方向（`direction_code` 软引用，不建外键）。决策见 `docs/adr/0006-learning-roadmap.md`。
+- **阶段 (Roadmap Stage)**：学习路线内部的一个有序步骤，含标题、一句话说明与资源列表。每个阶段有一个**服务端生成的稳定 id**（`s_xxx`），前端只当不透明字符串——用户进度记的是它而不是序号，所以管理员重排阶段不会让进度指错。
+- **资源 (Roadmap Resource)**：阶段里的一条学习材料，就是一个标题加一个链接。链接协议受与 Markdown 相同的白名单约束（`http:` / `https:` / 站内 `/` 开头），不合规拒绝保存。
+- **学习进度 (Roadmap Progress)**：用户在某条路线上标记的「学到哪个阶段」，一人一路线至多一行，只属于本人，管理员也看不到。撤销 = 再点同一个阶段。
+- **Markdown 渲染器 (Markdown Renderer)**：把正文与回复的 Markdown 原文变成页面内容的唯一实现，位于前端 `apps/web/src/components/markdown/`。只解析成 VNode，**不产生 HTML 字符串**，因此不走 `v-html`、不需要 sanitizer。支持语法是明确子集，未知写法降级为纯文本而不是丢弃。决策见 `docs/adr/0005-markdown-rendering.md`。
+- **正文摘要 (Body Excerpt)**：列表页里对正文的一行预览。先剥掉 Markdown 标记（图片整体替换成 `[图]`、链接只留文字），再交给既有的 `bodyExcerpt` 压空白并截断；列表页**不渲染**正文，摘要不带排版。
