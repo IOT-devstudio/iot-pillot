@@ -14,11 +14,13 @@
     "@iot-pillot/shared-types": "workspace:*",
     "element-plus": "^2.8.4",
     "gsap": "^3.15.0",
+    "markdown-it": "^15.0.3",
     "three": "^0.186.0",
     "vue": "^3.5.12",
     "vue-router": "^4.4.5"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^22.7.5",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-vue": "^5.1.4",
