@@ -159,7 +159,8 @@ jobs:
             -e IOT_PILOT_DB_NAME=iot_pillot \
             -e IOT_PILOT_REDIS_HOST=host.docker.internal \
             -e IOT_PILOT_REDIS_PORT=6379 \
-            -e IOT_PILOT_JWT_SECRET=ci-only-not-a-real-secret \            -e IOT_PILOT_S3_ENDPOINT=host.docker.internal:9010 \
+            -e IOT_PILOT_JWT_SECRET=ci-only-not-a-real-secret \
+            -e IOT_PILOT_S3_ENDPOINT=host.docker.internal:9010 \
             -e IOT_PILOT_S3_SECURE=false \
             -e IOT_PILOT_S3_BUCKET=iot-pillot \
             -e IOT_PILOT_S3_ACCESS_KEY=ci_s3_key \
