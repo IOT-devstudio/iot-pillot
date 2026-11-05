@@ -112,8 +112,12 @@ func InitializeApp() (*handler.Router, func(), error) {
 	attachmentUseCase.SetScopeResolver(service.NewForumScopeResolver(forumRepo))
 	// 方向回落需要「用户资料方向」与「最新报名方向」两级数据源（#220）。
 	forumUseCase := service.NewForumUseCase(forumRepo, adminDirectory).WithDirectionFallback(userRepo, recruitmentRepo)
+	// 回复通知走有界队列 + 单 worker（#222，ADR 0007 决策 3）：
+	// 回复接口不等 SMTP，队列满则丢弃并记日志，通知失败不回滚回复。
+	forumNotifyQueue := service.NewForumNotifyQueue(mailUseCase)
+	forumUseCase.WithReplyNotify(forumNotifyQueue)
 	forumHandler := handler.NewForumHandler(forumUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler, forumNotifyQueue)
 	return router, func() {
 		cleanup()
 	}, nil

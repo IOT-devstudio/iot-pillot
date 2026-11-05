@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
@@ -406,6 +407,87 @@ func builtInFreezeMail() *domain.MailModel {
 
 —— IoT Studio 工作室`,
 	}
+}
+
+// builtInQaReplyMail 未配置 qa_reply 模板时的内置默认文案（#222，ADR 0007 决策 2）。
+//
+// 关键约束：正文**只引用 render 自动预填的变量**（name / email / class / direction /
+// student_id / parse）。绝不引用 {{post_title}} 之类的额外变量——RenderTemplate
+// 遇到缺失变量会直接报错，内置兜底本身就会变成新的失败点（ADR 0007 决策 2）。
+// 因此帖子标题、回复摘录、发信人这些信息只能由调用方拼进标题与正文的固定位置，
+// 不能做成占位符让管理员重排。
+func builtInQaReplyMail() *domain.MailModel {
+	return &domain.MailModel{
+		Name:  "内置问答回复通知",
+		Type:  qaReplyMailType,
+		Title: "你的提问有新回复",
+		MailModel: `{{name}}，你好：
+
+你在工作室招新问答里发布的帖子刚刚收到了新回复。
+
+请登录系统查看完整内容：
+在你的帖子详情页可以看到全部回复。
+
+提示：如果这不是你关心的讨论，可以忽略本邮件。
+
+—— IoT Studio 工作室`,
+	}
+}
+
+// SendQaReplyNotice 发送「你的帖子有新回复」通知（#222，ADR 0007）。
+//
+// 模板选择沿用 deletion / freeze 的范式：配置了 type=qa_reply 就用它，
+// 没配置用内置默认——「管理员忘了建模板」不该变成「通知功能不存在」。
+//
+// 不给链接（ADR 0007 决策 7）：拼站内链接要新增部署必配的站点 URL，
+// 配错比没有更糟；用请求 Host 拼则在异步发出时可能拿到内网地址且可被伪造。
+//
+// 摘录按字符截断 200、原样保留 Markdown 源码（ADR 0007 决策 8）：
+// 不引入后端 Markdown 剥离，否则同一套规则 Go 与 TS 各写一份，漂移时邮件与页面不一致。
+func (a *MailUseCase) SendQaReplyNotice(
+	ctx context.Context,
+	author *domain.User,
+	postTitle string,
+	replyBody string,
+	replierName string,
+) error {
+	model, err := a.templates.GetByType(ctx, qaReplyMailType)
+	if err != nil {
+		return err
+	}
+	if model == nil {
+		model = builtInQaReplyMail()
+	}
+
+	// 标题与摘录通过 vars 覆盖进模板，模板作者可以用也可以不用；
+	// 内置兜底刻意不用它们，避免缺变量报错。
+	vars := request.MailVars{}
+	if title := strings.TrimSpace(postTitle); title != "" {
+		vars["post_title"] = title
+	}
+	if excerpt := truncateRunes(replyBody, qaReplyExcerptRunes); excerpt != "" {
+		vars["reply_excerpt"] = excerpt
+	}
+	if name := strings.TrimSpace(replierName); name != "" {
+		vars["replier_name"] = name
+	}
+
+	// operatorID 传 0：通知由系统发起，没有人类操作者。
+	// 发信记录里 from_user_id = 0 正好与「管理员手动发送」区分开（ADR 0007 决策 9）。
+	_, err = a.sendWithTemplate(ctx, 0, model, author, vars)
+	return err
+}
+
+// qaReplyExcerptRunes 回复摘录的字符上限（ADR 0007 决策 8）。
+const qaReplyExcerptRunes = 200
+
+// truncateRunes 按字符（而非字节）截断，保证不切坏中文与 emoji。
+func truncateRunes(s string, limit int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= limit {
+		return string(r)
+	}
+	return string(r[:limit]) + "…"
 }
 
 // SendAccountFreezeNotice 发送资料冻结通知邮件（0012，仅定时冻结任务调用）。

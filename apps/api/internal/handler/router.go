@@ -35,6 +35,9 @@ type Router struct {
 	freeze *service.FreezeScheduler
 	// attachmentCleanup 孤儿附件清理（#217）：与 freeze 同生命周期。
 	attachmentCleanup *service.AttachmentCleanupScheduler
+	// forumNotify 回复通知队列（#222）：与 freeze 同生命周期。
+	// 放在这里同样是为了让「谁负责停」只有一个答案。
+	forumNotify *service.ForumNotifyQueue
 }
 
 func NewRouter(
@@ -55,6 +58,7 @@ func NewRouter(
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
 	forumHandler *ForumHandler,
+	forumNotify *service.ForumNotifyQueue,
 ) *Router {
 	if cfg.SERVICE.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -328,7 +332,7 @@ func NewRouter(
 		forum.DELETE("/replies/:id", func(c *gin.Context) { forumHandler.DeleteForumReply(c, domain.ForumScopeRecruitment) })
 		forum.POST("/posts/:id/resolve", func(c *gin.Context) { forumHandler.ResolveForumPost(c, domain.ForumScopeRecruitment) })
 	}
-	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler, attachmentCleanup: attachmentCleanup}
+	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler, attachmentCleanup: attachmentCleanup, forumNotify: forumNotify}
 }
 
 // Run 启动 HTTP 服务，并在收到 SIGINT/SIGTERM 时优雅退出。
@@ -360,6 +364,14 @@ func (r *Router) Run() error {
 	if r.attachmentCleanup != nil {
 		r.attachmentCleanup.Start()
 		defer r.attachmentCleanup.Stop()
+	}
+	// 回复通知队列（#222，ADR 0007 决策 3）：单 worker 串行消费。
+	// 与上面的调度器同位置：Start 在 ListenAndServe 之前，
+	// Stop 在 shutdown 之前——先让后台把已入队的尽力发完（最多 5 秒），
+	// 再等在途请求结束，避免发版瞬间静默丢通知。
+	if r.forumNotify != nil {
+		r.forumNotify.Start()
+		defer r.forumNotify.Stop()
 	}
 
 	serveErr := make(chan error, 1)

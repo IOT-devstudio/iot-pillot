@@ -28,12 +28,15 @@ var ErrForumPostNotFound = repository.ErrForumPostNotFound
 //     让上层回 404 而不是 403——既符合「软删从常规列表消失」，也避免用 403 暴露
 //     资源存在（ADR 0004 §1 同口径）。
 type ForumUseCase struct {
-	posts repository.ForumRepo
+	posts  repository.ForumRepo
 	admins utils.AdminDirectory
 	// users / applications 只在发帖时算「方向回落」用（#220），
 	// 可为 nil —— 为 nil 时该级直接跳过，只读用例因此不受影响。
 	users        userDirectionReader
 	applications applicationDirectionReader
+	// notify 是回复通知的有界队列（#222，ADR 0007）。可为 nil ——
+	// 为 nil 时「新建回复」不触发通知，只读与纯写入用例因此不受影响。
+	notify *ForumNotifyQueue
 }
 
 // NewForumUseCase 构造函数。admins 用于「官方回答（管理员回复）置顶」的实时判定。
@@ -48,6 +51,15 @@ func NewForumUseCase(posts repository.ForumRepo, admins utils.AdminDirectory) *F
 func (uc *ForumUseCase) WithDirectionFallback(users userDirectionReader, apps applicationDirectionReader) *ForumUseCase {
 	uc.users = users
 	uc.applications = apps
+	return uc
+}
+
+// WithReplyNotify 注入回复通知队列（#222）。
+//
+// 与 WithDirectionFallback 同理用链式方法：队列是可选的旁路能力，
+// 不该强加给只读用例与既有测试桩。
+func (uc *ForumUseCase) WithReplyNotify(q *ForumNotifyQueue) *ForumUseCase {
+	uc.notify = q
 	return uc
 }
 
@@ -107,7 +119,7 @@ func (uc *ForumUseCase) GetPostDetail(ctx context.Context, id int) (*ForumPostDe
 	// 官方回答置顶：isOfficial 降序、created_at 升序（同档内时间正序）。
 	// replies 与 official 必须同步重排，否则排序后两者错位（官方标记错配到别的回复）。
 	type pair struct {
-		reply   *domain.ForumReply
+		reply    *domain.ForumReply
 		official bool
 	}
 	pairs := make([]pair, len(replies))

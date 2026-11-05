@@ -273,7 +273,28 @@ func (uc *ForumUseCase) CreateReply(ctx context.Context, authorID int, postID in
 	if err := uc.posts.CreateReply(ctx, reply); err != nil {
 		return nil, err
 	}
+
+	// 回复已落库，通知是附带动作（ADR 0007 决策 4）：
+	// 发不出去也不能让用户看到「回复失败」，否则他重写的内容会丢、重试还会产生重复回复。
+	// NotifyForumReply 内部全降级成日志，不返回错误。
+	uc.NotifyForumReply(ctx, post, reply, uc.replierName(ctx, authorID))
+
 	return reply, nil
+}
+
+// replierName 取发信人姓名，仅用于通知正文里的「谁回复了你」。
+//
+// 取不到就退回空串：通知正文里对姓名的引用要能容忍缺失，
+// 不能为了一个称呼让整条通知失败。
+func (uc *ForumUseCase) replierName(ctx context.Context, userID int) string {
+	if uc.users == nil {
+		return ""
+	}
+	user, err := uc.users.GetByID(ctx, userID)
+	if err != nil || user == nil {
+		return ""
+	}
+	return user.Name
 }
 
 // UpdateReply 编辑回复。
