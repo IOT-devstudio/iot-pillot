@@ -79,9 +79,10 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	if err := db.QueryRow("SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	// 工作室运营三张表（0013–0015）随 #195 一并纳管：迁移 SQL 在检票阶段
-	// 就已入库，本票才第一次真正跑 up，所以最高版本从 12 前进到 15。
-	if version != 15 || dirty {
+	// 空库 up 到最新迁移后，schema_migrations 的最高版本即当前迁移目录的
+	// 最大编号。本断言随新增迁移前进：0015（#195）→ 0017（#218 附件绑定）
+	// → 0018（#219 论坛帖/回复）。漏改会导致 CI 注入 DSN 后恒红。
+	if version != 18 || dirty {
 		t.Fatalf("version=%d dirty=%v", version, dirty)
 	}
 	var count int
