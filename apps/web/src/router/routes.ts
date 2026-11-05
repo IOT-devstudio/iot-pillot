@@ -12,6 +12,7 @@ import { settingsRoutes } from "@/modules/settings/routes";
 import { studioKnowledgeRoutes } from "@/modules/studio-knowledge/routes";
 import { studioProjectRoutes } from "@/modules/studio-projects/routes";
 import { studioMembersRoutes } from "@/modules/studio-members/routes";
+import { forumRoutes } from "@/modules/forum/routes";
 import { userSettingsRoutes } from "@/modules/user-settings/routes";
 import AuthView from "@/views/AuthView.vue";
 
@@ -39,6 +40,8 @@ export const routes: RouteRecordRaw[] = [
   ...studioMembersRoutes,
   ...studioKnowledgeRoutes,
   ...studioProjectRoutes,
+  // 招新问答（#219，用户侧只读）：列表与详情。
+  ...forumRoutes,
   // 内容首页已并入管理台，保留旧路径重定向，避免收藏夹与旧链接 404
   { path: "/home", redirect: "/dashboard" },
   // 兼容登录路径：与根路径复用同一认证组件，保留 redirect 与 fallback 参数。

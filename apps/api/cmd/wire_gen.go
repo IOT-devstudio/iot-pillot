@@ -107,7 +107,10 @@ attachmentCleanup := service.NewAttachmentCleanupScheduler(attachmentRepo, s3Sto
 	freezeMailer := service.NewFreezeMailer(mailUseCase)
 	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker, adminDirectory)
 	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore)
+	forumRepo := repository.NewForumRepo(db)
+	forumUseCase := service.NewForumUseCase(forumRepo, adminDirectory)
+	forumHandler := handler.NewForumHandler(forumUseCase)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler)
 	return router, func() {
 		cleanup()
 	}, nil
