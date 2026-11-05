@@ -93,6 +93,36 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
 
 `GLOSSARY.md`「工作室运营域」是术语唯一源；`CONTEXT.md` 逐票记录交付口径。
 
+### 内容域与附件链路（#207 地图，#216–#224）
+
+本期新增三条贯穿前后端的链路，全部按内容域分层而非按页面分模块。
+
+**内容域分层**（决策见 [ADR 0003](adr/0003-content-scope-shared-model.md)）：
+
+| 层 | 位置 | 职责 |
+| --- | --- | --- |
+| 路由分组 | `apps/api/internal/handler/router.go` | `/api/v1/forum`（登录即可）与 `/api/v1/studio/forum`（仅 admin）是**不同前缀**；权限写在分组上，普通成员的写请求一律 404 而非 403 |
+| 写入与检索 | `apps/api/internal/service/forum_write.go`、`internal/repository/forum_repo.go` | 归属校验在 service（`canManage`），不解析 URL；回复经 `post_id` 继承 scope |
+| 前端切域 | `apps/web/src/modules/forum/useForumScope.ts`、`routes.ts` | 路由 meta `forumScope` 决定内容域；列表/详情/编辑三个组件被两个域**复用**，不复制一份实现 |
+| 已解决 | `internal/service/forum_write.go` 的 `SetPostResolved` | `resolved_by` 记操作者；数据两域通用，界面只在招新问答暴露 |
+
+**附件存储与读取链路**（决策见 [ADR 0002](adr/0002-image-storage-minio.md) / [ADR 0004](adr/0004-attachment-upload-chain.md)）：
+
+| 环节 | 位置 | 说明 |
+| --- | --- | --- |
+| 对象存储 | `apps/api/internal/storage/`、RustFS 容器 | S3 兼容私有 bucket，配置项为中性 `S3_*`；启动期 `EnsureBucket` 幂等建桶，`/health/ready` 纳入存储探针 |
+| 上传 | `apps/api/internal/handler/attachment_handle.go`、`internal/service/attachment_read.go` | 流式 `MultipartReader` + 真实字节嗅探；三层体积闸门；配额 50/24h；上传即落孤儿行 |
+| 归属判定 | `internal/service/attachment_read.go` 的 `AttachmentScopeResolver` | `forumScopeResolver` 按 `post_id` / `reply_id` 查所属帖 scope：studio 需管理员、软删不可见；数据库故障向上抛而非压成 404。未注入真实现时 `defaultScopeResolver` 一律返回「未判定」→ 404，**宁可 404 不泄漏** |
+| 绑定重算 | `AttachmentUseCase.RecomputeBindings` | 正文是绑定关系唯一真源，按正文引用重算 `post_id` / `reply_id` / `roadmap_id` 三列 |
+| 孤儿清理 | `internal/service/attachment_cleanup.go` 的 `AttachmentCleanupScheduler` | 每小时单批 500，三列全空且超 24h 才清 |
+| 前端渲染 | `apps/web/src/components/markdown/` | `MarkdownContent.vue` 把 Markdown 解析成 VNode（不产生 HTML 字符串，不用 `v-html`）；`MarkdownImage.vue` 对站内附件用 blob URL；`protocolAllowlist.ts` 是链接/图片协议的唯一真源（决策见 [ADR 0005](adr/0005-markdown-rendering.md)） |
+
+**学习路线**（[ADR 0006](adr/0006-learning-roadmap.md)）是**独立实体、不带内容域**：单表 + JSONB 存阶段与资源（迁移 0019），进度单独一张 `user_roadmap_progress`（迁移 0020）按**阶段稳定 id** 记。管理端在 `/api/v1/admin/studio/roadmaps`（仅 admin，整体提交带 `version` 乐观锁），用户端在 `/api/v1/learning/roadmaps`（登录即可）。方向筛选项由路线接口自带，**不查招新方向接口**——招新结束后后者会是空的。
+
+**回复通知**（[ADR 0007](adr/0007-forum-reply-notification.md)）由 `internal/service/forum_notify.go` 的有界队列（256）+ 单 worker 承载，随 `Router.Run` 启停，与 `FreezeScheduler` 同位置。模板类型 `qa_reply` 两域共用，未配置时用内置兜底；**通知失败不回滚回复**。
+
+术语见 `GLOSSARY.md`「内容域」「邮件域」；逐票交付口径见 `CONTEXT.md`。
+
 ---
 
 ## 业务模块规划（待开工）
