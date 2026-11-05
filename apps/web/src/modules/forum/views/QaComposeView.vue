@@ -13,6 +13,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 
 import PageHeader from "@/components/common/PageHeader.vue";
 import MarkdownEditor from "../components/MarkdownEditor.vue";
+import { useForumScope } from "../useForumScope";
 import {
   createQaPost,
   fetchQaPost,
@@ -21,6 +22,8 @@ import {
 import { fetchDirections } from "@/api/recruitment";
 const route = useRoute();
 const router = useRouter();
+// 内容域来自路由 meta（#221）。
+const forum = useForumScope();
 
 /** 标题上限，与后端 CHECK（char_length <= 200）一致。 */
 const TITLE_MAX = 200;
@@ -81,7 +84,7 @@ async function loadExisting(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    const post = await fetchQaPost(id);
+    const post = await fetchQaPost(id, forum.scope.value);
     title.value = post.title;
     body.value = post.body;
     direction.value = post.direction_code ?? "";
@@ -106,19 +109,26 @@ async function submit(): Promise<void> {
   try {
     const id = editId.value;
     if (id === null) {
-      const created = await createQaPost({
-        title: title.value.trim(),
-        body: body.value,
-        // 没选就不传字段：让服务端走「资料方向 → 最新报名 → 留空」回落，
-        // 用户不该感知这条规则（AC 要求）。
-        ...(direction.value ? { direction_code: direction.value } : {}),
-      });
+      const created = await createQaPost(
+        {
+          title: title.value.trim(),
+          body: body.value,
+          // 没选就不传字段：让服务端走「资料方向 → 最新报名 → 留空」回落，
+          // 用户不该感知这条规则（AC 要求）。
+          ...(direction.value ? { direction_code: direction.value } : {}),
+        },
+        forum.scope.value,
+      );
       ElMessage.success("发布成功");
-      void router.replace(`/user/qa/${created.id}`);
+      void router.replace(forum.detailPath(created.id));
     } else {
-      await updateQaPost(id, { title: title.value.trim(), body: body.value });
+      await updateQaPost(
+        id,
+        { title: title.value.trim(), body: body.value },
+        forum.scope.value,
+      );
       ElMessage.success("已保存");
-      void router.replace(`/user/qa/${id}`);
+      void router.replace(forum.detailPath(id));
     }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "提交失败，请重试");
@@ -140,7 +150,7 @@ async function cancel(): Promise<void> {
     }
   }
   const id = editId.value;
-  void router.push(id === null ? "/user/qa" : `/user/qa/${id}`);
+  void router.push(id === null ? forum.listPath.value : forum.detailPath(id));
 }
 
 onMounted(async () => {

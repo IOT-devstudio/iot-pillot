@@ -67,6 +67,28 @@ func parseDirectionCode(raw string) *string {
 	return &v
 }
 
+// parseResolvedFilter 解析「已解决」筛选参数（#221）。
+//
+// 三态（与方向的两态不同）：
+//   - 缺省 / 空串 → nil，不筛选；
+//   - "true"      → 只看已解决；
+//   - "false"     → 只看未解决。
+//
+// 其它取值（含拼错）按「不筛选」处理而不是报 400：这是筛选条件，
+// 猜错了顶多多显示一些结果，比让整个列表报错好。
+func parseResolvedFilter(raw string) *bool {
+	switch raw {
+	case "true":
+		v := true
+		return &v
+	case "false":
+		v := false
+		return &v
+	default:
+		return nil
+	}
+}
+
 // ListForumPosts 帖子列表（按 scope 区分招新问答 / 内部论坛）。
 // @Summary 帖子列表
 // @Description 分页列出某内容域下未软删的帖子，支持关键词（标题/正文）与方向筛选。登录用户可读招新问答，管理员可读内部论坛。
@@ -74,6 +96,7 @@ func parseDirectionCode(raw string) *string {
 // @Produce json
 // @Param q query string false "关键词（标题与正文模糊匹配，不搜回复）"
 // @Param direction query string false "方向码筛选；缺省为全部（含空方向）"
+// @Param resolved query string false "已解决筛选：true/false；缺省为全部"
 // @Param page query int false "页码，从 1 开始" default(1)
 // @Param page_size query int false "每页条数，最大 100" default(20)
 // @Success 200 {object} response.Result{data=response.ForumPostListResp} "成功"
@@ -88,6 +111,7 @@ func (h *ForumHandler) ListForumPosts(c *gin.Context, scope domain.ForumScope) {
 	filter := repository.ForumPostListFilter{
 		Query:         c.Query("q"),
 		DirectionCode: parseDirectionCode(c.Query("direction")),
+		Resolved:      parseResolvedFilter(c.Query("resolved")),
 	}
 
 	items, total, err := h.forum.ListPosts(c.Request.Context(), scope, filter, page, pageSize)
@@ -113,6 +137,7 @@ func (h *ForumHandler) ListForumPosts(c *gin.Context, scope domain.ForumScope) {
 // 内部论坛（studio scope）复用同一对 handler，仅路由分组不同：
 //   - GET /api/v1/studio/forum/posts          （仅管理员）
 //   - GET /api/v1/studio/forum/posts/{id}     （仅管理员）
+//
 // 端点契约与招新问答一致，区别只在 scope 注入与鉴权分组（ADR 0003 决策 3）。
 func (h *ForumHandler) GetForumPost(c *gin.Context, scope domain.ForumScope) {
 	id, ok := parseForumID(c)

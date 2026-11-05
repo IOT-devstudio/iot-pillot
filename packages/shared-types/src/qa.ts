@@ -72,6 +72,12 @@ export interface QaPostQuery {
   q?: string;
   /** 方向码筛选；缺省为全部（含空方向），不传 direction 参数。 */
   direction?: string | null;
+  /**
+   * 已解决筛选（#221）。三态：
+   * null/undefined = 全部（不传参数），true = 只看已解决，false = 只看未解决。
+   * 不能用 false 表示「不筛选」，否则「只看未解决」无法表达。
+   */
+  resolved?: boolean | null;
   page?: number;
   page_size?: number;
 }

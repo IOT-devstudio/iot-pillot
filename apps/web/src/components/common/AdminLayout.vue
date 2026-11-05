@@ -92,6 +92,13 @@ const navGroups: AdminNavGroup[] = [
         to: "/studio/projects",
         icon: "M3 4.75h18 M3 9.5h18 M3 14.25h18 M3 19h18",
       },
+      {
+        // 内部论坛（#221）：复用招新问答的页面组件，靠路由 meta 切内容域。
+        // 仅 admin 可见；后端对普通成员一律 404，菜单只是不显示入口。
+        label: "内部论坛",
+        to: "/studio/forum",
+        icon: "M4 5.75h16v10.5H9.5L5 20v-3.75H4z M8 9.5h8 M8 12.5h5",
+      },
     ],
   },
   {

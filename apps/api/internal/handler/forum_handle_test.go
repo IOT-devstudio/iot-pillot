@@ -62,10 +62,10 @@ func (s stubAdminDir) IsAdmin(_ context.Context, id int) (bool, error) {
 	}
 	return false, nil
 }
-func (s stubAdminDir) AddAdmin(_ context.Context, _ int) error    { return nil }
-func (s stubAdminDir) RemoveAdmin(_ context.Context, _ int) error { return nil }
-func (s stubAdminDir) ListAdmins(_ context.Context) ([]int, error) { return s.ids, nil }
-func (s stubAdminDir) IsFounding(_ context.Context, _ int) (bool, error)  { return false, nil }
+func (s stubAdminDir) AddAdmin(_ context.Context, _ int) error           { return nil }
+func (s stubAdminDir) RemoveAdmin(_ context.Context, _ int) error        { return nil }
+func (s stubAdminDir) ListAdmins(_ context.Context) ([]int, error)       { return s.ids, nil }
+func (s stubAdminDir) IsFounding(_ context.Context, _ int) (bool, error) { return false, nil }
 func (s stubAdminDir) AddFounding(_ context.Context, _ int) error        { return nil }
 func (s stubAdminDir) RemoveFounding(_ context.Context, _ int) error     { return nil }
 
@@ -293,5 +293,62 @@ func TestForumListQueryDirectionCombo(t *testing.T) {
 	}
 	if repo.listFilter.DirectionCode == nil || *repo.listFilter.DirectionCode != "back-end" {
 		t.Fatalf("expected direction=back-end, got %v", repo.listFilter.DirectionCode)
+	}
+}
+
+/* ------------------------------------------------------------------ *
+ * #221：内部论坛写接口 + 已解决标记对普通成员一律 404
+ * ------------------------------------------------------------------ */
+
+// newStudioForumWriteEngine 组装内部论坛的写入路由。
+//
+// 与生产 router.go 的 studioWrite 闭包同构：非 admin 走 404 而不是 403，
+// 让普通成员连「这个 id 存在」都判断不出来。
+func newStudioForumWriteEngine(repo *stubForumRepo, adminDir stubAdminDir) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	uc := service.NewForumUseCase(repo, adminDir)
+	h := NewForumHandler(uc)
+
+	r := gin.New()
+	authRequired := middleware.AuthRequired(stubValidator{accept: "good-token", userID: 2, role: middleware.RoleMember})
+	studio := r.Group("/api/v1/studio/forum", authRequired)
+	studioWrite := func(hdr gin.HandlerFunc) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			if _, _, role, ok := middleware.CurrentUser(c); !ok || role != middleware.RoleAdmin {
+				response.FailNotFound(c, "帖子不存在")
+				return
+			}
+			hdr(c)
+		}
+	}
+	studio.POST("/posts", studioWrite(func(c *gin.Context) { h.CreateForumPost(c, domain.ForumScopeStudio) }))
+	studio.PATCH("/posts/:id", studioWrite(func(c *gin.Context) { h.UpdateForumPost(c, domain.ForumScopeStudio) }))
+	studio.DELETE("/posts/:id", studioWrite(func(c *gin.Context) { h.DeleteForumPost(c, domain.ForumScopeStudio) }))
+	studio.POST("/posts/:id/replies", studioWrite(func(c *gin.Context) { h.CreateForumReply(c, domain.ForumScopeStudio) }))
+	studio.DELETE("/replies/:id", studioWrite(func(c *gin.Context) { h.DeleteForumReply(c, domain.ForumScopeStudio) }))
+	studio.POST("/posts/:id/resolve", studioWrite(func(c *gin.Context) { h.ResolveForumPost(c, domain.ForumScopeStudio) }))
+	return r
+}
+
+// TestStudioForumWriteEndpointsAre404ForMember 普通成员访问内部论坛的每个写接口都必须 404。
+//
+// AC 明确要求「内部论坛的所有接口对普通成员返回 404（不是 403）」，
+// 所以逐个端点验证，而不是抽查一个。
+func TestStudioForumWriteEndpointsAre404ForMember(t *testing.T) {
+	r := newStudioForumWriteEngine(&stubForumRepo{}, stubAdminDir{})
+
+	cases := []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/studio/forum/posts"},
+		{http.MethodPatch, "/api/v1/studio/forum/posts/1"},
+		{http.MethodDelete, "/api/v1/studio/forum/posts/1"},
+		{http.MethodPost, "/api/v1/studio/forum/posts/1/replies"},
+		{http.MethodDelete, "/api/v1/studio/forum/replies/1"},
+		{http.MethodPost, "/api/v1/studio/forum/posts/1/resolve"},
+	}
+	for _, tc := range cases {
+		w := doForumReq(t, r, tc.method, tc.path, "good-token")
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s %s: 普通成员应得 404，实际 %d", tc.method, tc.path, w.Code)
+		}
 	}
 }

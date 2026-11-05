@@ -63,21 +63,19 @@ func atoiSafe(s string) int {
 
 // AttachmentScopeResolver 判定附件归属 scope。
 //
-// #217 阶段只有孤儿 / 路线能判定，post / reply 绑定的判定（依赖 forum 表）留给
-// #218 / #223。默认实现解析到位后，#218 通过 AttachmentUseCase.SetScopeResolver
-// 换成真实现。这样绑定真源（#217 的正则重算）与判定真源（业务表）职责不混。
+// 绑定真源是正文正则重算（#217），判定真源是业务表（帖子/路线），两者职责不混。
 type AttachmentScopeResolver interface {
 	// Resolve 返回附件的 scope 与（若是 studio）是否需要管理员。
 	//
-	// 返回空串 "" 表示尚无法判定（forum 表未建），service 按 404 处理，
+	// 返回空串 "" 表示尚无法判定，service 按 404 处理，
 	// 与 ADR 0004 §1「未判定一律 404」一致。
 	Resolve(ctx context.Context, att *domain.Attachment) (scope string, needAdmin bool, err error)
 }
 
-// defaultScopeResolver #217 阶段的默认实现。
+// defaultScopeResolver 未注入真实现时的兜底。
 //
 // 孤儿 → orphan（仅上传者）；路线 → roadmap（登录即可）；
-// post / reply 列非空 → 返回 ""（未判定，等 #218 注入真实现）。
+// post / reply 列非空 → 返回 ""（未判定 → 404），绝不放行。
 type defaultScopeResolver struct{}
 
 func (defaultScopeResolver) Resolve(_ context.Context, att *domain.Attachment) (string, bool, error) {
@@ -85,11 +83,75 @@ func (defaultScopeResolver) Resolve(_ context.Context, att *domain.Attachment) (
 	case att.RoadmapID != nil:
 		return domain.AttachmentScopeRoadmap, false, nil
 	case att.PostID != nil || att.ReplyID != nil:
-		// #217 阶段论坛表还没建，无法区分 recruitment / studio → 未判定。
+		// 未注入 forum 判定时不可放行：宁可 404，也不能让内部论坛的图被读到。
 		return "", false, nil
 	default:
 		return domain.AttachmentScopeOrphan, false, nil
 	}
+}
+
+// forumScopeResolver 基于 forum 表的真实归属判定（#221 补齐 #217 的占位）。
+//
+// 规则（ADR 0004 §1）：
+//   - 绑定到帖子/回复 → 取该帖 scope：studio 需管理员，recruitment 登录即可；
+//   - 帖子或回复已软删 → 一律 404（返回 ""，由 GetAttachment 压成 ErrAttachmentNotFound）；
+//   - 绑定的行已不存在（数据不一致）→ 同样 404，不放行。
+type forumScopeResolver struct {
+	posts repository.ForumRepo
+}
+
+// NewForumScopeResolver 构造真实判定器，供 AttachmentUseCase.SetScopeResolver 注入。
+func NewForumScopeResolver(posts repository.ForumRepo) AttachmentScopeResolver {
+	return &forumScopeResolver{posts: posts}
+}
+
+func (r *forumScopeResolver) Resolve(ctx context.Context, att *domain.Attachment) (string, bool, error) {
+	// 路线优先判定（与 defaultScopeResolver 同序，保证迁移期行为一致）。
+	if att.RoadmapID != nil {
+		return domain.AttachmentScopeRoadmap, false, nil
+	}
+
+	if att.PostID != nil {
+		scope, deleted, err := r.posts.LookupPostScope(ctx, int(*att.PostID))
+		if err != nil {
+			// 帖子不存在 → 视为不可见（404）。其它错误向上抛，不能当成 404 掩盖故障。
+			if errors.Is(err, repository.ErrForumPostNotFound) {
+				return "", false, nil
+			}
+			return "", false, err
+		}
+		if deleted {
+			return "", false, nil
+		}
+		return forumScopeName(scope), true, nil
+	}
+
+	if att.ReplyID != nil {
+		scope, deleted, err := r.posts.LookupReplyPostScope(ctx, int(*att.ReplyID))
+		if err != nil {
+			if errors.Is(err, repository.ErrForumReplyNotFound) {
+				return "", false, nil
+			}
+			return "", false, err
+		}
+		if deleted {
+			return "", false, nil
+		}
+		return forumScopeName(scope), true, nil
+	}
+
+	return domain.AttachmentScopeOrphan, false, nil
+}
+
+// forumScopeName 把内容域映射成附件判定的 scope 常量。
+//
+// needAdmin 的语义在 GetAttachment 里按 scope 分支判定（studio 才要管理员），
+// 这里返回的 bool 只是让调用方在日志/测试里能看出「这是论坛内容」。
+func forumScopeName(scope domain.ForumScope) string {
+	if scope == domain.ForumScopeStudio {
+		return domain.AttachmentScopeStudio
+	}
+	return domain.AttachmentScopeRecruitment
 }
 
 // GetAttachment 读取一张图（#217）。

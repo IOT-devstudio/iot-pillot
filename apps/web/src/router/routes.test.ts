@@ -76,6 +76,40 @@ vi.mock("@/modules/forum/views/QaComposeView.vue", () => ({
 import { routes } from "./routes";
 
 describe("application routes", () => {
+  it("内部论坛（#221）复用招新问答组件，靠 meta 切内容域", () => {
+    const studioForum = routes.filter((r) => r.path.startsWith("/studio/forum"));
+
+    expect(studioForum.map((r) => r.path)).toEqual([
+      "/studio/forum",
+      "/studio/forum/new",
+      "/studio/forum/:id/edit",
+      "/studio/forum/:id",
+    ]);
+
+    for (const r of studioForum) {
+      // 内部论坛只对工作室成员开放：漏标 allowRoles 就等于对普通成员敞开
+      expect(r.meta?.allowRoles).toEqual(["admin"]);
+      // 与其它 /studio/* 页一致，套管理台布局
+      expect(r.meta?.adminShell).toBe(true);
+      expect(r.meta?.forumScope).toBe("studio");
+      // AC 明确要求「复用组件，不复制一份实现」
+      expect(["QaListView", "QaDetailView", "QaComposeView"]).toContain(
+        (r.component as { name?: string })?.name,
+      );
+    }
+  });
+
+  it("招新问答各页标了 recruitment 内容域", () => {
+    const qaPages = routes.filter((r) => r.path.startsWith("/user/qa"));
+
+    expect(qaPages.length).toBeGreaterThan(0);
+    for (const r of qaPages) {
+      expect(r.meta?.forumScope).toBe("recruitment");
+      // 招新问答面向全体登录用户，不是 admin 专属
+      expect(r.meta?.allowRoles).toEqual(["admin", "member"]);
+    }
+  });
+
   it("mounts the same 2D auth view on both public login paths", () => {
     const rootRoutes = routes.filter((route) => route.path === "/");
 

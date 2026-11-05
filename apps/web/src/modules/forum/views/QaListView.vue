@@ -1,12 +1,17 @@
 <script setup lang="ts">
 /**
- * 招新问答列表（#219，只读）。
+ * 招新问答 / 内部论坛列表（#219 只读、#221 分区）。
+ *
+ * 同一个组件服务两个内容域：域由路由 meta 决定（useForumScope），
+ * 标题、路径、接口前缀全部随之切换，不复制一份实现。
  *
  * 闭环：拉方向列表（构建筛选下拉）→ 分页拉帖子 → 方向/关键词筛选 → 点进详情。
  * 不渲染正文：列表只给摘要与元信息（ADR 0005 决策 8：列表不唯一需要 20 个 Markdown VNode）。
  */
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+
+import { useForumScope } from "../useForumScope";
 import { ElMessage } from "element-plus";
 
 import PageHeader from "@/components/common/PageHeader.vue";
@@ -23,6 +28,8 @@ import {
 } from "../model";
 
 const router = useRouter();
+// 内容域来自路由 meta（#221）：招新问答与内部论坛复用本组件。
+const forum = useForumScope();
 
 const posts = ref<QaPostSummary[]>([]);
 const total = ref(0);
@@ -34,10 +41,19 @@ const loadError = ref("");
 
 const keyword = ref("");
 const directionCode = ref<string | null>(null);
+/**
+ * 已解决筛选（#221）：三态。
+ * null = 全部，true = 只看已解决，false = 只看未解决。
+ * 用 null 而非 false 表示「不筛选」——否则「只看未解决」无法表达。
+ */
+const resolvedFilter = ref<boolean | null>(null);
 const directions = ref<RecruitmentDirection[]>([]);
 
 const hasActiveFilters = computed(
-  () => keyword.value.trim() !== "" || directionCode.value !== null,
+  () =>
+    keyword.value.trim() !== "" ||
+    directionCode.value !== null ||
+    resolvedFilter.value !== null,
 );
 
 async function load(nextPage = page.value): Promise<void> {
@@ -45,12 +61,16 @@ async function load(nextPage = page.value): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    const data = await listQaPosts({
-      q: keyword.value,
-      direction: directionCode.value,
-      page: nextPage,
-      page_size: pageSize,
-    });
+    const data = await listQaPosts(
+      {
+        q: keyword.value,
+        direction: directionCode.value,
+        resolved: resolvedFilter.value,
+        page: nextPage,
+        page_size: pageSize,
+      },
+      forum.scope.value,
+    );
     posts.value = data.items;
     total.value = data.total;
     page.value = data.page;
@@ -70,16 +90,17 @@ function applyFilters(): void {
 function resetFilters(): void {
   keyword.value = "";
   directionCode.value = null;
+  resolvedFilter.value = null;
   void load(1);
 }
 
 function openPost(id: number): void {
-  void router.push(`/user/qa/${id}`);
+  void router.push(forum.detailPath(id));
 }
 
 /** 去发帖页（#220）。 */
 function goCompose(): void {
-  void router.push("/user/qa/new");
+  void router.push(forum.newPath.value);
 }
 
 onMounted(async () => {
@@ -97,9 +118,9 @@ onMounted(async () => {
 <template>
   <section class="qa-list">
     <PageHeader
-      eyebrow="招新问答"
-      title="招新问答"
-      description="成员与报名者整理的常见问题。按方向筛选，点开查看完整问答。"
+      :eyebrow="forum.label.value"
+      :title="forum.label.value"
+      :description="forum.isStudio.value ? '工作室内部讨论。仅管理员可见。' : '成员与报名者整理的常见问题。按方向筛选，点开查看完整问答。'"
       :meta="loading ? '加载中…' : `共 ${total} 条`"
     />
 
@@ -130,6 +151,17 @@ onMounted(async () => {
           :label="d.name"
           :value="d.code"
         />
+      </el-select>
+      <el-select
+        v-model="resolvedFilter"
+        placeholder="全部状态"
+        clearable
+        class="qa-list__resolved"
+        @change="applyFilters"
+      >
+        <el-option label="全部状态" :value="null" />
+        <el-option label="已解决" :value="true" />
+        <el-option label="未解决" :value="false" />
       </el-select>
       <el-button @click="resetFilters" :disabled="!hasActiveFilters">重置</el-button>
     </div>

@@ -288,6 +288,64 @@ func (h *ForumHandler) DeleteForumReply(c *gin.Context, scope domain.ForumScope)
 }
 
 /* ------------------------------------------------------------------ *
+ * 已解决标记（#221）
+ * ------------------------------------------------------------------ */
+
+// forumResolveReq 标记/取消已解决的请求体。
+type forumResolveReq struct {
+	Resolved bool `json:"resolved"`
+}
+
+// ResolveForumPost 标记或取消「已解决」。
+// @Summary 标记已解决
+// @Description 作者本人或管理员可标记/取消；记录解决人与时间。无权与不存在一律 404。
+// @Tags 招新问答
+// @Accept json
+// @Produce json
+// @Param id path int true "帖子 id"
+// @Param body body forumResolveReq true "resolved=true 标记，false 取消"
+// @Success 200 {object} response.Result{data=response.ForumPostDetailResp} "成功"
+// @Failure 400 {object} response.Result "参数不合法"
+// @Failure 401 {object} response.Result "未认证"
+// @Failure 404 {object} response.Result "帖子不存在或无权操作"
+// @Security BearerAuth
+// @Router /api/v1/forum/posts/{id}/resolve [post]
+func (h *ForumHandler) ResolveForumPost(c *gin.Context, scope domain.ForumScope) {
+	userID, _, _, ok := middleware.CurrentUser(c)
+	if !ok {
+		response.FailUnauthorized(c, "未认证")
+		return
+	}
+	id, ok := parseForumID(c)
+	if !ok {
+		return
+	}
+	if !h.assertPostScope(c, id, scope) {
+		return
+	}
+
+	var req forumResolveReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, "请求体格式错误")
+		return
+	}
+
+	post, err := h.forum.SetPostResolved(c.Request.Context(), userID, id, req.Resolved)
+	if err != nil {
+		failForum(c, err)
+		return
+	}
+	// 返回完整详情（含回复），而不是只带帖子的半截结构：
+	// 前端拿到响应后可以直接替换页面状态，不必再补一次详情请求。
+	detail, err := h.forum.GetPostDetail(c.Request.Context(), post.ID)
+	if err != nil {
+		failForum(c, err)
+		return
+	}
+	response.OK(c, response.NewForumPostDetailResp(detail.Post, detail.Replies, detail.Official))
+}
+
+/* ------------------------------------------------------------------ *
  * 辅助
  * ------------------------------------------------------------------ */
 

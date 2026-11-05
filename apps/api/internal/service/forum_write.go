@@ -317,3 +317,36 @@ func (uc *ForumUseCase) DeleteReply(ctx context.Context, userID int, replyID int
 	}
 	return uc.posts.SoftDeleteReply(ctx, replyID, userID)
 }
+
+/* ------------------------------------------------------------------ *
+ * 已解决标记（#221）
+ * ------------------------------------------------------------------ */
+
+// SetPostResolved 标记或取消「已解决」。
+//
+// 权限与编辑/删除同口径：作者本人或管理员。标记人记录为**操作者**而不是帖子作者——
+// 「谁判定这件事已经解决了」比「谁问的」更有信息量。
+//
+// 幂等：重复标记同一方向不报错，只是再写一次同样的状态。用户点了就该生效，
+// 不该因为别人刚刚点过而报错。
+func (uc *ForumUseCase) SetPostResolved(ctx context.Context, userID int, postID int, resolved bool) (*domain.ForumPost, error) {
+	post, err := uc.posts.GetPost(ctx, postID)
+	if err != nil {
+		return nil, err
+	}
+	if post.DeletedAt != nil {
+		return nil, ErrForumPostNotFound
+	}
+	if !uc.canManage(ctx, post.AuthorID, userID) {
+		return nil, ErrForumPostNotFound
+	}
+	if err := uc.posts.SetPostResolved(ctx, postID, userID, resolved); err != nil {
+		return nil, err
+	}
+	// 回读一次：让响应带上真实的 resolved_at / resolved_by，而不是让前端猜。
+	updated, err := uc.posts.GetPost(ctx, postID)
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
