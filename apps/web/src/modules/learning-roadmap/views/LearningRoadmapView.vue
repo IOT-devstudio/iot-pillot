@@ -92,6 +92,8 @@ function startCreate(): void {
     body: "",
     direction_code: directionFilter.value ?? "",
     stages: [newStage()],
+    // 管理端编辑草稿里没有「我的进度」这一说，留空即可。
+    my_stage_id: "",
     version: 0,
     stage_count: 0,
     created_at: "",

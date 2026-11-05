@@ -63,8 +63,8 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 
 	// 内容附件端点（#216 / #217）必须真的挂上：POST 上传 + GET 读取。
 	attachmentRoutes := map[string]bool{
-		"POST /api/v1/attachments":     false,
-		"GET /api/v1/attachments/:id":  false,
+		"POST /api/v1/attachments":    false,
+		"GET /api/v1/attachments/:id": false,
 	}
 	for _, route := range router.eng.Routes() {
 		key := route.Method + " " + route.Path
@@ -149,6 +149,32 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 		}
 	}
 	for key, registered := range wantProjectRoutes {
+		if !registered {
+			t.Errorf("未注册 %s", key)
+		}
+	}
+
+	// 学习路线（#223 管理端 / #224 用户端）与进度端点必须真的挂上。
+	//
+	// 用户端在 /learning 分组（只挂 authRequired），管理端在 admin 分组，
+	// 两条路径不同：锁住它们是防止把普通成员的读请求误挂进仅管理员的路径。
+	wantRoadmapRoutes := map[string]bool{
+		"GET /api/v1/admin/studio/roadmaps":           false,
+		"POST /api/v1/admin/studio/roadmaps":          false,
+		"GET /api/v1/admin/studio/roadmaps/:id":       false,
+		"PUT /api/v1/admin/studio/roadmaps/:id":       false,
+		"DELETE /api/v1/admin/studio/roadmaps/:id":    false,
+		"GET /api/v1/learning/roadmaps":               false,
+		"GET /api/v1/learning/roadmaps/:id":           false,
+		"POST /api/v1/learning/roadmaps/:id/progress": false,
+	}
+	for _, route := range router.eng.Routes() {
+		key := route.Method + " " + route.Path
+		if _, ok := wantRoadmapRoutes[key]; ok {
+			wantRoadmapRoutes[key] = true
+		}
+	}
+	for key, registered := range wantRoadmapRoutes {
 		if !registered {
 			t.Errorf("未注册 %s", key)
 		}

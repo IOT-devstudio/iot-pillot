@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -103,9 +104,21 @@ func (h *LearningRoadmapHandler) ListLearningRoadmaps(c *gin.Context) {
 		return
 	}
 
+	// 方向名映射：用刚查出来的 directions（只含有路线的方向）即可，
+	// 不必再查一次表。
+	nameByCode := make(map[string]string, len(directions))
+	for _, d := range directions {
+		nameByCode[d.Code] = d.Name
+	}
+
 	items := make([]learningRoadmapItemResp, 0, len(rows))
 	for _, r := range rows {
-		items = append(items, newLearningRoadmapItemResp(r))
+		name := nameByCode[r.DirectionCode]
+		if name == "" {
+			// 方向被清理过：回落显示 code，这是可见的降级而不是静默错误。
+			name = r.DirectionCode
+		}
+		items = append(items, newLearningRoadmapItemResp(r, name))
 	}
 	dirs := make([]learningRoadmapDirectionResp, 0, len(directions))
 	for _, d := range directions {
@@ -368,8 +381,13 @@ type learningRoadmapItemResp struct {
 	ID            int    `json:"id"`
 	Title         string `json:"title"`
 	DirectionCode string `json:"direction_code"`
+	// DirectionName 方向名，为空时回落成 code（ADR 0006 决策 3 的可见降级）。
+	DirectionName string `json:"direction_name"`
 	StageCount    int    `json:"stage_count"`
-	UpdatedAt     string `json:"updated_at"`
+	// Excerpt 正文摘要（#224）：卡片要显示它，但**不返回全文**——
+	// 列表页不渲染正文，读整列没有意义（ADR 0006 决策 7）。
+	Excerpt   string `json:"excerpt"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type learningRoadmapDetailResp struct {
@@ -403,14 +421,35 @@ type learningRoadmapListResp struct {
 	Directions []learningRoadmapDirectionResp `json:"directions"`
 }
 
-func newLearningRoadmapItemResp(r *domain.LearningRoadmap) learningRoadmapItemResp {
+func newLearningRoadmapItemResp(r *domain.LearningRoadmap, directionName string) learningRoadmapItemResp {
 	return learningRoadmapItemResp{
 		ID:            r.ID,
 		Title:         r.Title,
 		DirectionCode: r.DirectionCode,
+		DirectionName: directionName,
 		StageCount:    len(r.Stages),
+		Excerpt:       roadmapExcerpt(r.Body, roadmapExcerptRunes),
 		UpdatedAt:     r.UpdatedAt.Format(rfc3339Layout),
 	}
+}
+
+// roadmapExcerptRunes 摘要的字符上限。
+const roadmapExcerptRunes = 120
+
+// roadmapExcerpt 按字符截断正文作为摘要。
+//
+// 与邮件的回复摘录同一套做法（ADR 0007 决策 8）：用 []rune 保证不切坏中文与 emoji，
+// 且**原样保留 Markdown 源码**而不在后端剥离标记——同一套剥离规则在 Go 与 TS
+// 各写一份，漂移时摘要与页面显示会不一致。用户看到少量 ** 是诚实的。
+func roadmapExcerpt(body string, limit int) string {
+	// 折叠连续空白：正文里的空行会让摘要看起来断开。
+	fields := strings.Fields(body)
+	joined := strings.Join(fields, " ")
+	r := []rune(joined)
+	if len(r) <= limit {
+		return joined
+	}
+	return string(r[:limit]) + "…"
 }
 
 func newLearningRoadmapDetailResp(r *domain.LearningRoadmap) learningRoadmapDetailResp {
