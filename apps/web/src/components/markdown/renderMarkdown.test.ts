@@ -58,12 +58,10 @@ describe("renderMarkdown — HTML / 脚本结构性排除（决策 2、4）", ()
 });
 
 describe("renderMarkdown — 图片统一属性（决策 3）", () => {
-  it("所有 img 带 loading=lazy 与 referrerpolicy=no-referrer", async () => {
+  it("站内附件首屏是骨架（读取端点需鉴权，不能直接当 <img src>）", async () => {
     const html = await render("![图1](/api/v1/attachments/1)");
-    expect(html).toContain("<img");
-    expect(html).toContain('loading="lazy"');
-    expect(html).toContain('referrerpolicy="no-referrer"');
-    expect(html).toContain('alt="图1"');
+    expect(html).not.toContain('src="/api/v1/attachments/1"');
+    expect(html).toContain("md-img-skeleton");
   });
 
   it("外链图片同样渲染并带两个属性", async () => {

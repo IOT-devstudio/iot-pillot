@@ -68,6 +68,10 @@ vi.mock("@/modules/forum/views/QaListView.vue", () => ({
 vi.mock("@/modules/forum/views/QaDetailView.vue", () => ({
   default: { name: "QaDetailView" },
 }));
+// 发帖/编辑页（#220）引入 Element Plus 输入与下拉，测试里只验路由元信息
+vi.mock("@/modules/forum/views/QaComposeView.vue", () => ({
+  default: { name: "QaComposeView" },
+}));
 
 import { routes } from "./routes";
 
@@ -163,6 +167,10 @@ describe("application routes", () => {
       { path: "/user/settings", name: "user-settings" },
       { path: "/user/invitations", name: "user-invitations" },
       { path: "/user/qa", name: "qa-list" },
+      // 发帖与编辑（#220）：/user/qa/new 必须排在 /user/qa/:id 之前，
+      // 否则 "new" 会被当成 id 匹配进详情页。
+      { path: "/user/qa/new", name: "qa-new" },
+      { path: "/user/qa/:id/edit", name: "qa-edit" },
       { path: "/user/qa/:id", name: "qa-detail" },
     ]);
     // 只有首页和介绍公开；个人设置与邀请仍要求登录。

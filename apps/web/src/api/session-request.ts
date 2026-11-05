@@ -32,16 +32,34 @@ export interface SessionRequestDeps {
   request: (
     path: string,
     init: RequestInit,
+    timeoutMs?: number,
   ) => Promise<{
     body: Partial<BackendResponse<unknown>>;
     status: number;
   }>;
 }
 
+/**
+ * 会话请求的额外选项。
+ *
+ * timeoutMs：单次请求超时覆盖。只有文件上传这类大请求需要更长超时
+ * （ADR 0004），其余调用一律省略、沿用全站默认值。
+ */
+export interface SessionRequestOptions {
+  timeoutMs?: number;
+}
+
 export type SessionRequester = <T>(
   path: string,
   init?: RequestInit,
   expectedUserId?: number,
+) => Promise<T>;
+
+/** 带选项的请求器：与 SessionRequester 同义，但能覆盖超时。 */
+export type SessionRequesterWithOptions = <T>(
+  path: string,
+  init: RequestInit | undefined,
+  options: SessionRequestOptions,
 ) => Promise<T>;
 
 const SESSION_EXPIRED_MESSAGE = "登录状态已失效，请重新登录";
@@ -63,11 +81,12 @@ function defaultSessionExpired(reason: SessionEndReason): void {
 function defaultRequest(
   path: string,
   init: RequestInit,
+  timeoutMs?: number,
 ): Promise<{
   body: Partial<BackendResponse<unknown>>;
   status: number;
 }> {
-  return requestBackend<unknown>(path, init);
+  return requestBackend<unknown>(path, init, timeoutMs);
 }
 
 const defaultDeps: SessionRequestDeps = {
@@ -228,7 +247,18 @@ function createSessionRunner(
     return refreshInFlight;
   }
 
-  return async <T>(path: string, init?: RequestInit, expectedUserId?: number): Promise<T> => {
+  return async <T>(
+    path: string,
+    init?: RequestInit,
+    optionsOrUserId?: SessionRequestOptions | number,
+  ): Promise<T> => {
+    // 第三个参数历史上是 expectedUserId；带选项的请求器传对象。
+    // 两者共存是为了不改既有调用方（expectedUserId 有大量现存用例）。
+    const options: SessionRequestOptions =
+      typeof optionsOrUserId === "object" ? optionsOrUserId : {};
+    const expectedUserId =
+      typeof optionsOrUserId === "number" ? optionsOrUserId : undefined;
+
     const session = deps.readSession();
     assertExpectedAccount(expectedUserId, session);
     if (session === null) {
@@ -242,7 +272,7 @@ function createSessionRunner(
     }
 
     try {
-      const result = await deps.request(path, withBearer(init, session.access_token));
+      const result = await deps.request(path, withBearer(init, session.access_token), options.timeoutMs);
       assertExpectedAccount(expectedUserId);
       return unwrap<T>(result);
     } catch (error: unknown) {
@@ -265,6 +295,7 @@ function createSessionRunner(
         const retry = await deps.request(
           path,
           withBearer(init, nextSession.access_token),
+          options.timeoutMs,
         );
         assertExpectedAccount(expectedUserId);
         return unwrap<T>(retry);
@@ -284,3 +315,4 @@ function createSessionRunner(
 
 export const requestWithSession = createSessionRequester();
 export const requestMessageWithSession = createSessionMessageRequester();
+export const requestWithSessionOptions = createSessionRequester() as SessionRequesterWithOptions;
