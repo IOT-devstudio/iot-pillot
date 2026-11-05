@@ -81,8 +81,8 @@ func TestEmptyDatabaseAndRepeat(t *testing.T) {
 	}
 	// 空库 up 到最新迁移后，schema_migrations 的最高版本即当前迁移目录的
 	// 最大编号。本断言随新增迁移前进：0015（#195）→ 0017（#218 附件绑定）
-	// → 0018（#219 论坛帖/回复）→ 0019（#223 学习路线）。漏改会导致 CI 注入 DSN 后恒红。
-	if version != 19 || dirty {
+	// → 0018（#219 论坛帖/回复）→ 0019（#223 学习路线）→ 0020（#224 学习进度）。漏改会导致 CI 注入 DSN 后恒红。
+	if version != 20 || dirty {
 		t.Fatalf("version=%d dirty=%v", version, dirty)
 	}
 	var count int

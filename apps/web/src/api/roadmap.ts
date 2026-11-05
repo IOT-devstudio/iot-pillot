@@ -12,12 +12,21 @@ import type {
   RoadmapDetail,
   RoadmapListQuery,
   RoadmapListResp,
+  RoadmapProgressResp,
   RoadmapWritePayload,
 } from "@iot-pillot/shared-types";
 import { requestMessageWithSession, requestWithSession } from "./session-request";
 
-/** 管理端接口前缀。用户端只读入口在 #224 落地后另行给出。 */
+/** 管理端接口前缀（#223）。 */
 const ADMIN_BASE = "/api/v1/admin/studio/roadmaps";
+
+/**
+ * 用户端接口前缀（#224）：登录即可读。
+ *
+ * 与管理端是**不同路径**，不是同一端点加参数：管理端在 admin 分组下，
+ * 用户端在 /learning 下只挂 authRequired。拆开是因为两者的权限面完全不同。
+ */
+const USER_BASE = "/api/v1/learning/roadmaps";
 
 function listQuery(query: RoadmapListQuery): string {
   const params = new URLSearchParams();
@@ -76,4 +85,53 @@ export function updateRoadmap(
  */
 export function deleteRoadmap(id: number): Promise<string> {
   return requestMessageWithSession(`${ADMIN_BASE}/${id}`, { method: "DELETE" });
+}
+
+/* ------------------------------------------------------------------ *
+ * 用户端（#224）：登录即可读 + 标记当前阶段
+ * ------------------------------------------------------------------ */
+
+function userListQuery(query: RoadmapListQuery): string {
+  const params = new URLSearchParams();
+  if (query.direction) {
+    params.set("direction", query.direction);
+  }
+  if (query.page !== undefined) {
+    params.set("page", String(query.page));
+  }
+  if (query.page_size !== undefined) {
+    params.set("page_size", String(query.page_size));
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/**
+ * 用户端路线列表。
+ *
+ * 响应的 `directions` 只含**有路线**的方向，不看招新开关（ADR 0006 决策 8）：
+ * 招新结束后方向全关，若拿招新方向接口当筛选项，路线页会一个方向都不剩。
+ */
+export function listMyRoadmaps(query: RoadmapListQuery = {}): Promise<RoadmapListResp> {
+  return requestWithSession<RoadmapListResp>(`${USER_BASE}${userListQuery(query)}`);
+}
+
+/** 用户端路线详情（含本人进度 `my_stage_id`）。 */
+export function fetchMyRoadmap(id: number): Promise<RoadmapDetail> {
+  return requestWithSession<RoadmapDetail>(`${USER_BASE}/${id}`);
+}
+
+/**
+ * 标记当前阶段；传空串表示撤销（再点同一阶段即撤销）。
+ *
+ * 进度只属于本人：后端从会话取 user_id，请求体里没有任何用户标识。
+ */
+export function markRoadmapProgress(
+  id: number,
+  stageId: string,
+): Promise<RoadmapProgressResp> {
+  return requestWithSession<RoadmapProgressResp>(`${USER_BASE}/${id}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ stage_id: stageId }),
+  });
 }

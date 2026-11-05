@@ -3,8 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createRoadmap,
   deleteRoadmap,
+  fetchMyRoadmap,
   fetchRoadmap,
+  listMyRoadmaps,
   listRoadmaps,
+  markRoadmapProgress,
   updateRoadmap,
 } from "./roadmap";
 
@@ -90,5 +93,45 @@ describe("roadmap api", () => {
     expect(init?.method).toBe("PUT");
     // 必须带 version：不带后端会拒绝，而不是默默覆盖别人的改动。
     expect(JSON.parse(String(init?.body)).version).toBe(3);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * #224：用户端接口与进度标记
+ * ------------------------------------------------------------------ */
+
+describe("roadmap api — 用户端走 /learning 而不是 admin 分组", () => {
+  it("列表与详情都在 /api/v1/learning/roadmaps 下", async () => {
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => response({ items: [], total: 0, directions: [] }));
+
+    await listMyRoadmaps({ direction: "front-end" });
+    await fetchMyRoadmap(10);
+
+    const paths = fetcher.mock.calls.map(([p]) => String(p));
+    expect(paths[0]).toContain("/api/v1/learning/roadmaps?");
+    expect(paths[0]).toContain("direction=front-end");
+    // 不能落到 admin 分组：那会把普通成员的读请求送进仅管理员的路径。
+    expect(paths[0]).not.toContain("/admin/");
+    expect(paths[1]).toBe("/api/v1/learning/roadmaps/10");
+  });
+
+  it("标记进度用 POST + stage_id，撤销传空串", async () => {
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => response({ roadmap_id: 10, stage_id: "s_aaaa1111" }));
+
+    await markRoadmapProgress(10, "s_aaaa1111");
+    await markRoadmapProgress(10, "");
+
+    const first = fetcher.mock.calls[0]!;
+    expect(String(first[0])).toBe("/api/v1/learning/roadmaps/10/progress");
+    expect(first[1]?.method).toBe("POST");
+    expect(JSON.parse(String(first[1]?.body))).toEqual({ stage_id: "s_aaaa1111" });
+
+    const second = fetcher.mock.calls[1]!;
+    // 再点同一阶段 = 撤销，请求体里 stage_id 是空串。
+    expect(JSON.parse(String(second[1]?.body))).toEqual({ stage_id: "" });
   });
 });

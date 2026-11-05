@@ -1,4 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+// 学习路线用户端视图（#224）同样引入 Element Plus，一并 mock。
+vi.mock("@/modules/learning-roadmap/views/LearningPathsView.vue", () => ({
+  default: { name: "LearningPathsView" },
+}));
+vi.mock("@/modules/learning-roadmap/views/LearningPathDetailView.vue", () => ({
+  default: { name: "LearningPathDetailView" },
+}));
 // 学习路线视图（#223）引入 Element Plus，其 theme-chalk CSS 不能在 node 环境解析；
 // 路由表测试只关心 path/meta/component，mock 掉组件即可。
 vi.mock("@/modules/learning-roadmap/views/LearningRoadmapView.vue", () => ({
@@ -215,6 +222,9 @@ describe("application routes", () => {
       { path: "/user/about", name: "about" },
       { path: "/user/settings", name: "user-settings" },
       { path: "/user/invitations", name: "user-invitations" },
+      // 学习路线（#224）在论坛路由之前注册，因此排在 qa 前面。
+      { path: "/user/learning-paths", name: "learning-paths" },
+      { path: "/user/learning-paths/:id", name: "learning-path-detail" },
       { path: "/user/qa", name: "qa-list" },
       // 发帖与编辑（#220）：/user/qa/new 必须排在 /user/qa/:id 之前，
       // 否则 "new" 会被当成 id 匹配进详情页。
@@ -227,6 +237,21 @@ describe("application routes", () => {
       expect(page.meta?.allowRoles).toEqual(
         ["/user/home", "/user/about"].includes(page.path) ? [] : ["admin", "member"],
       );
+    }
+  });
+
+  it("学习路线用户端（#224）两个路由都要求登录且不套管理台外壳", () => {
+    const paths = routes.filter((r) => r.path.startsWith("/user/learning-paths"));
+
+    expect(paths.map((r) => r.path)).toEqual([
+      "/user/learning-paths",
+      "/user/learning-paths/:id",
+    ]);
+    for (const r of paths) {
+      // 登录即可（含 admin），漏标 allowRoles 就等于对游客敞开。
+      expect(r.meta?.allowRoles).toEqual(["admin", "member"]);
+      // 用户端走用户外壳，不是管理台。
+      expect(r.meta?.adminShell).toBeUndefined();
     }
   });
 

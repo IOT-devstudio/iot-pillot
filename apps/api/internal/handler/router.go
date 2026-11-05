@@ -331,6 +331,16 @@ func NewRouter(
 		// ── 招新问答（#219，用户端需登录）──
 		// recruitment 内容域挂登录用户组；studio 内容域另挂 admin 组（见下方 studio 段）。
 		// scope 由分组闭包写入，handler 不解析 URL（ADR 0003 决策 3）。
+		// 学习路线用户端（#224）：登录即可读。
+		//
+		// 只挂 authRequired 而不是要求 admin：路线是给全体成员看的推荐内容。
+		// 进度端点也不区分角色——进度只属于本人，管理员读到的同样是自己的。
+		// 不新增任何公开路由：未登录由前端守卫拦到登录页（与 /user/settings 一致）。
+		learning := apiV1.Group("/learning", authRequired)
+		learning.GET("/roadmaps", roadmapHandler.ListLearningRoadmaps)
+		learning.GET("/roadmaps/:id", roadmapHandler.GetLearningRoadmap)
+		learning.POST("/roadmaps/:id/progress", roadmapHandler.MarkRoadmapProgress)
+
 		forum := apiV1.Group("/forum", authRequired)
 		forum.GET("/posts", func(c *gin.Context) { forumHandler.ListForumPosts(c, domain.ForumScopeRecruitment) })
 		forum.GET("/posts/:id", func(c *gin.Context) { forumHandler.GetForumPost(c, domain.ForumScopeRecruitment) })

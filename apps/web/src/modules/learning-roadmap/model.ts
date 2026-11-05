@@ -138,3 +138,14 @@ export function validateRoadmapDraft(input: {
   }
   return null;
 }
+
+/**
+ * 卡片摘要的展示文本。
+ *
+ * 后端已按字符截断（保留 Markdown 原文），这里只做空值兜底：
+ * 正文为空的路线不该在卡片上留一块空白，给一句可读的占位。
+ */
+export function excerptOf(raw: string): string {
+  const trimmed = raw.trim();
+  return trimmed === "" ? "这条路线还没有简介" : trimmed;
+}

@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,11 +16,20 @@ import (
 // LearningRoadmapHandler 学习路线管理端接口（#223）。
 type LearningRoadmapHandler struct {
 	useCase *service.LearningRoadmapUseCase
+	// progress 用户学习进度（#224）。可为 nil —— 为 nil 时不返回进度、
+	// 标记端点也不可用，只读列表用例因此不受影响。
+	progress *service.RoadmapProgressUseCase
 }
 
 // NewLearningRoadmapHandler 构造函数。
 func NewLearningRoadmapHandler(useCase *service.LearningRoadmapUseCase) *LearningRoadmapHandler {
 	return &LearningRoadmapHandler{useCase: useCase}
+}
+
+// WithProgress 注入用户学习进度（#224）。
+func (h *LearningRoadmapHandler) WithProgress(progress *service.RoadmapProgressUseCase) *LearningRoadmapHandler {
+	h.progress = progress
+	return h
 }
 
 // learningRoadmapResourceReq 资源链接入参。
@@ -94,9 +104,21 @@ func (h *LearningRoadmapHandler) ListLearningRoadmaps(c *gin.Context) {
 		return
 	}
 
+	// 方向名映射：用刚查出来的 directions（只含有路线的方向）即可，
+	// 不必再查一次表。
+	nameByCode := make(map[string]string, len(directions))
+	for _, d := range directions {
+		nameByCode[d.Code] = d.Name
+	}
+
 	items := make([]learningRoadmapItemResp, 0, len(rows))
 	for _, r := range rows {
-		items = append(items, newLearningRoadmapItemResp(r))
+		name := nameByCode[r.DirectionCode]
+		if name == "" {
+			// 方向被清理过：回落显示 code，这是可见的降级而不是静默错误。
+			name = r.DirectionCode
+		}
+		items = append(items, newLearningRoadmapItemResp(r, name))
 	}
 	dirs := make([]learningRoadmapDirectionResp, 0, len(directions))
 	for _, d := range directions {
@@ -130,7 +152,9 @@ func (h *LearningRoadmapHandler) GetLearningRoadmap(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
-	response.OK(c, newLearningRoadmapDetailResp(row))
+	resp := newLearningRoadmapDetailResp(row)
+	resp.MyStageID = h.myStageID(c, id)
+	response.OK(c, resp)
 }
 
 // CreateLearningRoadmap 新建路线。
@@ -233,6 +257,84 @@ func (h *LearningRoadmapHandler) DeleteLearningRoadmap(c *gin.Context) {
 	response.OK(c, gin.H{"deleted": true})
 }
 
+/* ------------------------------------------------------------------ *
+ * 学习进度（#224）
+ * ------------------------------------------------------------------ */
+
+// myStageID 取当前登录用户在这条路线上的当前阶段 id。
+//
+// 未注入进度用例、未登录或读取出错都返回空串：进度是**附加信息**，
+// 它的失败不该让「看路线内容」这件事整体失败。
+func (h *LearningRoadmapHandler) myStageID(c *gin.Context, roadmapID int) string {
+	if h.progress == nil {
+		return ""
+	}
+	userID := currentUserID(c)
+	if userID == 0 {
+		return ""
+	}
+	mine, err := h.progress.ListMine(c.Request.Context(), userID)
+	if err != nil {
+		return ""
+	}
+	return mine[roadmapID]
+}
+
+// roadmapProgressReq 标记进度的请求体。
+type roadmapProgressReq struct {
+	// StageID 为空串表示撤销当前进度（再点同一阶段）。
+	StageID string `json:"stage_id"`
+}
+
+// MarkRoadmapProgress 标记或撤销「当前阶段」。
+//
+// @Summary      标记当前学习阶段
+// @Description  传阶段 id 表示标记学到这；传空串表示撤销。再点同一阶段由前端传空串实现。
+// @Tags         学习路线
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int                 true  "路线 ID"
+// @Param        body  body  roadmapProgressReq  true  "阶段 id，空串表示撤销"
+// @Success      200  {object}  response.Response{data=learningRoadmapProgressResp}
+// @Router       /learning/roadmaps/{id}/progress [post]
+func (h *LearningRoadmapHandler) MarkRoadmapProgress(c *gin.Context) {
+	id, ok := parsePathID(c)
+	if !ok {
+		return
+	}
+	userID := currentUserID(c)
+	if userID == 0 {
+		response.FailUnauthorized(c, "登录已失效，请重新登录")
+		return
+	}
+	if h.progress == nil {
+		response.FailServer(c, "学习进度功能暂不可用")
+		return
+	}
+
+	var req roadmapProgressReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, "请求内容格式不正确")
+		return
+	}
+
+	if err := h.progress.Mark(c.Request.Context(), userID, id, req.StageID); err != nil {
+		h.fail(c, err)
+		return
+	}
+	response.OK(c, learningRoadmapProgressResp{
+		RoadmapID: id,
+		StageID:   h.myStageID(c, id),
+	})
+}
+
+// learningRoadmapProgressResp 标记后的当前状态。
+type learningRoadmapProgressResp struct {
+	RoadmapID int `json:"roadmap_id"`
+	// StageID 是标记后的当前阶段；空串表示已撤销。
+	StageID string `json:"stage_id"`
+}
+
 // fail 把领域错误映射成 HTTP 响应。
 //
 // 404 而不是 403：软删的路线当作不存在，避免用 403 暴露资源存在（ADR 0004 §1 同口径）。
@@ -279,8 +381,13 @@ type learningRoadmapItemResp struct {
 	ID            int    `json:"id"`
 	Title         string `json:"title"`
 	DirectionCode string `json:"direction_code"`
+	// DirectionName 方向名，为空时回落成 code（ADR 0006 决策 3 的可见降级）。
+	DirectionName string `json:"direction_name"`
 	StageCount    int    `json:"stage_count"`
-	UpdatedAt     string `json:"updated_at"`
+	// Excerpt 正文摘要（#224）：卡片要显示它，但**不返回全文**——
+	// 列表页不渲染正文，读整列没有意义（ADR 0006 决策 7）。
+	Excerpt   string `json:"excerpt"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type learningRoadmapDetailResp struct {
@@ -289,6 +396,9 @@ type learningRoadmapDetailResp struct {
 	Body          string                     `json:"body"`
 	DirectionCode string                     `json:"direction_code"`
 	Stages        []learningRoadmapStageResp `json:"stages"`
+	// MyStageID 是**当前登录用户**在这条路线上的当前阶段 id（#224）。
+	// 空串表示还没标记。只属于本人——管理员看到的也是自己的进度。
+	MyStageID string `json:"my_stage_id"`
 	// Version 回给前端用于下一次保存的乐观锁。
 	Version    int    `json:"version"`
 	StageCount int    `json:"stage_count"`
@@ -311,14 +421,35 @@ type learningRoadmapListResp struct {
 	Directions []learningRoadmapDirectionResp `json:"directions"`
 }
 
-func newLearningRoadmapItemResp(r *domain.LearningRoadmap) learningRoadmapItemResp {
+func newLearningRoadmapItemResp(r *domain.LearningRoadmap, directionName string) learningRoadmapItemResp {
 	return learningRoadmapItemResp{
 		ID:            r.ID,
 		Title:         r.Title,
 		DirectionCode: r.DirectionCode,
+		DirectionName: directionName,
 		StageCount:    len(r.Stages),
+		Excerpt:       roadmapExcerpt(r.Body, roadmapExcerptRunes),
 		UpdatedAt:     r.UpdatedAt.Format(rfc3339Layout),
 	}
+}
+
+// roadmapExcerptRunes 摘要的字符上限。
+const roadmapExcerptRunes = 120
+
+// roadmapExcerpt 按字符截断正文作为摘要。
+//
+// 与邮件的回复摘录同一套做法（ADR 0007 决策 8）：用 []rune 保证不切坏中文与 emoji，
+// 且**原样保留 Markdown 源码**而不在后端剥离标记——同一套剥离规则在 Go 与 TS
+// 各写一份，漂移时摘要与页面显示会不一致。用户看到少量 ** 是诚实的。
+func roadmapExcerpt(body string, limit int) string {
+	// 折叠连续空白：正文里的空行会让摘要看起来断开。
+	fields := strings.Fields(body)
+	joined := strings.Join(fields, " ")
+	r := []rune(joined)
+	if len(r) <= limit {
+		return joined
+	}
+	return string(r[:limit]) + "…"
 }
 
 func newLearningRoadmapDetailResp(r *domain.LearningRoadmap) learningRoadmapDetailResp {

@@ -141,3 +141,11 @@ describe("validateRoadmapDraft", () => {
     expect(validateRoadmapDraft({ ...ok, stages })?.message).toContain("缺少标题");
   });
 });
+
+describe("excerptOf", () => {
+  it("空摘要给可读占位，非空原样返回", async () => {
+    const { excerptOf } = await import("./model");
+    expect(excerptOf("  ")).toBe("这条路线还没有简介");
+    expect(excerptOf("  前端入门  ")).toBe("前端入门");
+  });
+});

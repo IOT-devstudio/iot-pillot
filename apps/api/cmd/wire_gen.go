@@ -120,7 +120,10 @@ func InitializeApp() (*handler.Router, func(), error) {
 	// 学习路线（#223）：正文插图复用附件按正文重算逻辑，绑定列指向 roadmap_id。
 	learningRoadmapRepo := repository.NewLearningRoadmapRepo(db)
 	learningRoadmapUseCase := service.NewLearningRoadmapUseCase(learningRoadmapRepo).WithAttachments(attachmentUseCase)
-	learningRoadmapHandler := handler.NewLearningRoadmapHandler(learningRoadmapUseCase)
+	// 学习进度（#224）：一人一路线一行，只属于本人。
+	roadmapProgressRepo := repository.NewRoadmapProgressRepo(db)
+	roadmapProgressUseCase := service.NewRoadmapProgressUseCase(roadmapProgressRepo, learningRoadmapRepo)
+	learningRoadmapHandler := handler.NewLearningRoadmapHandler(learningRoadmapUseCase).WithProgress(roadmapProgressUseCase)
 	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler, forumNotifyQueue, learningRoadmapHandler)
 	return router, func() {
 		cleanup()

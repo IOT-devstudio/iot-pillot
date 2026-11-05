@@ -154,7 +154,11 @@ export interface RoadmapListItem {
   id: number;
   title: string;
   direction_code: string;
+  /** 方向名；方向被清理过时回落成 code（可见的降级）。 */
+  direction_name: string;
   stage_count: number;
+  /** 正文摘要（字符截断，保留 Markdown 原文）；列表不返回全文。 */
+  excerpt: string;
   updated_at: string;
 }
 
@@ -179,6 +183,11 @@ export interface RoadmapDetail {
   body: string;
   direction_code: string;
   stages: RoadmapStage[];
+  /**
+   * 当前登录用户在这条路线上的当前阶段 id（#224）。
+   * 空串表示还没标记。只属于本人——管理员看到的也是自己的进度。
+   */
+  my_stage_id: string;
   /** 乐观锁版本号：保存时必须原样带回。 */
   version: number;
   stage_count: number;
@@ -193,6 +202,13 @@ export interface RoadmapWritePayload {
   direction_code: string;
   stages: RoadmapStage[];
   version?: number;
+}
+
+/** 标记 / 撤销进度的结果（#224）。 */
+export interface RoadmapProgressResp {
+  roadmap_id: number;
+  /** 标记后的当前阶段；空串表示已撤销。 */
+  stage_id: string;
 }
 
 export interface RoadmapListQuery {
