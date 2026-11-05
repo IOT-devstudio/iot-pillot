@@ -286,6 +286,7 @@ func NewRouter(
 		studioForum.POST("/posts/:id/replies", studioWrite(forumHandler.CreateForumReply))
 		studioForum.PATCH("/replies/:id", studioWrite(forumHandler.UpdateForumReply))
 		studioForum.DELETE("/replies/:id", studioWrite(forumHandler.DeleteForumReply))
+		studioForum.POST("/posts/:id/resolve", studioWrite(forumHandler.ResolveForumPost))
 
 		// ── 表单（BE-05，issue #92）──
 		// 路径与 docs/architecture.md 的 FormModule 一致：/api/v1/forms 下的读接口
@@ -325,6 +326,7 @@ func NewRouter(
 		forum.POST("/posts/:id/replies", func(c *gin.Context) { forumHandler.CreateForumReply(c, domain.ForumScopeRecruitment) })
 		forum.PATCH("/replies/:id", func(c *gin.Context) { forumHandler.UpdateForumReply(c, domain.ForumScopeRecruitment) })
 		forum.DELETE("/replies/:id", func(c *gin.Context) { forumHandler.DeleteForumReply(c, domain.ForumScopeRecruitment) })
+		forum.POST("/posts/:id/resolve", func(c *gin.Context) { forumHandler.ResolveForumPost(c, domain.ForumScopeRecruitment) })
 	}
 	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler, attachmentCleanup: attachmentCleanup}
 }

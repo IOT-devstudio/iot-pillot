@@ -21,11 +21,13 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import PageHeader from "@/components/common/PageHeader.vue";
 import MarkdownContent from "@/components/markdown/MarkdownContent.vue";
 import MarkdownEditor from "../components/MarkdownEditor.vue";
+import { useForumScope } from "../useForumScope";
 import {
   createQaReply,
   deleteQaPost,
   deleteQaReply,
   fetchQaPost,
+  resolveQaPost,
   type QaPostDetail,
 } from "@/api/qa";
 import { currentProfile } from "@/modules/user-settings/profileIdentity";
@@ -36,6 +38,8 @@ const BODY_MAX = 20000;
 
 const route = useRoute();
 const router = useRouter();
+// 内容域来自路由 meta（#221）：内部论坛复用本组件。
+const forum = useForumScope();
 
 const post = ref<QaPostDetail | null>(null);
 const loading = ref(false);
@@ -43,6 +47,7 @@ const loadError = ref("");
 
 const replyBody = ref("");
 const replying = ref(false);
+const resolving = ref(false);
 const replyEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null);
 
 const postId = Number(route.params.id);
@@ -65,7 +70,7 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    post.value = await fetchQaPost(postId);
+    post.value = await fetchQaPost(postId, forum.scope.value);
   } catch (error) {
     // 后端对软删/越权统一回 404（防枚举），前端给中性文案。
     loadError.value =
@@ -77,7 +82,7 @@ async function load(): Promise<void> {
 }
 
 function back(): void {
-  void router.push("/user/qa");
+  void router.push(forum.listPath.value);
 }
 
 /** 回复框的提交闸门（失败/上传中的图）。 */
@@ -102,7 +107,7 @@ async function submitReply(): Promise<void> {
   }
   replying.value = true;
   try {
-    await createQaReply(postId, { body: replyBody.value });
+    await createQaReply(postId, { body: replyBody.value }, forum.scope.value);
     replyBody.value = "";
     ElMessage.success("回复成功");
     await load();
@@ -124,9 +129,9 @@ async function removePost(): Promise<void> {
     return;
   }
   try {
-    await deleteQaPost(postId);
+    await deleteQaPost(postId, forum.scope.value);
     ElMessage.success("已删除");
-    void router.replace("/user/qa");
+    void router.replace(forum.listPath.value);
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "删除失败，请重试");
   }
@@ -143,7 +148,7 @@ async function removeReply(replyId: number): Promise<void> {
     return;
   }
   try {
-    await deleteQaReply(replyId);
+    await deleteQaReply(replyId, forum.scope.value);
     ElMessage.success("已删除");
     await load();
   } catch (error) {
@@ -151,8 +156,29 @@ async function removeReply(replyId: number): Promise<void> {
   }
 }
 
+/**
+ * 标记 / 取消「已解决」（#221）。
+ *
+ * 只在招新问答暴露（AC）：内部论坛没有「解决问题」的语义，
+ * 数据上两个域都有这两列，但界面只对外部问答开放。
+ */
+async function toggleResolved(): Promise<void> {
+  const cur = post.value;
+  if (!cur) return;
+  resolving.value = true;
+  try {
+    // 后端直接回完整详情，能省掉一次刷新请求。
+    post.value = await resolveQaPost(postId, !cur.is_resolved, forum.scope.value);
+    ElMessage.success(post.value.is_resolved ? "已标记为解决" : "已取消已解决");
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "操作失败，请重试");
+  } finally {
+    resolving.value = false;
+  }
+}
+
 function editPost(): void {
-  void router.push(`/user/qa/${postId}/edit`);
+  void router.push(forum.editPath(postId));
 }
 
 onMounted(load);
@@ -180,6 +206,15 @@ onMounted(load);
       </div>
 
       <div v-if="canManage(post.author_id)" class="qa-detail__actions">
+        <el-button
+          v-if="!forum.isStudio.value"
+          size="small"
+          :type="post.is_resolved ? 'default' : 'success'"
+          :loading="resolving"
+          @click="toggleResolved"
+        >
+          {{ post.is_resolved ? "取消已解决" : "标记已解决" }}
+        </el-button>
         <el-button size="small" @click="editPost">编辑</el-button>
         <el-button size="small" type="danger" plain @click="removePost">
           删除
