@@ -42,6 +42,7 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 		nil, // token manager
 		nil, // admin store
 		nil, // forum handler（#219 招新问答 / 内部论坛）
+		nil, // forum notify queue（#222 回复通知）
 	)
 	if router == nil || router.eng == nil {
 		t.Fatal("路由未构造成功")
