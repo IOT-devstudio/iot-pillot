@@ -141,6 +141,11 @@ iot-pillot/
 | hired 转工作室成员（#197） | `POST /api/v1/admin/studio/members/from-candidate` | 前端已对接 | 仅 admin；**只有 hired 可转入**，姓名与方向取自申请，出生年/届别/职能由管理员补全；`source_candidate_id` 部分唯一索引防重复转入；**不改招新状态机** |
 | 工作室项目管理（#198） | `GET/POST /api/v1/admin/studio/projects`、`GET/PUT/DELETE /:id`、`GET/POST /:id/members`、`PUT/DELETE /:id/members/:member_id` | 前端已对接 | 仅 admin；项目名全局唯一；参与行带姓名快照，可关联成员档案或仅记外部姓名；角色枚举 + `ended_at \/= started_at` 校验；删除项目级联删参与行 |
 | 工作室知识库（#196） | `GET/POST /api/v1/admin/studio/knowledge`、`GET/PUT/DELETE /api/v1/admin/studio/knowledge/:id`、`GET /:id/revisions`、`GET /:id/revisions/:version` | 前端已对接 | 仅 admin；每次保存 `version+1` 并写入修订快照，**无自动回滚**（恢复 = 带回旧版内容再保存）；`version` 必填做乐观锁；`is_public` 由 `permission` 派生 |
+| 招新问答（#219/#220/#221） | `GET/POST /api/v1/forum/posts`、`GET/PATCH/DELETE /api/v1/forum/posts/:id`、`POST /api/v1/forum/posts/:id/replies`、`PATCH/DELETE /api/v1/forum/replies/:id`、`POST /api/v1/forum/posts/:id/resolve` | 前端已对接 | **登录即可**（`ANY_SIGNED_IN`）；作者或管理员可编辑/删除/标记已解决；`resolved` 三态筛选（nil 全部 / true 已解决 / false 未解决）；标记人取操作者而非作者。前端 `/user/qa*` |
+| 内部论坛（#221） | 与招新问答**同一套端点形状**，前缀换成 `/api/v1/studio/forum`（`GET/POST /posts`、`GET/PATCH/DELETE /posts/:id`、`POST /posts/:id/replies`、`PATCH/DELETE /replies/:id`、`POST /posts/:id/resolve`） | 前端已对接 | **仅 admin**，普通成员所有端点（含写入）一律 **404 而非 403**；复用同一批前端组件，靠路由 meta `forumScope` 切内容域，不复制实现；前端 `/studio/forum*`。「已解决」数据两域都有，但界面只在招新问答暴露 |
+| 附件上传与读取（#216/#217/#221） | `POST /api/v1/attachments`、`GET /api/v1/attachments/:id` | 前端已对接 | 需登录；正文是绑定关系的唯一真源，保存时按正文引用重算绑定（`post_id` / `reply_id` / `roadmap_id`）。归属判定：内部论坛的图需管理员，招新问答/学习路线的图登录即可读，软删一律不可见；未判定一律 404。对象存储为 RustFS（ADR 0002/0004） |
+| 回复邮件通知（#222） | 无独立 HTTP 端点；由「新建回复」触发 | 不需要前端 | 模板类型 `qa_reply`，两域共用；走有界队列（256）+ 单 worker 异步发送，**失败不回滚回复**；自己回自己不发、编辑回复不触发、空邮箱跳过；未配模板用内置兜底文案照发（ADR 0007） |
+| 学习路线（#223 管理端 / #224 用户端） | 管理端 `GET/POST /api/v1/admin/studio/roadmaps`、`GET/PUT/DELETE /api/v1/admin/studio/roadmaps/:id`；用户端 `GET /api/v1/learning/roadmaps`、`GET /api/v1/learning/roadmaps/:id`、`POST /api/v1/learning/roadmaps/:id/progress` | 前端已对接 | 管理端**仅 admin**，用户端**登录即可**；整体提交带 `version` 乐观锁（冲突走 400 可读中文）；阶段 id 由服务端生成、前端不生成；阶段/资源上限各 20；用户进度按阶段 id 记，一人一路线一行、只属于本人；方向筛选项由路线接口自带，不查招新方向接口（ADR 0006） |
 | 表单、模板、用户权限、SMTP 设置 | 部分尚无路由 | 阻塞 | 共享 TS 类型中未标 BE-04 的招新类型与表单类型仍是领域草案，不能直接当作已交付 API |
 
 开始业务页面前必须先解决以下契约差异：
