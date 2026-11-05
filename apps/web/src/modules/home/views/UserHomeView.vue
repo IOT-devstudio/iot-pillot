@@ -114,6 +114,12 @@ function goInvitations(event: MouseEvent): void {
   void transition(() => router.push("/user/invitations"));
 }
 
+function goQa(event: MouseEvent): void {
+  event.preventDefault();
+  if (!requireSignIn("查看招新问答")) return;
+  void transition(() => router.push("/user/qa"));
+}
+
 const userError = ref("");
 const loading = ref(true);
 
@@ -556,6 +562,7 @@ function steps(application: RecruitmentApplication) {
         ><a href="#journey" @click="goJourney"
           >我的进度</a
         ><a href="/user/invitations" @click="goInvitations">邀请与结果</a
+        ><a href="/user/qa" @click="goQa">招新问答</a
         ><RouterLink to="/user/about" @click="goAbout($event)"
           >关于我们</RouterLink
         >

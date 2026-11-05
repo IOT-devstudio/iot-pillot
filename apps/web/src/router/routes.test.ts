@@ -61,6 +61,13 @@ vi.mock("@/modules/studio-knowledge/views/StudioKnowledgeView.vue", () => ({
 vi.mock("@/modules/studio-projects/views/StudioProjectsView.vue", () => ({
   default: { name: "StudioProjectsView" },
 }));
+// 招新问答（#219）同样只验路由元信息，组件不必真挂载
+vi.mock("@/modules/forum/views/QaListView.vue", () => ({
+  default: { name: "QaListView" },
+}));
+vi.mock("@/modules/forum/views/QaDetailView.vue", () => ({
+  default: { name: "QaDetailView" },
+}));
 
 import { routes } from "./routes";
 
@@ -155,6 +162,8 @@ describe("application routes", () => {
       { path: "/user/about", name: "about" },
       { path: "/user/settings", name: "user-settings" },
       { path: "/user/invitations", name: "user-invitations" },
+      { path: "/user/qa", name: "qa-list" },
+      { path: "/user/qa/:id", name: "qa-detail" },
     ]);
     // 只有首页和介绍公开；个人设置与邀请仍要求登录。
     for (const page of userPages) {

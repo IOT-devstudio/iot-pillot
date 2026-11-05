@@ -4,3 +4,4 @@ export * from "./recruitment";
 export * from "./form";
 export * from "./template";
 export * from "./studio";
+export * from "./qa";

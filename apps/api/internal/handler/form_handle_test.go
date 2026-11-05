@@ -167,6 +167,7 @@ func (h httpCreatorWithApp) GetApplicationByUserRoundDirection(_ context.Context
 type stubValidator struct {
 	accept string
 	userID int
+	role   string // 缺省视为 member；测试可显式指定 admin。
 	err    error
 }
 
@@ -177,7 +178,11 @@ func (s stubValidator) ValidateAccessToken(_ context.Context, token string) (int
 	if token != s.accept {
 		return 0, "", "", errors.New("invalid token")
 	}
-	return s.userID, "tester", middleware.RoleMember, nil
+	role := s.role
+	if role == "" {
+		role = middleware.RoleMember
+	}
+	return s.userID, "tester", role, nil
 }
 
 // stubAdminChecker 满足 middleware.AdminChecker。

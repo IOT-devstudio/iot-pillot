@@ -13,6 +13,8 @@ import (
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/docs"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/config"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
+	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/dto/response"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/middleware"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/service"
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/utils"
@@ -52,6 +54,7 @@ func NewRouter(
 	attachmentCleanup *service.AttachmentCleanupScheduler,
 	tokenManager *utils.TokenManager,
 	adminStore *utils.AdminStore,
+	forumHandler *ForumHandler,
 ) *Router {
 	if cfg.SERVICE.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -244,6 +247,30 @@ func NewRouter(
 		studio.PUT("/projects/:id/members/:member_id", studioProjectHandler.UpdateStudioProjectMember)
 		studio.DELETE("/projects/:id/members/:member_id", studioProjectHandler.DeleteStudioProjectMember)
 
+		// ── 内部论坛（#219，仅 admin 可见，但对非 admin 返回 404 而非 403）──
+		// studio 内容域首期仅 admin 可见（ADR 0003 决策 3）：开放给普通成员只需
+		// 把这一组挪到 apiV1.Group，一处改动（决策 3 核心理由）。
+		//
+		// 不挂 requireAdmin 中间件：非 admin 访问要落到 404（"不存在"），而不是 403
+		// —— 否则会暴露内部论坛的存在，可被用来枚举规模（#219 验收 + ADR 0004 §1）。
+		// 角色判定改在闭包里做：非 admin 直接 FailNotFound，admin 才注入 studio scope。
+		// scope 由闭包写入，handler 不解析 URL（ADR 0003 决策 3）。
+		studioForum := apiV1.Group("/studio/forum", authRequired)
+		studioForum.GET("/posts", func(c *gin.Context) {
+			if _, _, role, ok := middleware.CurrentUser(c); !ok || role != middleware.RoleAdmin {
+				response.FailNotFound(c, "帖子不存在")
+				return
+			}
+			forumHandler.ListForumPosts(c, domain.ForumScopeStudio)
+		})
+		studioForum.GET("/posts/:id", func(c *gin.Context) {
+			if _, _, role, ok := middleware.CurrentUser(c); !ok || role != middleware.RoleAdmin {
+				response.FailNotFound(c, "帖子不存在")
+				return
+			}
+			forumHandler.GetForumPost(c, domain.ForumScopeStudio)
+		})
+
 		// ── 表单（BE-05，issue #92）──
 		// 路径与 docs/architecture.md 的 FormModule 一致：/api/v1/forms 下的读接口
 		// 对 admin/member 开放，写接口在**同一条路由**上补 requireAdmin，
@@ -268,6 +295,13 @@ func NewRouter(
 		apiV1.POST("/attachments", authRequired, attachmentHandler.UploadAttachment)
 		// 读取：仅 authRequired，归属判定全在 service（handler 只解析 id，错误一律 404 防枚举）。
 		apiV1.GET("/attachments/:id", authRequired, attachmentHandler.GetAttachment)
+
+		// ── 招新问答（#219，用户端需登录）──
+		// recruitment 内容域挂登录用户组；studio 内容域另挂 admin 组（见下方 studio 段）。
+		// scope 由分组闭包写入，handler 不解析 URL（ADR 0003 决策 3）。
+		forum := apiV1.Group("/forum", authRequired)
+		forum.GET("/posts", func(c *gin.Context) { forumHandler.ListForumPosts(c, domain.ForumScopeRecruitment) })
+		forum.GET("/posts/:id", func(c *gin.Context) { forumHandler.GetForumPost(c, domain.ForumScopeRecruitment) })
 	}
 	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler, attachmentCleanup: attachmentCleanup}
 }
