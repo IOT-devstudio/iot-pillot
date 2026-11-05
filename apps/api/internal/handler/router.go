@@ -59,6 +59,7 @@ func NewRouter(
 	adminStore *utils.AdminStore,
 	forumHandler *ForumHandler,
 	forumNotify *service.ForumNotifyQueue,
+	roadmapHandler *LearningRoadmapHandler,
 ) *Router {
 	if cfg.SERVICE.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -237,6 +238,16 @@ func NewRouter(
 		studio.DELETE("/knowledge/:id", studioKnowledgeHandler.DeleteStudioKnowledge)
 		studio.GET("/knowledge/:id/revisions", studioKnowledgeHandler.ListStudioKnowledgeRevisions)
 		studio.GET("/knowledge/:id/revisions/:version", studioKnowledgeHandler.GetStudioKnowledgeRevision)
+
+		// 学习路线（#223，ADR 0006）：管理端整体编辑。
+		//
+		// 一个页面里改标题、正文、阶段列表，一次 PUT 全量提交，带 version 乐观锁。
+		// 阶段 id 由服务端生成与对齐（前端不生成）；删除是软删并记录操作人。
+		studio.GET("/roadmaps", roadmapHandler.ListLearningRoadmaps)
+		studio.POST("/roadmaps", roadmapHandler.CreateLearningRoadmap)
+		studio.GET("/roadmaps/:id", roadmapHandler.GetLearningRoadmap)
+		studio.PUT("/roadmaps/:id", roadmapHandler.UpdateLearningRoadmap)
+		studio.DELETE("/roadmaps/:id", roadmapHandler.DeleteLearningRoadmap)
 
 		// 项目与参与（#198）：项目 CRUD + 参与增删改。
 		//

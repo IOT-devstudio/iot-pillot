@@ -117,7 +117,11 @@ func InitializeApp() (*handler.Router, func(), error) {
 	forumNotifyQueue := service.NewForumNotifyQueue(mailUseCase)
 	forumUseCase.WithReplyNotify(forumNotifyQueue)
 	forumHandler := handler.NewForumHandler(forumUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler, forumNotifyQueue)
+	// 学习路线（#223）：正文插图复用附件按正文重算逻辑，绑定列指向 roadmap_id。
+	learningRoadmapRepo := repository.NewLearningRoadmapRepo(db)
+	learningRoadmapUseCase := service.NewLearningRoadmapUseCase(learningRoadmapRepo).WithAttachments(attachmentUseCase)
+	learningRoadmapHandler := handler.NewLearningRoadmapHandler(learningRoadmapUseCase)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler, forumNotifyQueue, learningRoadmapHandler)
 	return router, func() {
 		cleanup()
 	}, nil
