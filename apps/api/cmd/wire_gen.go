@@ -108,7 +108,8 @@ attachmentCleanup := service.NewAttachmentCleanupScheduler(attachmentRepo, s3Sto
 	freezeUseCase := service.NewFreezeUseCase(userRepo, freezeMailer, sessionRevoker, adminDirectory)
 	freezeScheduler := service.NewFreezeScheduler(freezeUseCase)
 	forumRepo := repository.NewForumRepo(db)
-	forumUseCase := service.NewForumUseCase(forumRepo, adminDirectory)
+	// 方向回落需要「用户资料方向」与「最新报名方向」两级数据源（#220）。
+	forumUseCase := service.NewForumUseCase(forumRepo, adminDirectory).WithDirectionFallback(userRepo, recruitmentRepo)
 	forumHandler := handler.NewForumHandler(forumUseCase)
 	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler)
 	return router, func() {

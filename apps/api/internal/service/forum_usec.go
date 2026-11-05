@@ -28,13 +28,27 @@ var ErrForumPostNotFound = repository.ErrForumPostNotFound
 //     让上层回 404 而不是 403——既符合「软删从常规列表消失」，也避免用 403 暴露
 //     资源存在（ADR 0004 §1 同口径）。
 type ForumUseCase struct {
-	posts  repository.ForumRepo
+	posts repository.ForumRepo
 	admins utils.AdminDirectory
+	// users / applications 只在发帖时算「方向回落」用（#220），
+	// 可为 nil —— 为 nil 时该级直接跳过，只读用例因此不受影响。
+	users        userDirectionReader
+	applications applicationDirectionReader
 }
 
 // NewForumUseCase 构造函数。admins 用于「官方回答（管理员回复）置顶」的实时判定。
 func NewForumUseCase(posts repository.ForumRepo, admins utils.AdminDirectory) *ForumUseCase {
 	return &ForumUseCase{posts: posts, admins: admins}
+}
+
+// WithDirectionFallback 注入方向回落所需的两级数据源（资料方向 / 最新报名方向）。
+//
+// 单独开一个链式方法而不是加进 NewForumUseCase：只读用例（#219）不需要这两个依赖，
+// 改构造函数签名会波及既有调用与测试桩。
+func (uc *ForumUseCase) WithDirectionFallback(users userDirectionReader, apps applicationDirectionReader) *ForumUseCase {
+	uc.users = users
+	uc.applications = apps
+	return uc
 }
 
 // ListPosts 分页列出某 scope 下未软删的帖子，支持关键词与方向筛选。

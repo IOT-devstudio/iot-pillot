@@ -270,6 +270,22 @@ func NewRouter(
 			}
 			forumHandler.GetForumPost(c, domain.ForumScopeStudio)
 		})
+		// 写入路径与读同口径：非 admin 一律 404（#220）。
+		studioWrite := func(action func(*gin.Context, domain.ForumScope)) gin.HandlerFunc {
+			return func(c *gin.Context) {
+				if _, _, role, ok := middleware.CurrentUser(c); !ok || role != middleware.RoleAdmin {
+					response.FailNotFound(c, "帖子不存在")
+					return
+				}
+				action(c, domain.ForumScopeStudio)
+			}
+		}
+		studioForum.POST("/posts", studioWrite(forumHandler.CreateForumPost))
+		studioForum.PATCH("/posts/:id", studioWrite(forumHandler.UpdateForumPost))
+		studioForum.DELETE("/posts/:id", studioWrite(forumHandler.DeleteForumPost))
+		studioForum.POST("/posts/:id/replies", studioWrite(forumHandler.CreateForumReply))
+		studioForum.PATCH("/replies/:id", studioWrite(forumHandler.UpdateForumReply))
+		studioForum.DELETE("/replies/:id", studioWrite(forumHandler.DeleteForumReply))
 
 		// ── 表单（BE-05，issue #92）──
 		// 路径与 docs/architecture.md 的 FormModule 一致：/api/v1/forms 下的读接口
@@ -302,6 +318,13 @@ func NewRouter(
 		forum := apiV1.Group("/forum", authRequired)
 		forum.GET("/posts", func(c *gin.Context) { forumHandler.ListForumPosts(c, domain.ForumScopeRecruitment) })
 		forum.GET("/posts/:id", func(c *gin.Context) { forumHandler.GetForumPost(c, domain.ForumScopeRecruitment) })
+		// 写入（#220）：所有登录用户都能发帖与回复招新问答。
+		forum.POST("/posts", func(c *gin.Context) { forumHandler.CreateForumPost(c, domain.ForumScopeRecruitment) })
+		forum.PATCH("/posts/:id", func(c *gin.Context) { forumHandler.UpdateForumPost(c, domain.ForumScopeRecruitment) })
+		forum.DELETE("/posts/:id", func(c *gin.Context) { forumHandler.DeleteForumPost(c, domain.ForumScopeRecruitment) })
+		forum.POST("/posts/:id/replies", func(c *gin.Context) { forumHandler.CreateForumReply(c, domain.ForumScopeRecruitment) })
+		forum.PATCH("/replies/:id", func(c *gin.Context) { forumHandler.UpdateForumReply(c, domain.ForumScopeRecruitment) })
+		forum.DELETE("/replies/:id", func(c *gin.Context) { forumHandler.DeleteForumReply(c, domain.ForumScopeRecruitment) })
 	}
 	return &Router{eng: r, cfg: cfg, freeze: freezeScheduler, attachmentCleanup: attachmentCleanup}
 }

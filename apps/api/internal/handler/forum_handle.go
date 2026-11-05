@@ -29,14 +29,20 @@ func NewForumHandler(forum *service.ForumUseCase) *ForumHandler {
 
 // failForum 把论坛域错误映射成 HTTP 响应。
 //
-// ErrForumPostNotFound 一律 404（不是 403）：软删与跨域越权都不该向调用方暴露
-// 「这个 id 存在」，否则可被用来枚举内部论坛规模（ADR 0004 §1 同口径）。
+// ErrForumPostNotFound / ErrForumReplyNotFound 一律 404（不是 403）：软删与跨域越权
+// 都不该向调用方暴露「这个 id 存在」，否则可被用来枚举内部论坛规模（ADR 0004 §1 同口径）。
+// ErrForumInvalidInput 是用户输入问题，回 400 并把可读原因透出，前端直接展示。
 func failForum(c *gin.Context, err error) {
-	if errors.Is(err, service.ErrForumPostNotFound) {
+	switch {
+	case errors.Is(err, service.ErrForumPostNotFound):
 		response.FailNotFound(c, "帖子不存在")
-		return
+	case errors.Is(err, service.ErrForumReplyNotFound):
+		response.FailNotFound(c, "回复不存在")
+	case service.IsForumInvalidInput(err):
+		response.FailInvalidParam(c, err.Error())
+	default:
+		failInternal(c, err)
 	}
-	failInternal(c, err)
 }
 
 // parseForumID 解析路径里的帖子 id（正整数）。
