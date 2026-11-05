@@ -124,3 +124,79 @@ export interface AttachmentUploadResp {
   content_type: string;
   size_bytes: number;
 }
+
+/* ------------------------------------------------------------------ *
+ * 学习路线（#223，ADR 0006）
+ * ------------------------------------------------------------------ */
+
+/** 阶段里的一个资源链接。 */
+export interface RoadmapResource {
+  title: string;
+  url: string;
+}
+
+/**
+ * 一个学习阶段。
+ *
+ * `id` 由**服务端**生成（`s_` + 8 位 base36），前端只当不透明字符串传回，
+ * 绝不自造 —— 用户的学习进度记的是阶段 id，伪造 id 会造出指向不存在阶段的进度。
+ * 新建/新增阶段时传空串，服务端会发一个新 id。
+ */
+export interface RoadmapStage {
+  id: string;
+  title: string;
+  summary: string;
+  resources: RoadmapResource[];
+}
+
+/** 列表项：不含正文与阶段标题（列表页不渲染正文）。 */
+export interface RoadmapListItem {
+  id: number;
+  title: string;
+  direction_code: string;
+  stage_count: number;
+  updated_at: string;
+}
+
+/** 方向筛选项：只含有路线的方向，不看招新开关。 */
+export interface RoadmapDirectionOption {
+  code: string;
+  name: string;
+  count: number;
+}
+
+export interface RoadmapListResp {
+  items: RoadmapListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  directions: RoadmapDirectionOption[];
+}
+
+export interface RoadmapDetail {
+  id: number;
+  title: string;
+  body: string;
+  direction_code: string;
+  stages: RoadmapStage[];
+  /** 乐观锁版本号：保存时必须原样带回。 */
+  version: number;
+  stage_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 整体保存的请求体。`version` 必填（乐观锁）。 */
+export interface RoadmapWritePayload {
+  title: string;
+  body: string;
+  direction_code: string;
+  stages: RoadmapStage[];
+  version?: number;
+}
+
+export interface RoadmapListQuery {
+  direction?: string | null;
+  page?: number;
+  page_size?: number;
+}

@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+// 学习路线视图（#223）引入 Element Plus，其 theme-chalk CSS 不能在 node 环境解析；
+// 路由表测试只关心 path/meta/component，mock 掉组件即可。
+vi.mock("@/modules/learning-roadmap/views/LearningRoadmapView.vue", () => ({
+  default: { name: "LearningRoadmapView" },
+}));
 vi.mock("@/modules/recruitment/views/InvitationsView.vue", () => ({
   default: { name: "InvitationsView" },
 }));
@@ -97,6 +102,16 @@ describe("application routes", () => {
         (r.component as { name?: string })?.name,
       );
     }
+  });
+
+  it("学习路线（#223）只对管理员开放并套管理台外壳", () => {
+    const roadmap = routes.find((r) => r.path === "/studio/roadmaps");
+
+    expect(roadmap).toBeDefined();
+    // 路线维护是运营动作：漏标 allowRoles 就等于对普通成员敞开。
+    expect(roadmap?.meta?.allowRoles).toEqual(["admin"]);
+    expect(roadmap?.meta?.adminShell).toBe(true);
+    expect((roadmap?.component as { name?: string })?.name).toBe("LearningRoadmapView");
   });
 
   it("招新问答各页标了 recruitment 内容域", () => {

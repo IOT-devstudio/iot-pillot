@@ -9,6 +9,7 @@ import { openerRoutes } from "@/modules/opener/routes";
 import { openerEditorRoutes } from "@/modules/opener-editor/routes";
 import { recruitmentRoutes } from "@/modules/recruitment/routes";
 import { settingsRoutes } from "@/modules/settings/routes";
+import { learningRoadmapRoutes } from "@/modules/learning-roadmap/routes";
 import { studioKnowledgeRoutes } from "@/modules/studio-knowledge/routes";
 import { studioProjectRoutes } from "@/modules/studio-projects/routes";
 import { studioMembersRoutes } from "@/modules/studio-members/routes";
@@ -39,6 +40,7 @@ export const routes: RouteRecordRaw[] = [
   // 工作室运营：成员名录（#195）、知识库（#196）、项目管理（#198）
   ...studioMembersRoutes,
   ...studioKnowledgeRoutes,
+  ...learningRoadmapRoutes,
   ...studioProjectRoutes,
   // 招新问答（#219，用户侧只读）：列表与详情。
   ...forumRoutes,
