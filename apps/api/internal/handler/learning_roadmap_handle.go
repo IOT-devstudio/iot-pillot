@@ -15,11 +15,20 @@ import (
 // LearningRoadmapHandler 学习路线管理端接口（#223）。
 type LearningRoadmapHandler struct {
 	useCase *service.LearningRoadmapUseCase
+	// progress 用户学习进度（#224）。可为 nil —— 为 nil 时不返回进度、
+	// 标记端点也不可用，只读列表用例因此不受影响。
+	progress *service.RoadmapProgressUseCase
 }
 
 // NewLearningRoadmapHandler 构造函数。
 func NewLearningRoadmapHandler(useCase *service.LearningRoadmapUseCase) *LearningRoadmapHandler {
 	return &LearningRoadmapHandler{useCase: useCase}
+}
+
+// WithProgress 注入用户学习进度（#224）。
+func (h *LearningRoadmapHandler) WithProgress(progress *service.RoadmapProgressUseCase) *LearningRoadmapHandler {
+	h.progress = progress
+	return h
 }
 
 // learningRoadmapResourceReq 资源链接入参。
@@ -130,7 +139,9 @@ func (h *LearningRoadmapHandler) GetLearningRoadmap(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
-	response.OK(c, newLearningRoadmapDetailResp(row))
+	resp := newLearningRoadmapDetailResp(row)
+	resp.MyStageID = h.myStageID(c, id)
+	response.OK(c, resp)
 }
 
 // CreateLearningRoadmap 新建路线。
@@ -233,6 +244,84 @@ func (h *LearningRoadmapHandler) DeleteLearningRoadmap(c *gin.Context) {
 	response.OK(c, gin.H{"deleted": true})
 }
 
+/* ------------------------------------------------------------------ *
+ * 学习进度（#224）
+ * ------------------------------------------------------------------ */
+
+// myStageID 取当前登录用户在这条路线上的当前阶段 id。
+//
+// 未注入进度用例、未登录或读取出错都返回空串：进度是**附加信息**，
+// 它的失败不该让「看路线内容」这件事整体失败。
+func (h *LearningRoadmapHandler) myStageID(c *gin.Context, roadmapID int) string {
+	if h.progress == nil {
+		return ""
+	}
+	userID := currentUserID(c)
+	if userID == 0 {
+		return ""
+	}
+	mine, err := h.progress.ListMine(c.Request.Context(), userID)
+	if err != nil {
+		return ""
+	}
+	return mine[roadmapID]
+}
+
+// roadmapProgressReq 标记进度的请求体。
+type roadmapProgressReq struct {
+	// StageID 为空串表示撤销当前进度（再点同一阶段）。
+	StageID string `json:"stage_id"`
+}
+
+// MarkRoadmapProgress 标记或撤销「当前阶段」。
+//
+// @Summary      标记当前学习阶段
+// @Description  传阶段 id 表示标记学到这；传空串表示撤销。再点同一阶段由前端传空串实现。
+// @Tags         学习路线
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int                 true  "路线 ID"
+// @Param        body  body  roadmapProgressReq  true  "阶段 id，空串表示撤销"
+// @Success      200  {object}  response.Response{data=learningRoadmapProgressResp}
+// @Router       /learning/roadmaps/{id}/progress [post]
+func (h *LearningRoadmapHandler) MarkRoadmapProgress(c *gin.Context) {
+	id, ok := parsePathID(c)
+	if !ok {
+		return
+	}
+	userID := currentUserID(c)
+	if userID == 0 {
+		response.FailUnauthorized(c, "登录已失效，请重新登录")
+		return
+	}
+	if h.progress == nil {
+		response.FailServer(c, "学习进度功能暂不可用")
+		return
+	}
+
+	var req roadmapProgressReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailInvalidParam(c, "请求内容格式不正确")
+		return
+	}
+
+	if err := h.progress.Mark(c.Request.Context(), userID, id, req.StageID); err != nil {
+		h.fail(c, err)
+		return
+	}
+	response.OK(c, learningRoadmapProgressResp{
+		RoadmapID: id,
+		StageID:   h.myStageID(c, id),
+	})
+}
+
+// learningRoadmapProgressResp 标记后的当前状态。
+type learningRoadmapProgressResp struct {
+	RoadmapID int `json:"roadmap_id"`
+	// StageID 是标记后的当前阶段；空串表示已撤销。
+	StageID string `json:"stage_id"`
+}
+
 // fail 把领域错误映射成 HTTP 响应。
 //
 // 404 而不是 403：软删的路线当作不存在，避免用 403 暴露资源存在（ADR 0004 §1 同口径）。
@@ -289,6 +378,9 @@ type learningRoadmapDetailResp struct {
 	Body          string                     `json:"body"`
 	DirectionCode string                     `json:"direction_code"`
 	Stages        []learningRoadmapStageResp `json:"stages"`
+	// MyStageID 是**当前登录用户**在这条路线上的当前阶段 id（#224）。
+	// 空串表示还没标记。只属于本人——管理员看到的也是自己的进度。
+	MyStageID string `json:"my_stage_id"`
 	// Version 回给前端用于下一次保存的乐观锁。
 	Version    int    `json:"version"`
 	StageCount int    `json:"stage_count"`
