@@ -14,12 +14,21 @@ async function render(src: string, alt: string): Promise<string> {
 }
 
 describe("MarkdownImage — 统一属性与占位降级（决策 3 / 12）", () => {
-  it("正常图片渲染 <img> 且带 loading=lazy 与 referrerpolicy=no-referrer", async () => {
-    const html = await render("/api/v1/attachments/1", "图1");
+  it("外链图片渲染 <img> 且带 loading=lazy 与 referrerpolicy=no-referrer", async () => {
+    // 外链不需要我们的凭据，直接交给 <img>；站内附件走 blob（见下一个用例）。
+    const html = await render("https://example.com/a.png", "图1");
     expect(html).toContain("<img");
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerpolicy="no-referrer"');
     expect(html).toContain('alt="图1"');
+  });
+
+  it("站内附件首屏渲染骨架而非裸 <img>", async () => {
+    // 读取端点挂 authRequired，<img src> 带不上 token，必须先 fetch 成 blob URL。
+    // 因此首屏是骨架而不是直接指向 /api/v1/attachments/1 的 <img>。
+    const html = await render("/api/v1/attachments/1", "图1");
+    expect(html).not.toContain('src="/api/v1/attachments/1"');
+    expect(html).toContain("md-img-skeleton");
   });
 
   it("危险协议（javascript: / data:）不渲染 <img>，改为占位块", async () => {

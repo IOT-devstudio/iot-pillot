@@ -45,16 +45,23 @@ export class AuthRequestError extends Error {
 export const AUTH_CODE_TOKEN_EXPIRED = 4010;
 export const AUTH_CODE_SESSION_INVALIDATED = 4011;
 
+/** 全站常规请求超时（15s）。除文件上传外都用它。 */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+
 /**
  * 发一次请求并解包统一响应体 { code, message, data }。
  *
  * 只负责「网络层是否成功 + 业务码是否为 0」，**不要求 data 存在**：
  * 登录/注册有 data，发送验证码没有，两种都由调用方决定怎么处理。
  * 网络断开、响应不是 JSON、code !== 0 都统一抛 AuthRequestError。
+ *
+ * timeoutMs 默认为全站常规超时（15s）；只有文件上传这类大请求显式传更长的值
+ * （ADR 0004：上传要更长超时，其余接口不变）。
  */
 export async function requestBackend<T>(
   path: string,
   init: RequestInit,
+  timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<{ body: Partial<BackendResponse<T>>; status: number }> {
   const controller = new AbortController();
   let timedOut = false;
@@ -64,7 +71,7 @@ export async function requestBackend<T>(
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, 15000);
+  }, timeoutMs);
   const networkMessage = () =>
     timedOut ? "请求超时，请检查网络后重试" : UNAVAILABLE_MESSAGE;
   try {

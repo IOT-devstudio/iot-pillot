@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { isAllowedUrl } from "./protocolAllowlist";
+import {
+  isAttachmentUrl,
+  loadAttachmentObjectUrl,
+  parseAttachmentId,
+} from "@/api/attachment";
 
 /**
  * 正文图片（ADR 0005 决策 3 / 12）。
@@ -12,6 +17,11 @@ import { isAllowedUrl } from "./protocolAllowlist";
  * 加载失败 → 占位块（ADR 0004 要求的「图片加载失败占位块」），
  * 详情页与编辑器预览 Tab 通过 MarkdownContent 自动共享这一行为。
  * 空 alt 视为装饰性图片（决策 12）：占位块只显示「图片不可用」，不带补充说明。
+ *
+ * 站内附件（/api/v1/attachments/{id}）**不能直接当 src 用**：该端点挂了
+ * authRequired，而浏览器加载 <img> 不会带 Authorization 头，直接写必然 401、
+ * 退化成本该只在真失败时出现的占位块。因此站内附件走带 token 的 fetch 取回
+ * 二进制，再转成 blob URL；外链仍直接交给 <img>（它们本来就不需要我们的凭据）。
  */
 const props = defineProps<{
   /** 图片地址：站内 /api/v1/attachments/... 或外链 http(s)。 */
@@ -21,9 +31,66 @@ const props = defineProps<{
 }>();
 
 const failed = ref(false);
+/** 站内附件的实际 src（blob URL）；外链直接落原始地址。 */
+const resolvedSrc = ref<string>(isAttachmentUrl(props.src) ? "" : props.src);
+/** 站内附件是否还在取数（用于骨架，不闪「不可用」）。 */
+const loadingAttachment = ref(isAttachmentUrl(props.src));
+
+let objectUrl: string | null = null;
+
+function revoke(): void {
+  if (objectUrl !== null) {
+    URL.revokeObjectURL(objectUrl);
+    objectUrl = null;
+  }
+}
+
+async function loadAttachment(src: string): Promise<void> {
+  revoke();
+  failed.value = false;
+  loadingAttachment.value = true;
+  resolvedSrc.value = "";
+
+  const id = parseAttachmentId(src);
+  if (id === null) {
+    failed.value = true;
+    loadingAttachment.value = false;
+    return;
+  }
+  try {
+    const url = await loadAttachmentObjectUrl(id);
+    objectUrl = url;
+    resolvedSrc.value = url;
+  } catch {
+    // 401 / 404 / 网络错误一律落占位块：对读者而言「看不到这张图」是同一种结果。
+    failed.value = true;
+  } finally {
+    loadingAttachment.value = false;
+  }
+}
+
+watch(
+  () => props.src,
+  (next) => {
+    if (isAttachmentUrl(next)) {
+      void loadAttachment(next);
+    } else {
+      revoke();
+      failed.value = false;
+      loadingAttachment.value = false;
+      resolvedSrc.value = next;
+    }
+  },
+  { immediate: true },
+);
+
+// blob URL 是组件私有的，卸载必须回收，否则整页浏览下来会一直占内存。
+onBeforeUnmount(revoke);
 
 // 纵深防护：协议不在白名单（javascript: / data: 等）时也不渲染 <img>，直接走占位块。
-const showImage = computed(() => !failed.value && isAllowedUrl(props.src));
+const showImage = computed(
+  () => !failed.value && resolvedSrc.value !== "" && isAllowedUrl(resolvedSrc.value),
+);
 
 const fallbackLabel = computed(() =>
   props.alt ? `图片不可用：${props.alt}` : "图片不可用",
@@ -31,9 +98,10 @@ const fallbackLabel = computed(() =>
 </script>
 
 <template>
+  <span v-if="loadingAttachment" class="md-img-skeleton" role="img" aria-label="图片加载中" />
   <img
-    v-if="showImage"
-    :src="src"
+    v-else-if="showImage"
+    :src="resolvedSrc"
     :alt="alt"
     loading="lazy"
     referrerpolicy="no-referrer"
@@ -57,5 +125,22 @@ const fallbackLabel = computed(() =>
   color: var(--ink-faint, #5b6b86);
   font-size: 13px;
   line-height: 1.6;
+}
+.md-img-skeleton {
+  display: inline-block;
+  min-width: 120px;
+  min-height: 72px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eef1f6 25%, #f6f8fb 37%, #eef1f6 63%);
+  background-size: 400% 100%;
+  animation: md-img-shimmer 1.4s ease infinite;
+}
+@keyframes md-img-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
 }
 </style>

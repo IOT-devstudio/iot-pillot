@@ -77,6 +77,11 @@ function openPost(id: number): void {
   void router.push(`/user/qa/${id}`);
 }
 
+/** 去发帖页（#220）。 */
+function goCompose(): void {
+  void router.push("/user/qa/new");
+}
+
 onMounted(async () => {
   // 方向下拉是筛选条件，独立于帖子列表加载；拉不到也不阻塞列表。
   try {
@@ -97,6 +102,10 @@ onMounted(async () => {
       description="成员与报名者整理的常见问题。按方向筛选，点开查看完整问答。"
       :meta="loading ? '加载中…' : `共 ${total} 条`"
     />
+
+    <div class="qa-list__cta">
+      <el-button type="primary" @click="goCompose">提问</el-button>
+    </div>
 
     <div class="qa-list__filters">
       <el-input
@@ -170,6 +179,11 @@ onMounted(async () => {
   max-width: 860px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+}
+.qa-list__cta {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 .qa-list__filters {
   display: flex;

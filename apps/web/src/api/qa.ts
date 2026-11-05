@@ -8,20 +8,28 @@
  * 开放给成员只需把路由挪分组，不在本期范围）。
  */
 import type {
+  QaCreatePostReq,
   QaPostDetail,
   QaPostListResp,
   QaPostQuery,
   QaPostSummary,
+  QaReply,
+  QaReplyReq,
+  QaUpdatePostReq,
 } from "@iot-pillot/shared-types";
-import { requestWithSession } from "./session-request";
+import { requestMessageWithSession, requestWithSession } from "./session-request";
 
 // 直接复用共享包的契约类型，不在这里复制一份：
 // 后端字段一旦变化，typecheck 会在这一层就报出来。
 export type {
+  QaCreatePostReq,
   QaPostDetail,
   QaPostListResp,
   QaPostQuery,
   QaPostSummary,
+  QaReply,
+  QaReplyReq,
+  QaUpdatePostReq,
 };
 
 /**
@@ -50,4 +58,72 @@ export function listQaPosts(query: QaPostQuery = {}): Promise<QaPostListResp> {
 /** 读取单个帖子详情（正文 + 回复，官方回答已置顶）。 */
 export function fetchQaPost(id: number): Promise<QaPostDetail> {
   return requestWithSession<QaPostDetail>(`/api/v1/forum/posts/${id}`);
+}
+
+/* ------------------------------------------------------------------ *
+ * 写入（#220）
+ * ------------------------------------------------------------------ */
+
+/** 新建帖子。新建后回复列表为空，后端直接回详情结构。 */
+export function createQaPost(payload: QaCreatePostReq): Promise<QaPostDetail> {
+  return requestWithSession<QaPostDetail>("/api/v1/forum/posts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 编辑帖子。仅作者本人或管理员可用；后端对无权与不存在一律回 404。 */
+export function updateQaPost(
+  id: number,
+  payload: QaUpdatePostReq,
+): Promise<QaPostDetail> {
+  return requestWithSession<QaPostDetail>(`/api/v1/forum/posts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 软删帖子。
+ *
+ * 后端成功时 data 为 null（Result 的 omitempty 会丢掉 data 字段），
+ * 走 message 出口而不是 dataOf：按 data 缺失当失败会弹出假错误。
+ */
+export function deleteQaPost(id: number): Promise<string> {
+  return requestMessageWithSession(`/api/v1/forum/posts/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/** 新建回复。 */
+export function createQaReply(
+  postId: number,
+  payload: QaReplyReq,
+): Promise<QaReply> {
+  return requestWithSession<QaReply>(`/api/v1/forum/posts/${postId}/replies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 编辑回复。编辑不触发邮件通知（ADR 0007）。 */
+export function updateQaReply(
+  replyId: number,
+  payload: QaReplyReq,
+): Promise<QaReply> {
+  return requestWithSession<QaReply>(`/api/v1/forum/replies/${replyId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 软删回复。同样走 message 出口（成功时 data 为 null）。 */
+export function deleteQaReply(replyId: number): Promise<string> {
+  return requestMessageWithSession(`/api/v1/forum/replies/${replyId}`, {
+    method: "DELETE",
+  });
 }

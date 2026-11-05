@@ -1,7 +1,7 @@
-// 招新问答 / 内部论坛（#219）的共享 DTO。
+// 招新问答 / 内部论坛（#219 只读、#220 写入）的共享 DTO。
 //
-// 本期只读：列表 + 详情 + 方向筛选 + 分页。写入（发帖/回复/软删/标记已解决）
-// 属于 #220/#221，本文件不定义任何写请求体。
+// 读：列表 + 详情 + 方向筛选 + 分页。
+// 写：新建/编辑/软删帖子与回复（#220 已落地）。
 //
 // 命名规则：网络层保持后端 snake_case（与 recruitment.ts / studio.ts 一致）；
 // ID 用 number（后端已落地，未迁 UUID，见 CLAUDE.md「前端开发计划」M0 约定）。
@@ -78,3 +78,43 @@ export interface QaPostQuery {
 
 // 复用既有 ID / ISODateTime 导出，避免消费方再多 import 一层。
 export type { ID, ISODateTime };
+
+/* ------------------------------------------------------------------ *
+ * 写入请求体（#220）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 新建帖子请求体。
+ *
+ * direction_code 三态语义与后端一致：
+ *   省略 / null          → 没选方向，服务端按「资料方向 → 最新报名 → 留空」回落
+ *   ""（空串）           → 视同没选，同样走回落
+ *   "front-end" 等具体值 → 以用户选择为准，不做回落
+ *
+ * scope 不在请求体里：它由路由分组决定，放进请求体会让用户能把招新帖写进内部论坛。
+ */
+export interface QaCreatePostReq {
+  title: string;
+  body: string;
+  direction_code?: string | null;
+}
+
+/** 编辑帖子请求体（方向不可改）。 */
+export interface QaUpdatePostReq {
+  title: string;
+  body: string;
+}
+
+/** 新建 / 编辑回复请求体（两者字段相同）。 */
+export interface QaReplyReq {
+  body: string;
+}
+
+/** 附件上传成功的响应（ADR 0004：URL 是相对地址，换域名不用改正文）。 */
+export interface AttachmentUploadResp {
+  id: number;
+  /** 相对地址 /api/v1/attachments/{id}，正文里直接用这个写 Markdown。 */
+  url: string;
+  content_type: string;
+  size_bytes: number;
+}
