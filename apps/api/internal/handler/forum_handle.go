@@ -31,6 +31,8 @@ func NewForumHandler(forum *service.ForumUseCase) *ForumHandler {
 //
 // ErrForumPostNotFound / ErrForumReplyNotFound 一律 404（不是 403）：软删与跨域越权
 // 都不该向调用方暴露「这个 id 存在」，否则可被用来枚举内部论坛规模（ADR 0004 §1 同口径）。
+// ErrForumReplyForbidden 是例外，回 403（#241）：帖子对调用方可见，
+// 这里拦的是「谁能回答」，回 404 只会让前端说「帖子不存在」这种假话。
 // ErrForumInvalidInput 是用户输入问题，回 400 并把可读原因透出，前端直接展示。
 func failForum(c *gin.Context, err error) {
 	switch {
@@ -38,6 +40,8 @@ func failForum(c *gin.Context, err error) {
 		response.FailNotFound(c, "帖子不存在")
 	case errors.Is(err, service.ErrForumReplyNotFound):
 		response.FailNotFound(c, "回复不存在")
+	case errors.Is(err, service.ErrForumReplyForbidden):
+		response.FailForbidden(c, err.Error())
 	case service.IsForumInvalidInput(err):
 		response.FailInvalidParam(c, err.Error())
 	default:

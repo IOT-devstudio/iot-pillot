@@ -160,7 +160,7 @@ func (h *ForumHandler) DeleteForumPost(c *gin.Context, scope domain.ForumScope) 
 
 // CreateForumReply 新建回复。
 // @Summary 新建回复
-// @Description 所有登录用户都能回复招新问答；帖子已软删时回复 404。
+// @Description 仅管理员可回答招新问答（#241）；普通用户得到 403 与可读文案。帖子不存在或已软删一律 404。
 // @Tags 招新问答
 // @Accept json
 // @Produce json
@@ -169,9 +169,13 @@ func (h *ForumHandler) DeleteForumPost(c *gin.Context, scope domain.ForumScope) 
 // @Success 200 {object} response.Result{data=response.ForumReplyResp} "成功"
 // @Failure 400 {object} response.Result "参数不合法"
 // @Failure 401 {object} response.Result "未认证"
+// @Failure 403 {object} response.Result "非管理员不能回答招新问答"
 // @Failure 404 {object} response.Result "帖子不存在"
 // @Security BearerAuth
 // @Router /api/v1/forum/posts/{id}/replies [post]
+//
+// 权限由路由层的 requireAdmin 与 service 的 isAdmin 双保险承担：
+// 中间件先给普通用户 403，service 再兜一次（防止将来有人只改路由忘改 service）。
 func (h *ForumHandler) CreateForumReply(c *gin.Context, scope domain.ForumScope) {
 	userID, _, _, ok := middleware.CurrentUser(c)
 	if !ok {

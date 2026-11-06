@@ -310,3 +310,97 @@ func TestForumReplyDeleteOthersIs404(t *testing.T) {
 		t.Fatal("must not delete others' reply")
 	}
 }
+
+/* ------------------------------------------------------------------ *
+ * 回答权限收口到管理员（#241）
+ * ------------------------------------------------------------------ */
+
+// newForumReplyEngine 组装「登录 + 管理员关」两步的真实路由，
+// 与生产 router.go 里 `apiV1.POST("/forum/posts/:id/replies", ..., requireAdmin, ...)`
+// 的形状一致：角色判定交给中间件，handler 不再 if-else。
+//
+// adminDir 同时喂给中间件（AdminChecker）与 service（ForumUseCase）：
+// 生产上两者读的是同一份 Redis 名单，测试里也必须一致，
+// 否则会出现「中间件放行、service 又拒」的假绿。
+func newForumReplyEngine(repo *stubForumWriteRepo, userID int, admin bool) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	adminDir := stubAdminDir{}
+	if admin {
+		adminDir = stubAdminDir{ids: []int{userID}}
+	}
+	uc := service.NewForumUseCase(repo, adminDir)
+	h := NewForumHandler(uc)
+
+	r := gin.New()
+	authRequired := middleware.AuthRequired(stubValidator{accept: "good-token", userID: userID})
+	requireAdmin := middleware.RequireAdmin(stubAdminChecker{admin: admin})
+	// 「回答仅限管理员」：只给这一条挂 requireAdmin。
+	r.POST("/api/v1/forum/posts/:id/replies", authRequired, requireAdmin,
+		func(c *gin.Context) { h.CreateForumReply(c, domain.ForumScopeRecruitment) })
+	// 其余端点保持「零变化」：不挂 requireAdmin。
+	forum := r.Group("/api/v1/forum", authRequired)
+	forum.POST("/posts", func(c *gin.Context) { h.CreateForumPost(c, domain.ForumScopeRecruitment) })
+	forum.PATCH("/replies/:id", func(c *gin.Context) { h.UpdateForumReply(c, domain.ForumScopeRecruitment) })
+	return r
+}
+
+// TestForumCreateReplyMemberIs403 普通用户回答招新问答 → 403（不是 404）。
+//
+// 帖子对他可见，404 只会误导前端给出「帖子不存在」的假话；
+// 与「一律 404」的分界见 ADR 0003 决策 8 的修订。
+func TestForumCreateReplyMemberIs403(t *testing.T) {
+	repo := &stubForumWriteRepo{}
+	repo.post = &domain.ForumPost{ID: 1, AuthorID: 999, Scope: domain.ForumScopeRecruitment}
+	r := newForumReplyEngine(repo, 2, false)
+
+	w := doForumJSON(t, r, http.MethodPost, "/api/v1/forum/posts/1/replies", "good-token", map[string]any{"body": "我也来答"})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for member reply, got %d (body=%s)", w.Code, w.Body.String())
+	}
+	// message 必须可读中文，不能是空串或英文内部错误。
+	var resp response.Result
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Message == "" {
+		t.Fatal("expected readable message for member reply rejection")
+	}
+	if repo.createdReply != nil {
+		t.Fatal("must not create reply as non-admin")
+	}
+}
+
+// TestForumCreateReplyAdminIs200 管理员回答招新问答 → 200 且回复落库。
+func TestForumCreateReplyAdminIs200(t *testing.T) {
+	repo := &stubForumWriteRepo{}
+	repo.post = &domain.ForumPost{ID: 1, AuthorID: 999, Scope: domain.ForumScopeRecruitment}
+	r := newForumReplyEngine(repo, 9, true)
+
+	w := doForumJSON(t, r, http.MethodPost, "/api/v1/forum/posts/1/replies", "good-token", map[string]any{"body": "官方回答"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for admin reply, got %d (body=%s)", w.Code, w.Body.String())
+	}
+	if repo.createdReply == nil {
+		t.Fatal("expected admin reply persisted")
+	}
+	if repo.createdReply.AuthorID != 9 || repo.createdReply.Body != "官方回答" {
+		t.Fatalf("unexpected reply: %+v", repo.createdReply)
+	}
+}
+
+// TestForumMemberCanStillWriteElsewhere 收口只针对「新建回复」，
+// 发帖与编辑自己的回复对普通用户行为零变化。
+func TestForumMemberCanStillWriteElsewhere(t *testing.T) {
+	repo := &stubForumWriteRepo{}
+	repo.reply = &domain.ForumReply{ID: 1, PostID: 1, AuthorID: 2, Body: "旧"}
+	r := newForumReplyEngine(repo, 2, false)
+
+	if w := doForumJSON(t, r, http.MethodPost, "/api/v1/forum/posts", "good-token",
+		map[string]any{"title": "提问", "body": "正文"}); w.Code != http.StatusOK {
+		t.Fatalf("member should still create posts, got %d (body=%s)", w.Code, w.Body.String())
+	}
+	if w := doForumJSON(t, r, http.MethodPatch, "/api/v1/forum/replies/1", "good-token",
+		map[string]any{"body": "新"}); w.Code != http.StatusOK {
+		t.Fatalf("member should still edit own reply, got %d (body=%s)", w.Code, w.Body.String())
+	}
+}
