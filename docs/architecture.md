@@ -101,8 +101,8 @@ Branch protection：`enforce_admins=true`、`required_approving_review_count=0`�
 
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
-| 路由分组 | `apps/api/internal/handler/router.go` | `/api/v1/forum`（登录即可）与 `/api/v1/studio/forum`（仅 admin）是**不同前缀**；权限写在分组上，普通成员的写请求一律 404 而非 403 |
-| 写入与检索 | `apps/api/internal/service/forum_write.go`、`internal/repository/forum_repo.go` | 归属校验在 service（`canManage`），不解析 URL；回复经 `post_id` 继承 scope |
+| 路由分组 | `apps/api/internal/handler/router.go` | `/api/v1/forum`（登录即可读与发帖）与 `/api/v1/studio/forum`（仅 admin）是**不同前缀**；权限写在分组上。内部论坛对普通成员一律 **404**（不暴露存在性）；招新问答的**回答**只给单条路由挂 `requireAdmin`，普通用户得 **403 + 可读文案**（帖子对他本来就可见，回 404 会误导前端说「帖子不存在」） |
+| 写入与检索 | `apps/api/internal/service/forum_write.go`、`internal/repository/forum_repo.go` | 归属校验在 service（`canManage`），不解析 URL；回复经 `post_id` 继承 scope。帖子/回复保存后按正文重算附件绑定（`post_id` / `reply_id`），失败只记日志、不回滚正文 |
 | 前端切域 | `apps/web/src/modules/forum/useForumScope.ts`、`routes.ts` | 路由 meta `forumScope` 决定内容域；列表/详情/编辑三个组件被两个域**复用**，不复制一份实现 |
 | 已解决 | `internal/service/forum_write.go` 的 `SetPostResolved` | `resolved_by` 记操作者；数据两域通用，界面只在招新问答暴露 |
 

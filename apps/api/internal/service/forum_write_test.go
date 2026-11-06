@@ -635,4 +635,18 @@ func TestCreateReplyAdminOnly(t *testing.T) {
 			t.Fatalf("non-admin should still create posts, got %v", err)
 		}
 	})
+
+	// 内部论坛本期明确不改：它的非管理员由路由分组拦成 404（不暴露存在性）。
+	// service 若在此也按 403 拦，「JWT 仍标 admin 但 Redis 已撤销」的人就会拿到
+	// 403，反过来证实了内部论坛帖子的存在，破坏那条 404 口径。
+	t.Run("内部论坛不走这条 403 判定", func(t *testing.T) {
+		studioPost := &domain.ForumPost{ID: 3, Scope: domain.ForumScopeStudio}
+		repo := &stubForumWriteRepo{post: studioPost}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{})
+
+		_, err := uc.CreateReply(context.Background(), 2, 3, CreateForumReplyInput{Body: "回复"})
+		if errors.Is(err, ErrForumReplyForbidden) {
+			t.Fatalf("studio 不应由 service 判 403（路由层负责 404），got %v", err)
+		}
+	})
 }

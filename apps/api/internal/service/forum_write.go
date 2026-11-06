@@ -280,8 +280,12 @@ func (uc *ForumUseCase) DeletePost(ctx context.Context, userID int, postID int) 
 // 必须先确认帖子可见：回复经 post_id 继承 scope，帖子已软删时往里写回复
 // 会造出一条永远看不到的孤儿行。
 //
-// 权限（#241，ADR 0003 决策 8 修订）：**回答仅限管理员**。普通用户拿 403 而不是 404：
-// 帖子对他是可见的，404 只会让前端显示「帖子不存在」这种假话。
+// 权限（#241，ADR 0003 决策 8 修订）：**招新问答的回答仅限管理员**。普通用户拿 403
+// 而不是 404：帖子对他是可见的，404 只会让前端显示「帖子不存在」这种假话。
+//
+// 内部论坛（studio）不走这里的判定：它的非管理员由路由分组拦成 404（不暴露存在性），
+// 本期明确不改。若在这里一并按 403 拦，那么「JWT 仍是 admin、但管理员资格已在 Redis
+// 被撤销」的人会拿到 403，等于反向确认了内部论坛帖子的存在——破坏了那条 404 口径。
 func (uc *ForumUseCase) CreateReply(ctx context.Context, authorID int, postID int, in CreateForumReplyInput) (*domain.ForumReply, error) {
 	post, err := uc.posts.GetPost(ctx, postID)
 	if err != nil {
@@ -291,7 +295,7 @@ func (uc *ForumUseCase) CreateReply(ctx context.Context, authorID int, postID in
 		return nil, ErrForumPostNotFound
 	}
 	// 权限在可见性之后判：帖子不存在/已软删仍走 404，不因权限而改变语义。
-	if !uc.isAdmin(ctx, authorID) {
+	if post.Scope == domain.ForumScopeRecruitment && !uc.isAdmin(ctx, authorID) {
 		return nil, ErrForumReplyForbidden
 	}
 	if err := validateReplyBody(in.Body); err != nil {
