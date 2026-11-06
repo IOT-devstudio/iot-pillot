@@ -80,14 +80,58 @@ func mustHash(password string) string {
 	return hashed
 }
 
-func TestLogin_RejectsFrozenAccount(t *testing.T) {
+// TestLogin_FrozenButCompliantSelfHeals 冻结标记 + 资料其实已合规 → 自愈为正常登录。
+//
+// 这是 0012 自助解冻引入的行为：资料既然合规，让用户卡在一个「实际没问题」的
+// 冻结态上毫无意义。frozenUser() 的班级 软工230301 正好合规，因此走这条分支。
+func TestLogin_FrozenButCompliantSelfHeals(t *testing.T) {
 	user := frozenUser()
 	repo := issue86UserRepoWith(user)
 	uc := newLoginUseCase(repo)
 
-	_, err := uc.Login(context.Background(), &request.LoginReq{Username: user.Name, Password: "secret123"})
-	if !errors.Is(err, ErrAccountFrozen) {
-		t.Fatalf("冻结账号登录应返回 ErrAccountFrozen，实际 %v", err)
+	resp, err := uc.Login(context.Background(), &request.LoginReq{Username: user.Name, Password: "secret123"})
+	if err != nil {
+		t.Fatalf("资料已合规的冻结账号应自愈登录成功，实际 %v", err)
+	}
+	if resp.Scope != utils.ScopeFull {
+		t.Fatalf("自愈后应拿到完整权限令牌，实际 scope=%q", resp.Scope)
+	}
+	if resp.Frozen {
+		t.Fatal("自愈后不应仍标记为冻结")
+	}
+}
+
+// TestLogin_FrozenIncompleteGetsRestrictedToken 冻结且资料不全 → 发受限令牌而不是拒绝。
+//
+// 这是本次改动的核心：拒绝会形成死锁（拿不到令牌 → 永远调不了补资料的 PUT /me）。
+func TestLogin_FrozenIncompleteGetsRestrictedToken(t *testing.T) {
+	user := frozenUser()
+	user.Detail.Class = "" // 班级缺失 → 资料不合规
+	repo := issue86UserRepoWith(user)
+	uc := newLoginUseCase(repo)
+
+	resp, err := uc.Login(context.Background(), &request.LoginReq{Username: user.Name, Password: "secret123"})
+	if err != nil {
+		t.Fatalf("冻结但资料不全应仍能登录（受限），实际 %v", err)
+	}
+	if resp.Scope != utils.ScopeProfileOnly {
+		t.Fatalf("应拿到仅补资料的受限令牌，实际 scope=%q", resp.Scope)
+	}
+	if !resp.Frozen {
+		t.Fatal("受限登录应标记 frozen")
+	}
+	if len(resp.FreezeIssues) == 0 {
+		t.Fatal("受限登录应带上待补的资料项")
+	}
+	// 至少要有班级这一项，且字段名可被前端定位。
+	var hasClass bool
+	for _, issue := range resp.FreezeIssues {
+		if issue.Field == string(domain.ProfileFieldClass) {
+			hasClass = true
+		}
+	}
+	if !hasClass {
+		t.Fatalf("待补项应包含 class，实际 %+v", resp.FreezeIssues)
 	}
 }
 
@@ -119,20 +163,38 @@ func TestLogin_NormalAccountStillWorks(t *testing.T) {
 type refreshTokenManager struct {
 	issue86TokenManager
 	userID int
+	// scope 原令牌的范围；空串按 full（冻结前签发的完整令牌）。
+	scope string
 }
 
 func (m refreshTokenManager) ValidateRefreshToken(_ context.Context, _ string) (int, string, string, error) {
 	return m.userID, "张三", "member", nil
 }
 
-func TestRefresh_RejectsFrozenAccount(t *testing.T) {
+func (m refreshTokenManager) ValidateRefreshTokenWithScope(_ context.Context, _ string) (int, string, string, string, error) {
+	scope := m.scope
+	if scope == "" {
+		scope = utils.ScopeFull
+	}
+	return m.userID, "张三", "member", scope, nil
+}
+
+// TestRefresh_FrozenAccountStaysRestricted 冻结账号刷新后仍只能是受限令牌。
+//
+// 旧行为是直接拒绝刷新；新行为不拒绝（用户还需要令牌去补资料），
+// 但**必须把令牌钉在受限范围内**——否则冻结前签发的完整令牌
+// 刷新一次就绕过了冻结，那冻结就形同虚设。
+func TestRefresh_FrozenAccountStaysRestricted(t *testing.T) {
 	user := frozenUser()
 	repo := issue86UserRepoWith(user)
 	uc := NewAuthUseCase(repo, refreshTokenManager{userID: user.ID}, issue86CodeManager{}, issue86AdminDirectory{}, nil)
 
-	// 冻结前签发的 refresh 令牌不能继续换新令牌，否则冻结形同虚设。
-	if _, err := uc.Refresh(context.Background(), "old-refresh-token"); !errors.Is(err, ErrAccountFrozen) {
-		t.Fatalf("冻结账号刷新应返回 ErrAccountFrozen，实际 %v", err)
+	resp, err := uc.Refresh(context.Background(), "old-refresh-token")
+	if err != nil {
+		t.Fatalf("冻结账号刷新不应被拒（需要令牌去补资料），实际 %v", err)
+	}
+	if resp.Scope != utils.ScopeProfileOnly {
+		t.Fatalf("冻结账号刷新后应保持受限，实际 scope=%q", resp.Scope)
 	}
 }
 

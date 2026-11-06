@@ -29,7 +29,12 @@ const defaultRecruitmentParse = 1
 // *utils.TokenManager 天然满足它，wire 需要显式 Bind。
 type TokenIssuer interface {
 	GenerateTokens(ctx context.Context, userID int, username string, role string) (accessToken string, refreshToken string, err error)
+	// GenerateRestrictedTokens 发「仅补资料」受限令牌（0012 冻结自助解冻）。
+	GenerateRestrictedTokens(ctx context.Context, userID int, username string, role string) (accessToken string, refreshToken string, err error)
 	ValidateRefreshToken(ctx context.Context, tokenString string) (userID int, username string, role string, err error)
+	// ValidateRefreshTokenWithScope 额外返回 scope：刷新受限令牌后必须仍是受限令牌，
+	// 否则冻结账号刷新一次就拿到了完整权限。
+	ValidateRefreshTokenWithScope(ctx context.Context, tokenString string) (userID int, username string, role string, scope string, err error)
 	RevokeSession(ctx context.Context, accessToken string, refreshToken string) error
 	RevokeUserSessions(ctx context.Context, userID int) error
 }
@@ -294,8 +299,13 @@ func (auc *AuthUseCase) Login(ctx context.Context, req *request.LoginReq) (*resp
 	// 先验密码再拒冻结，可以避免「猜对用户名就能确认该账号存在且被冻结」
 	// 这种信息泄露；同时密码错误的冻结账号仍按凭据错误计数，行为一致。
 	// 不计失败次数——冻结不是凭据问题，计数会让解冻后的首次登录被历史手误拖累。
+	// 冻结分支（0012 自助解冻）：不再直接 403，改发「仅补资料」受限令牌。
+	//
+	// 为什么改：冻结即 403 → 拿不到令牌 → 永远调不了补资料的 PUT /me，
+	// 用户只能找管理员，这与「补完信息才能解冻」的需求相反。
+	// 现在用户能登录（受限），补齐资料后自动解冻并换发完整令牌。
 	if user.IsFrozen() {
-		return nil, ErrAccountFrozen
+		return auc.loginFrozen(ctx, user)
 	}
 
 	role, err := auc.roleFor(ctx, user.ID)
@@ -315,7 +325,73 @@ func (auc *AuthUseCase) Login(ctx context.Context, req *request.LoginReq) (*resp
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		UserID:       user.ID,
+		Scope:        utils.ScopeFull,
 	}, nil
+}
+
+// loginFrozen 冻结账号的登录路径：发受限令牌 + 附上待补资料项。
+//
+// 自愈分支：若账号标着冻结、但当前资料其实已合规（例如管理员手动改过库、
+// 或上一轮解冻中途失败），直接解冻并正常登录——让用户卡在一个
+// 「实际没问题」的冻结态上没有任何意义。
+func (auc *AuthUseCase) loginFrozen(ctx context.Context, user *domain.User) (*response.LoginResp, error) {
+	issues := domain.ProfileIssues(user)
+	if len(issues) == 0 {
+		// 资料已合规：解冻并走正常登录（不再递归调用 Login，避免重复校验密码）。
+		if err := auc.userRepo.Unfreeze(ctx, user.ID); err != nil {
+			// 解冻失败不阻断登录：降级成受限令牌，用户至少能进来看资料。
+			log.Printf("[auth] 冻结账号 userID=%d 资料已合规但解冻失败，降级为受限登录: %v", user.ID, err)
+		} else {
+			log.Printf("[auth] 冻结账号 userID=%d 资料已合规，已自动解冻", user.ID)
+			role, roleErr := auc.roleFor(ctx, user.ID)
+			if roleErr != nil {
+				return nil, roleErr
+			}
+			accessToken, refreshToken, tokenErr := auc.tokenManager.GenerateTokens(ctx, user.ID, user.Name, role)
+			if tokenErr != nil {
+				return nil, tokenErr
+			}
+			return &response.LoginResp{
+				AccessToken:  accessToken,
+				RefreshToken: refreshToken,
+				UserID:       user.ID,
+				Scope:        utils.ScopeFull,
+				Frozen:       false,
+			}, nil
+		}
+	}
+
+	// 仍有不合规项：发受限令牌，让用户去补。
+	role, err := auc.roleFor(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	accessToken, refreshToken, err := auc.tokenManager.GenerateRestrictedTokens(ctx, user.ID, user.Name, role)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("[auth] 冻结账号 userID=%d 以受限令牌登录（待补 %d 项资料）", user.ID, len(issues))
+	return &response.LoginResp{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		UserID:       user.ID,
+		Scope:        utils.ScopeProfileOnly,
+		Frozen:       true,
+		FreezeIssues: toFreezeIssues(issues),
+	}, nil
+}
+
+// toFreezeIssues 把领域问题项映射成响应 DTO。
+func toFreezeIssues(issues []domain.ProfileIssue) []response.FreezeIssue {
+	out := make([]response.FreezeIssue, 0, len(issues))
+	for _, issue := range issues {
+		out = append(out, response.FreezeIssue{
+			Field:   string(issue.Field),
+			Message: issue.Message,
+		})
+	}
+	return out
 }
 
 // recordLoginFailure 记一次失败并检查是否达到锁定阈值。
@@ -400,21 +476,38 @@ func (auc *AuthUseCase) Register(ctx context.Context, req *request.RegisterReq) 
 // 原样带进新令牌，于是被撤销管理员的人只要刷新一次就能拿到一张声称 admin 的令牌。
 // 这里先从 Redis 取真角色再签发，刷新后的令牌与服务端判定永远一致。
 func (auc *AuthUseCase) Refresh(ctx context.Context, refreshToken string) (*response.RefreshResp, error) {
-	userID, username, _, err := auc.tokenManager.ValidateRefreshToken(ctx, refreshToken)
+	userID, username, _, tokenScope, err := auc.tokenManager.ValidateRefreshTokenWithScope(ctx, refreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	// 冻结拦截（0012）：refresh 令牌是冻结前签发的，不在这里拦住，
-	// 被冻结的账号就能靠不断刷新把会话无限续下去，冻结形同虚设。
+	// 冻结处理（0012 自助解冻）：不再直接拒绝，而是把令牌**钉在受限范围内**。
+	//
+	// 两条约束同时成立：
+	//   - 不拒绝：冻结账号需要令牌才能补资料，刷新是保持会话可用的唯一途径；
+	//   - 不升权：无论原来的令牌是完整还是受限，只要账号仍冻结，刷新出来的一律是
+	//     profile_only。否则冻结前签发的完整令牌刷新一次就能绕过冻结。
 	// 查不到用户（已注销）时按未冻结继续走原逻辑——那由令牌层与登录面处理。
-	if user, err := auc.userRepo.GetByID(ctx, userID); err == nil && user != nil && user.IsFrozen() {
-		return nil, ErrAccountFrozen
+	staysRestricted := tokenScope == utils.ScopeProfileOnly
+	if user, getErr := auc.userRepo.GetByID(ctx, userID); getErr == nil && user != nil && user.IsFrozen() {
+		staysRestricted = true
 	}
 
 	role, err := auc.roleFor(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+
+	if staysRestricted {
+		accessToken, newRefreshToken, genErr := auc.tokenManager.GenerateRestrictedTokens(ctx, userID, username, role)
+		if genErr != nil {
+			return nil, genErr
+		}
+		return &response.RefreshResp{
+			AccessToken:  accessToken,
+			RefreshToken: newRefreshToken,
+			Scope:        utils.ScopeProfileOnly,
+		}, nil
 	}
 
 	accessToken, newRefreshToken, err := auc.tokenManager.GenerateTokens(ctx, userID, username, role)
@@ -425,8 +518,83 @@ func (auc *AuthUseCase) Refresh(ctx context.Context, refreshToken string) (*resp
 	return &response.RefreshResp{
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
+		Scope:        utils.ScopeFull,
 	}, nil
 }
+
+// ErrNotFrozenForSelf 本人对一个未冻结的账号提交解冻。
+//
+// 与 admin 侧的 ErrNotFrozen 语义相同但独立定义：两者的 HTTP 语义一致，
+// 但混用会让「谁在调用」变得模糊，排查时看不出是自助还是管理端。
+var ErrNotFrozenForSelf = errors.New("当前账号未被冻结，无需解冻")
+
+// SubmitUnfreeze 本人提交解冻申请（0012 自助解冻）。
+//
+// 判定依据是 domain.ProfileIssues：与冻结扫描用的是**同一套规则**，
+// 因此不会出现「冻结说合规、解冻说不合规」的自相矛盾。
+//
+// 返回 (解冻后的双令牌, 剩余问题, error)：
+//   - 资料已合规 → 清冻结三列 + 换发完整令牌，issues 为空；
+//   - 资料仍不合规 → 返回剩余 issues，**不解冻**，错误为 ErrProfileIncomplete；
+//   - 账号本来没冻结 → ErrNotFrozenForSelf。
+//
+// 为什么解冻后要换令牌而不是让前端继续用受限令牌：
+// 受限令牌只能补资料，用户会立刻遇到「补完了却还是什么都点不开」，
+// 得再登录一次才行。换令牌让这个流程一步到底。
+func (auc *AuthUseCase) SubmitUnfreeze(ctx context.Context, userID int) (*response.UnfreezeSelfResp, error) {
+	// 重新读库而不是信任令牌里的信息：资料是刚刚才可能被改写的，
+	// 用旧快照判定会出现「刚补齐却说我还不合规」。
+	user, err := auc.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrAccountNotFoundForReset
+	}
+	if !user.IsFrozen() {
+		return nil, ErrNotFrozenForSelf
+	}
+
+	issues := domain.ProfileIssues(user)
+	if len(issues) > 0 {
+		// 不解冻：把还剩什么告诉用户，而不是笼统地拒绝。
+		return &response.UnfreezeSelfResp{
+			UserID:       userID,
+			Frozen:       true,
+			FreezeIssues: toFreezeIssues(issues),
+		}, ErrProfileIncomplete
+	}
+
+	if err := auc.userRepo.Unfreeze(ctx, userID); err != nil {
+		if errors.Is(err, repository.ErrUserNotFrozen) {
+			return nil, ErrNotFrozenForSelf
+		}
+		return nil, err
+	}
+	log.Printf("[auth] 账号资料已补齐，自助解冻成功: userID=%d", userID)
+
+	role, err := auc.roleFor(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	accessToken, refreshToken, err := auc.tokenManager.GenerateTokens(ctx, userID, user.Name, role)
+	if err != nil {
+		return nil, err
+	}
+	return &response.UnfreezeSelfResp{
+		UserID:       userID,
+		Frozen:       false,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		Scope:        utils.ScopeFull,
+	}, nil
+}
+
+// ErrProfileIncomplete 提交解冻时资料仍不合规。
+//
+// 单独一个哨兵而不是笼统的错误：handler 要据此把「还剩哪几项」回给前端，
+// 让用户知道该改什么。
+var ErrProfileIncomplete = errors.New("资料仍未补齐，请按提示修改后再提交")
 
 func (auc *AuthUseCase) Logout(ctx context.Context, accessToken string, refreshToken string) error {
 	return auc.tokenManager.RevokeSession(ctx, accessToken, refreshToken)
@@ -536,7 +704,6 @@ func (auc *AuthUseCase) ChangePassword(ctx context.Context, userID int, req *req
 	return nil
 }
 
-
 /* ------------------------------------------------------------------ *
  * 自助注销（issue #159）
  * ------------------------------------------------------------------ */
@@ -550,7 +717,7 @@ func (auc *AuthUseCase) ChangePassword(ctx context.Context, userID int, req *req
 //   - 需要清理两个管理员集合（自助者可能是晋升管理员，幂等移出）
 //
 // 顺序同 DeleteUser：守卫在前、副作用在后；软删 → 清集合 → 踢全部会话
-//（含当前请求的令牌，前端拿到成功响应后清本地会话跳登录页）。
+// （含当前请求的令牌，前端拿到成功响应后清本地会话跳登录页）。
 func (auc *AuthUseCase) DeleteSelf(ctx context.Context, userID int) error {
 	// 创始判定失败外传（读不到名单时拒绝而不是放行，与 roleFor 同款取舍）
 	if found, err := auc.admins.IsFounding(ctx, userID); err != nil {

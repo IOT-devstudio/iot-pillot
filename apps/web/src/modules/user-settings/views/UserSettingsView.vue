@@ -13,7 +13,8 @@ import { ElMessage, ElMessageBox } from "element-plus";
 
 import PageHeader from "@/components/common/PageHeader.vue";
 import { deleteCurrentUser } from "@/api/profile";
-import { clearAuthSession } from "@/auth/session";
+import { clearAuthSession, currentSession, saveAuthSession } from "@/auth/session";
+import { unfreezeSelf } from "@/api/auth";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import { useUserSettings } from "../composables/useUserSettings";
 import {
@@ -164,6 +165,55 @@ async function handleDeleteAccount(): Promise<void> {
   }
 }
 
+/**
+ * 冻结受限态（0012 自助解冻）。
+ *
+ * 冻结账号登录后拿到的令牌只能访问补资料相关端点，前端把它带到这里。
+ * 用户补齐资料后点「提交解冻」：后端重新校验，通过就解冻并换发完整令牌。
+ */
+const frozenSession = computed(() =>
+  currentSession.value?.scope === "profile_only" || currentSession.value?.frozen === true,
+);
+const freezeIssues = computed(() => currentSession.value?.freeze_issues ?? []);
+const unfreezing = ref(false);
+
+/**
+ * 提交解冻。
+ *
+ * 资料仍不全时后端回 200 + frozen=true + 剩余问题项（不是错误），
+ * 所以这里要把「还剩哪几项」展示出来，而不是只说「失败了」。
+ */
+async function submitUnfreeze(): Promise<void> {
+  const token = currentSession.value?.access_token;
+  if (!token || unfreezing.value) return;
+
+  unfreezing.value = true;
+  try {
+    const result = await unfreezeSelf(token);
+    if (result.frozen) {
+      // 还没补齐：把清单留给用户，别把他弹回登录页。
+      ElMessage.warning("资料仍未补齐，请按提示修改后再提交");
+      return;
+    }
+    // 解冻成功：必须替换本地会话，否则手里还是受限令牌，点什么都是 403。
+    if (result.access_token && result.refresh_token) {
+      saveAuthSession({
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
+        user_id: result.user_id,
+        scope: result.scope ?? "full",
+        frozen: false,
+      });
+    }
+    ElMessage.success("资料已补齐，账号已解冻");
+    await router.replace("/user/home");
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "提交解冻失败，请稍后重试");
+  } finally {
+    unfreezing.value = false;
+  }
+}
+
 </script>
 
 <template>
@@ -176,6 +226,21 @@ async function handleDeleteAccount(): Promise<void> {
         title="个人设置"
         description="维护你的姓名与个人资料。账号绑定邮箱不可修改。"
       />
+
+      <!-- 冻结提示（0012 自助解冻）：这是「进不去别的页面」的强提示，
+           与可忽略的补全横幅不同，因此用 alert 且不给关闭按钮。 -->
+      <section v-if="frozenSession" class="panel panel--pad settings-frozen" role="alert">
+        <p class="settings-frozen__title">账号已因资料不完整被冻结</p>
+        <p class="settings-frozen__desc">
+          补齐下列资料后点「提交解冻」即可恢复使用，无需联系管理员。
+        </p>
+        <ul v-if="freezeIssues.length" class="settings-frozen__issues">
+          <li v-for="issue in freezeIssues" :key="issue.field">{{ issue.message }}</li>
+        </ul>
+        <el-button type="primary" :loading="unfreezing" @click="submitUnfreeze">
+          提交解冻
+        </el-button>
+      </section>
 
       <!-- 加载中：用骨架屏而非「正在加载…」单行，避开从 50px 跳到 220px 的重排 -->
       <section v-if="loading" class="panel panel--pad" role="status" aria-label="正在加载资料">
@@ -391,4 +456,32 @@ async function handleDeleteAccount(): Promise<void> {
     align-items: stretch;
   }
 }
+
+.settings-frozen {
+  border-left: 4px solid #f59e0b;
+}
+
+.settings-frozen__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #b45309;
+}
+
+.settings-frozen__desc {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.settings-frozen__issues {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  font-size: 13px;
+  color: #b91c1c;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 </style>

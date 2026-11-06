@@ -25,6 +25,8 @@ const (
 	ContextUserID   = "auth.user_id"
 	ContextUsername = "auth.username"
 	ContextRole     = "auth.role"
+	// ContextScope 令牌范围（full / profile_only），见 utils/token_scope.go。
+	ContextScope = "auth.scope"
 )
 
 // TokenValidator 是认证中间件对令牌校验的**全部**依赖。
@@ -36,6 +38,9 @@ const (
 // *utils.TokenManager 的方法集天然满足这个接口，wire 直接传具体类型即可。
 type TokenValidator interface {
 	ValidateAccessToken(ctx context.Context, tokenString string) (userID int, username string, role string, err error)
+	// ValidateAccessTokenWithScope 额外返回令牌范围。
+	// 冻结账号登录拿到的受限令牌（profile_only）只能访问补资料相关端点。
+	ValidateAccessTokenWithScope(ctx context.Context, tokenString string) (userID int, username string, role string, scope string, err error)
 }
 
 // extractBearerToken 从 Authorization 头取出 Bearer 令牌。
@@ -72,7 +77,7 @@ func AuthRequired(validator TokenValidator) gin.HandlerFunc {
 			return
 		}
 
-		userID, username, role, err := validator.ValidateAccessToken(c.Request.Context(), token)
+		userID, username, role, scope, err := validator.ValidateAccessTokenWithScope(c.Request.Context(), token)
 		if err != nil {
 			// 精确区分失效原因（issue #84）：
 			//   4010 纯过期（签名有效只是 exp 到了）→ 前端安静刷新即可；
@@ -94,6 +99,48 @@ func AuthRequired(validator TokenValidator) gin.HandlerFunc {
 		c.Set(ContextUserID, userID)
 		c.Set(ContextUsername, username)
 		c.Set(ContextRole, role)
+		c.Set(ContextScope, utils.NormalizeScope(scope))
+		c.Next()
+	}
+}
+
+// RequireFullScope 要求令牌是**完整权限**（非「仅补资料」受限令牌）。
+//
+// 背景（0012 冻结自助解冻）：资料不合规被冻结的账号登录时拿到的是
+// profile_only 受限令牌，它只能访问 GET/PUT /me、POST /me/unfreeze、
+// logout 与 refresh。其余所有业务端点都必须挂这个中间件。
+//
+// 为什么默认拒绝而不是默认放行：
+// 忘记给新路由挂这个中间件，就会让受限令牌拿到完整权限——那是**静默的越权**，
+// 没有报错、没有日志。反过来「忘记挂 → 拒绝访问」会立刻暴露出来。
+// 所以这里对「上下文里没有 scope」也按拒绝处理。
+//
+// 必须挂在 AuthRequired 之后：没有身份信息时按 401 拒绝。
+func RequireFullScope() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if _, _, _, ok := CurrentUser(c); !ok {
+			response.FailUnauthorized(c, "缺少认证信息，请先通过 AuthRequired 中间件")
+			c.Abort()
+			return
+		}
+
+		raw, exists := c.Get(ContextScope)
+		scope, isString := raw.(string)
+		// 读不到或类型不对 → 拒绝（fail-closed）。
+		if !exists || !isString {
+			response.FailForbidden(c, "当前会话权限受限，请先补齐资料")
+			c.Abort()
+			return
+		}
+
+		if utils.NormalizeScope(scope) != utils.ScopeFull {
+			// 受限会话是合法会话，只是权限范围小：
+			// 不清会话、不返 401，否则前端会误判成「登录失效」把人甩回登录页。
+			response.FailForbidden(c, "账号资料未补全，请先补齐后再使用其它功能")
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }
@@ -205,6 +252,22 @@ func CurrentUser(c *gin.Context) (userID int, username string, role string, ok b
 	}
 
 	return id, name, roleValue, true
+}
+
+// CurrentScope 读出当前令牌范围。
+//
+// 没有任何认证信息时返回空串（调用方应已先过 AuthRequired）。
+// 缺失时按 ScopeFull 归一由 utils.NormalizeScope 负责，这里只做取值。
+func CurrentScope(c *gin.Context) string {
+	raw, exists := c.Get(ContextScope)
+	if !exists {
+		return ""
+	}
+	scope, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return utils.NormalizeScope(scope)
 }
 
 // failTokenStoreUnavailable 令牌校验遇到非逻辑故障（Redis 不可用等）时的出口。

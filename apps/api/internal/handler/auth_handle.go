@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"io"
+	"log"
 	"strings"
 
 	"github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
@@ -452,7 +453,83 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		return
 	}
 
-	response.OK(c, meRespOf(user, username, role, isFounding))
+	payload := meRespOf(user, username, role, isFounding)
+
+	// 自动解冻（0012 自助解冻）：受限会话保存资料后若已合规，当场解冻并换发完整令牌。
+	// 只对受限会话做这件事——完整会话本来就没冻结，不必多读一次库。
+	if middleware.CurrentScope(c) == utils.ScopeProfileOnly {
+		if unfrozen, tokenPair := h.tryAutoUnfreeze(c, userID); unfrozen {
+			payload.AccessToken = tokenPair.accessToken
+			payload.RefreshToken = tokenPair.refreshToken
+			payload.Scope = utils.ScopeFull
+			payload.Unfrozen = true
+		}
+	}
+
+	response.OK(c, payload)
+}
+
+// tokenPair 换发令牌时返回的一对令牌。
+type tokenPair struct {
+	accessToken  string
+	refreshToken string
+}
+
+// tryAutoUnfreeze 在补资料成功后尝试自动解冻。
+//
+// 判定完全交给 service.SubmitUnfreeze：它重新读库并跑 domain.ProfileIssues，
+// 与冻结扫描同一套规则。这里**不做任何本地判断**——在 handler 里凭请求体
+// 推测「应该补齐了」会把「差一项」误判成合规。
+//
+// 解冻失败（资料仍不全 / 未冻结 / 库故障）一律静默降级：
+// 资料保存本身已经成功，用户重试一次即可；把保存变成失败会让他丢掉刚填的内容。
+func (h *AuthHandler) tryAutoUnfreeze(c *gin.Context, userID int) (bool, tokenPair) {
+	resp, err := h.authService.SubmitUnfreeze(c.Request.Context(), userID)
+	if err != nil {
+		if errors.Is(err, service.ErrProfileIncomplete) {
+			// 正常情况：还差几项，保持受限会话，让用户继续补。
+			return false, tokenPair{}
+		}
+		log.Printf("[auth] 补资料后自动解冻未成行（资料已保存，用户可重试）: userID=%d err=%v", userID, err)
+		return false, tokenPair{}
+	}
+	return true, tokenPair{accessToken: resp.AccessToken, refreshToken: resp.RefreshToken}
+}
+
+// UnfreezeSelf 本人提交解冻（0012 自助解冻）。
+//
+// 与 PUT /me 的自动解冻是两条入口，共用 service.SubmitUnfreeze 的判定：
+//   - PUT /me 是在保存资料的顺路上尝试解冻（用户不感知）；
+//   - 本接口是显式入口，让前端在补完资料后能主动确认一次并立刻换到完整权限。
+func (h *AuthHandler) UnfreezeSelf(c *gin.Context) {
+	userID, _, _, ok := middleware.CurrentUser(c)
+	if !ok {
+		response.FailUnauthorized(c, "缺少认证信息")
+		return
+	}
+
+	resp, err := h.authService.SubmitUnfreeze(c.Request.Context(), userID)
+	if err != nil {
+		if errors.Is(err, service.ErrProfileIncomplete) {
+			// 资料仍不全：这是**业务上的正常结果**，不是请求错误。
+			// 回 200 + frozen=true + 剩余问题项，让前端直接拿到「还差哪几项」
+			// 去渲染；若走 400，前端只能拿到一句错误文案，不知道要改哪里。
+			if resp != nil {
+				response.OK(c, resp)
+				return
+			}
+			response.FailInvalidParam(c, service.ErrProfileIncomplete.Error())
+			return
+		}
+		if errors.Is(err, service.ErrNotFrozenForSelf) {
+			response.FailInvalidParam(c, err.Error())
+			return
+		}
+		failInternal(c, err)
+		return
+	}
+
+	response.OK(c, resp)
 }
 
 // meRespOf 组装 /me 的统一响应（GET 与 PUT 共用）。

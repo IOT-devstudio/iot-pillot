@@ -119,7 +119,15 @@ func NewRouter(
 	// *utils.AdminStore 满足 middleware.AdminChecker 与 FoundingChecker
 	// —— 这里做一次接口转换，中间件本身不依赖 Redis、签名算法等细节
 	//（测试可注入桩实现）。
+	// 两级登录门槛（0012 自助解冻）：
+	//   authProfileOK —— 只要求登录，受限令牌也能过。**仅**给补资料闭环用。
+	//   authRequired  —— 登录 + 完整权限，受限令牌访问即 403。
+	//
+	// 默认用 authRequired（fail-closed）：忘记给新路由挑门槛时，
+	// 结果会是「受限令牌被拒绝」而不是「受限令牌拿到完整权限」。
+	authProfileOK := middleware.AuthRequired(tokenManager)
 	authRequired := middleware.AuthRequired(tokenManager)
+	requireFullScope := middleware.RequireFullScope()
 	requireAdmin := middleware.RequireAdmin(adminStore)
 	// 创始鉴权（issue #142 Q1）：auth:admins:founding 首次参与鉴权，
 	// 仅覆盖注销账号这一个端点，其余端点语义零变化。
@@ -144,18 +152,22 @@ func NewRouter(
 		// ── 需要登录 ──
 		// /me 的读写都只要求登录（不是 admin）：改的是令牌本人的资料，
 		// 目标身份由 authRequired 解出的 userID 决定，body 里塞目标参数无效。
-		apiV1.GET("/me", authRequired, authHandler.Me)
-		apiV1.PUT("/me", authRequired, authHandler.UpdateMe)
+		// 补资料闭环（0012）：这四个端点必须允许受限令牌通过，
+		// 否则冻结用户拿不到资料、也就永远解不了冻。
+		apiV1.GET("/me", authProfileOK, authHandler.Me)
+		apiV1.PUT("/me", authProfileOK, authHandler.UpdateMe)
+		// 本人提交解冻：受限令牌的又一个白名单入口。
+		apiV1.POST("/me/unfreeze", authProfileOK, authHandler.UnfreezeSelf)
 		// 自助注销（issue #159）：个人设置页入口；创始管理员由服务层拒绝
-		apiV1.DELETE("/me", authRequired, authHandler.DeleteSelf)
+		apiV1.DELETE("/me", authRequired, requireFullScope, authHandler.DeleteSelf)
 		// 修改密码（issue #84）：成功后撤销全部会话，当前令牌一并失效
-		apiV1.POST("/change-password", authRequired, authHandler.ChangePassword)
+		apiV1.POST("/change-password", authRequired, requireFullScope, authHandler.ChangePassword)
 
 		// ── 管理端（需要管理员）──
 		// 两级中间件缺一不可：RequireAdmin 依赖 AuthRequired 写入的身份，
 		// 且在缺少身份时按 401 拒绝而不是放行（见 middleware/auth.go）。
 		// 管理员判定读 Redis 名单，因此撤销管理员对后续请求立即生效。
-		admin := apiV1.Group("/admin", authRequired, requireAdmin)
+		admin := apiV1.Group("/admin", authRequired, requireFullScope, requireAdmin)
 		admin.GET("/users", adminHandler.ListUsers)
 		admin.GET("/admins", adminHandler.ListAdmins)
 		admin.POST("/admins", adminHandler.GrantAdmin)
@@ -181,7 +193,7 @@ func NewRouter(
 
 		// ── 招新（用户端，需登录）──
 		// 方向列表已移到公开段（issue #155），这里只剩报名相关接口。
-		recruit := apiV1.Group("/recruitment", authRequired)
+		recruit := apiV1.Group("/recruitment", authRequired, requireFullScope)
 		recruit.POST("/applications", recruitmentHandler.SubmitApplication)
 		recruit.GET("/applications", recruitmentHandler.ListMyApplications)
 		recruit.GET("/applications/:id", recruitmentHandler.GetMyApplication)
@@ -208,9 +220,9 @@ func NewRouter(
 
 		// ── 用户端-邀请接受与候选人记录（需要登录）──
 		// 接受邀请必须登录并核对申请归属（服务层 application.user_id == 当前用户）。
-		apiV1.GET("/me/invitations", authRequired, invitationHandler.ListMyInvitations)
-		apiV1.POST("/me/invitations/accept", authRequired, invitationHandler.AcceptInvitation)
-		apiV1.GET("/me/candidates", authRequired, invitationHandler.ListMyCandidates)
+		apiV1.GET("/me/invitations", authRequired, requireFullScope, invitationHandler.ListMyInvitations)
+		apiV1.POST("/me/invitations/accept", authRequired, requireFullScope, invitationHandler.AcceptInvitation)
+		apiV1.GET("/me/candidates", authRequired, requireFullScope, invitationHandler.ListMyCandidates)
 
 		// ── 管理端-工作室运营（#195）──
 		// 工作室域首期**仅 admin**（ADR 0001 §权限拍板）：member 只读与游客
@@ -270,7 +282,7 @@ func NewRouter(
 		// —— 否则会暴露内部论坛的存在，可被用来枚举规模（#219 验收 + ADR 0004 §1）。
 		// 角色判定改在闭包里做：非 admin 直接 FailNotFound，admin 才注入 studio scope。
 		// scope 由闭包写入，handler 不解析 URL（ADR 0003 决策 3）。
-		studioForum := apiV1.Group("/studio/forum", authRequired)
+		studioForum := apiV1.Group("/studio/forum", authRequired, requireFullScope)
 		studioForum.GET("/posts", func(c *gin.Context) {
 			if _, _, role, ok := middleware.CurrentUser(c); !ok || role != middleware.RoleAdmin {
 				response.FailNotFound(c, "帖子不存在")
@@ -311,22 +323,22 @@ func NewRouter(
 		// 分享入口同样挂在 authRequired 之后：share_token 只是定位符，
 		// 不存在匿名读取或匿名提交的路径（#92 裁决）。读取也要求登录，
 		// 是为了让填写页能直接拿到"当前用户是否已提交"。
-		apiV1.GET("/forms", authRequired, formHandler.ListForms)
-		apiV1.POST("/forms", authRequired, requireAdmin, formHandler.CreateForm)
+		apiV1.GET("/forms", authRequired, requireFullScope, formHandler.ListForms)
+		apiV1.POST("/forms", authRequired, requireFullScope, requireAdmin, formHandler.CreateForm)
 		// 静态段 public 与参数段 :id 同层共存（gin v1.10 允许，已实测）。
-		apiV1.GET("/forms/public/:shareToken", authRequired, formHandler.ReadShareForm)
-		apiV1.POST("/forms/public/:shareToken/submit", authRequired, formHandler.SubmitForm)
-		apiV1.GET("/forms/:id", authRequired, formHandler.GetFormDetail)
-		apiV1.PATCH("/forms/:id", authRequired, requireAdmin, formHandler.UpdateForm)
-		apiV1.GET("/forms/:id/submissions", authRequired, requireAdmin, formHandler.ListFormSubmissions)
-		apiV1.GET("/forms/:id/submissions/:submission_id", authRequired, requireAdmin, formHandler.GetFormSubmission)
+		apiV1.GET("/forms/public/:shareToken", authRequired, requireFullScope, formHandler.ReadShareForm)
+		apiV1.POST("/forms/public/:shareToken/submit", authRequired, requireFullScope, formHandler.SubmitForm)
+		apiV1.GET("/forms/:id", authRequired, requireFullScope, formHandler.GetFormDetail)
+		apiV1.PATCH("/forms/:id", authRequired, requireFullScope, requireAdmin, formHandler.UpdateForm)
+		apiV1.GET("/forms/:id/submissions", authRequired, requireFullScope, requireAdmin, formHandler.ListFormSubmissions)
+		apiV1.GET("/forms/:id/submissions/:submission_id", authRequired, requireFullScope, requireAdmin, formHandler.GetFormSubmission)
 
 		// ── 内容附件（#216 上传 / #217 读取）──
 		// 两个端点都只挂 authRequired：上传任何登录用户都能发图（不分 scope、无 requireAdmin）；
 		// 读取的归属判定在 service，handler 只解析 id 并一律 404（防枚举，见 ADR 0004）。
-		apiV1.POST("/attachments", authRequired, attachmentHandler.UploadAttachment)
+		apiV1.POST("/attachments", authRequired, requireFullScope, attachmentHandler.UploadAttachment)
 		// 读取：仅 authRequired，归属判定全在 service（handler 只解析 id，错误一律 404 防枚举）。
-		apiV1.GET("/attachments/:id", authRequired, attachmentHandler.GetAttachment)
+		apiV1.GET("/attachments/:id", authRequired, requireFullScope, attachmentHandler.GetAttachment)
 
 		// ── 招新问答（#219，用户端需登录）──
 		// recruitment 内容域挂登录用户组；studio 内容域另挂 admin 组（见下方 studio 段）。
@@ -336,12 +348,12 @@ func NewRouter(
 		// 只挂 authRequired 而不是要求 admin：路线是给全体成员看的推荐内容。
 		// 进度端点也不区分角色——进度只属于本人，管理员读到的同样是自己的。
 		// 不新增任何公开路由：未登录由前端守卫拦到登录页（与 /user/settings 一致）。
-		learning := apiV1.Group("/learning", authRequired)
+		learning := apiV1.Group("/learning", authRequired, requireFullScope)
 		learning.GET("/roadmaps", roadmapHandler.ListLearningRoadmaps)
 		learning.GET("/roadmaps/:id", roadmapHandler.GetLearningRoadmap)
 		learning.POST("/roadmaps/:id/progress", roadmapHandler.MarkRoadmapProgress)
 
-		forum := apiV1.Group("/forum", authRequired)
+		forum := apiV1.Group("/forum", authRequired, requireFullScope)
 		forum.GET("/posts", func(c *gin.Context) { forumHandler.ListForumPosts(c, domain.ForumScopeRecruitment) })
 		forum.GET("/posts/:id", func(c *gin.Context) { forumHandler.GetForumPost(c, domain.ForumScopeRecruitment) })
 		// 写入（#220）：所有登录用户都能发帖与回复招新问答。

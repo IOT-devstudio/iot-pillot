@@ -41,6 +41,14 @@ export type AuthSubmitResult =
  */
 export const DEFAULT_LANDING = "/dashboard";
 
+/**
+ * 冻结账号专属落脚页（0012 自助解冻）。
+ *
+ * 与「资料不完整提示」不同：那个是横幅提示、可以忽略；
+ * 这个是真的进不去别的页面，只能补资料。
+ */
+export const PROFILE_UNFREEZE_PATH = "/user/settings?reason=frozen";
+
 export function defaultNavigateTarget(redirect?: string, role?: string): string {
   // 只接受站内绝对路径：redirect 可能来自 URL，放行 "//evil.com" 这类
   // 协议相对地址会让登录变成一个开放重定向漏洞。
@@ -76,6 +84,15 @@ export async function submitAuth(
       : await deps.register(toRegisterPayload(form as RegisterForm));
 
   deps.saveSession(session);
+
+  // 受限会话（0012 自助解冻）：账号因资料不全被冻结，令牌只能用来补资料。
+  // 必须直接进设置页，**忽略 redirect**——原来的目标页几乎一定访问不了，
+  // 把人带过去只会看到一片 403。
+  if (session.scope === "profile_only" || session.frozen) {
+    await deps.navigate(PROFILE_UNFREEZE_PATH);
+    return { ok: true, session };
+  }
+
   const profile = await deps.checkProfile?.();
   const role = profile?.user_id === session.user_id ? profile?.role : undefined;
   await deps.navigate(defaultNavigateTarget(redirect, role));

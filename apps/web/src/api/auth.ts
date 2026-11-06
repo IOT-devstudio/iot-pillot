@@ -7,15 +7,44 @@ import type {
 
 export const UNAVAILABLE_MESSAGE = "服务暂时不可用，请稍后重试";
 
+/**
+ * 一条待补的资料项（0012 自助解冻）。
+ *
+ * field 用于定位输入框，message 是可直接展示的整改要求。
+ */
+export interface FreezeIssue {
+  field: string;
+  message: string;
+}
+
+/** 令牌范围：完整权限 / 仅补资料。 */
+export type TokenScope = "full" | "profile_only";
+
 export interface AuthSession {
   access_token: string;
   refresh_token: string;
   user_id: number;
+  /**
+   * 令牌范围（0012 自助解冻）。缺省按 full 处理——
+   * 后端对旧令牌也会归一到 full，前端保持同样的宽容度。
+   */
+  scope?: TokenScope;
+  /**
+   * 账号是否因资料不全处于冻结。
+   *
+   * 为真时 scope 一定是 profile_only：用户只能进补资料页，
+   * 补齐后后端自动解冻并换发完整令牌。
+   */
+  frozen?: boolean;
+  /** 待补资料项，仅 frozen 时非空。 */
+  freeze_issues?: FreezeIssue[];
 }
 
 export interface RefreshAuthSession {
   access_token: string;
   refresh_token: string;
+  /** 刷新后仍保持原范围：受限令牌刷新不会升权。 */
+  scope?: TokenScope;
 }
 
 export interface BackendResponse<T> {
@@ -107,9 +136,21 @@ function jsonPost(payload: unknown): RequestInit {
   };
 }
 
-/** 需要 data 的接口：data 缺失按「服务不可用」处理，避免把 undefined 当业务对象用 */
-async function postAuth<T>(path: string, payload: unknown): Promise<T> {
-  const { body, status } = await requestBackend<T>(path, jsonPost(payload));
+/**
+ * 需要 data 的接口：data 缺失按「服务不可用」处理，避免把 undefined 当业务对象用。
+ *
+ * headers 可选：需要携带 Authorization 的登录态接口（如自助解冻）用它。
+ */
+async function postAuth<T>(
+  path: string,
+  payload: unknown,
+  headers?: HeadersInit,
+): Promise<T> {
+  const init = jsonPost(payload);
+  if (headers) {
+    init.headers = { ...(init.headers as Record<string, string>), ...(headers as Record<string, string>) };
+  }
+  const { body, status } = await requestBackend<T>(path, init);
 
   if (body.data === undefined) {
     throw new AuthRequestError(UNAVAILABLE_MESSAGE, status, body.code);
@@ -203,6 +244,39 @@ export function changePassword(
   return postAuthNoData(
     "/api/v1/change-password",
     payload,
+    { Authorization: `Bearer ${accessToken}` },
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * 自助解冻（0012）：冻结账号补齐资料后解冻
+ * ------------------------------------------------------------------ */
+
+/** 提交解冻的结果。 */
+export interface UnfreezeSelfResult {
+  user_id: number;
+  frozen: boolean;
+  access_token?: string;
+  refresh_token?: string;
+  scope?: TokenScope;
+  /** 资料仍不全时返回剩余问题项。 */
+  freeze_issues?: FreezeIssue[];
+}
+
+/**
+ * 本人提交解冻。
+ *
+ * 资料仍不全时后端回 200 + frozen=true + 剩余问题项（不是 400）：
+ * 那是业务上的正常结果，前端需要拿到清单去渲染，而不是一句错误文案。
+ * 因此这里用 postAuth（要求 data 存在）而不是 postAuthNoData。
+ *
+ * 解冻成功时响应里带新的双令牌：调用方必须替换本地会话，
+ * 否则用户手里还是受限令牌，什么都点不开。
+ */
+export function unfreezeSelf(accessToken: string): Promise<UnfreezeSelfResult> {
+  return postAuth<UnfreezeSelfResult>(
+    "/api/v1/me/unfreeze",
+    {},
     { Authorization: `Bearer ${accessToken}` },
   );
 }

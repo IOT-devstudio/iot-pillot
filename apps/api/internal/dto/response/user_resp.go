@@ -2,10 +2,31 @@ package response
 
 import "github.com/IOT-devstudio/iot-pillot/apps/api/internal/domain"
 
+// LoginResp 登录响应。
+//
+// 冻结分支（0012 自助解冻）不再返回 403，而是照常给令牌，但 scope 是
+// profile_only 且 Frozen=true：用户拿这张受限令牌只能补资料，补齐后自动解冻。
+// 不这么做就会死锁——冻结即 403 → 拿不到令牌 → 永远调不了补资料的 PUT /me。
 type LoginResp struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	UserID       int    `json:"user_id"`
+	// Scope 令牌范围：full（完整）/ profile_only（仅补资料）。
+	// 前端据此决定进主界面还是进补资料页。
+	Scope string `json:"scope"`
+	// Frozen 是否因资料不合规处于冻结状态。
+	Frozen bool `json:"frozen"`
+	// FreezeIssues 待补的资料项，仅在 Frozen 为真时非空。
+	// 一次给全部而不是首条：让用户一次改完，而不是改一项再被拦一次。
+	FreezeIssues []FreezeIssue `json:"freeze_issues,omitempty"`
+}
+
+// FreezeIssue 一条待补的资料项。
+type FreezeIssue struct {
+	// Field 字段名（name / class / student_id），前端据此定位输入框。
+	Field string `json:"field"`
+	// Message 可读的整改要求。
+	Message string `json:"message"`
 }
 
 // RefreshResp 刷新令牌的响应。
@@ -16,6 +37,23 @@ type LoginResp struct {
 type RefreshResp struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+	// Scope 保持原令牌范围：受限令牌刷新后仍是受限令牌，
+	// 否则冻结账号刷新一次就拿到了完整权限。
+	Scope string `json:"scope"`
+}
+
+// UnfreezeSelfResp 本人自助解冻的结果（0012）。
+//
+// 解冻成功时同时换发完整权限令牌：用户不必重新登录，
+// 也避免「刚解冻但手里还是受限令牌」这种半套状态。
+type UnfreezeSelfResp struct {
+	UserID       int    `json:"user_id"`
+	Frozen       bool   `json:"frozen"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
+	// FreezeIssues 解冻失败时（资料仍不合规）返回剩余问题，此时令牌字段为空。
+	FreezeIssues []FreezeIssue `json:"freeze_issues,omitempty"`
 }
 
 // UserProfileDetail 用户资料明细（本人 GET/PUT /me 与管理员只读列表共用）。
@@ -61,6 +99,16 @@ type MeResp struct {
 	// 前端个人设置页把它当只读展示项。
 	Name   string            `json:"name"`
 	Detail UserProfileDetail `json:"detail"`
+	// 自动解冻相关（0012 自助解冻）：
+	//
+	// 受限会话在 PUT /me 补齐资料后，后端当场解冻并换发完整令牌，
+	// 这三个字段只有在**本次请求真的解冻了**时才非空/为真。
+	// 其余情况一律省略，前端据此决定是否替换本地会话——
+	// 无条件替换会让每次保存资料都重置会话，把用户其它标签页顶下线。
+	Scope        string `json:"scope,omitempty"`
+	Unfrozen     bool   `json:"unfrozen,omitempty"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 // AdminUserResp 管理端用户列表项。
