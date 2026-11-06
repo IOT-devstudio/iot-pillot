@@ -37,6 +37,17 @@ type ForumUseCase struct {
 	// notify 是回复通知的有界队列（#222，ADR 0007）。可为 nil ——
 	// 为 nil 时「新建回复」不触发通知，只读与纯写入用例因此不受影响。
 	notify *ForumNotifyQueue
+	// attachments 正文附件绑定（#241，ADR 0004 §3）。可为 nil ——
+	// 为 nil 时跳过重算，只读用例与既有测试桩因此不受影响。
+	attachments bodyAttachmentBinder
+}
+
+// bodyAttachmentBinder 按正文重算附件绑定的最小依赖面。
+//
+// 与 userDirectionReader 同思路：只声明用到的一个方法，
+// 桩测试不必构造整个 AttachmentUseCase。
+type bodyAttachmentBinder interface {
+	RecomputeBindings(ctx context.Context, col string, ownerID int64, authorID int, body string) error
 }
 
 // NewForumUseCase 构造函数。admins 用于「官方回答（管理员回复）置顶」的实时判定。
@@ -60,6 +71,15 @@ func (uc *ForumUseCase) WithDirectionFallback(users userDirectionReader, apps ap
 // 不该强加给只读用例与既有测试桩。
 func (uc *ForumUseCase) WithReplyNotify(q *ForumNotifyQueue) *ForumUseCase {
 	uc.notify = q
+	return uc
+}
+
+// WithAttachments 注入正文附件绑定能力（#241）。
+//
+// 同样是可选的旁路能力：只读用例不需要它；为 nil 时写入路径照常成功，
+// 只是不会回填绑定。
+func (uc *ForumUseCase) WithAttachments(b bodyAttachmentBinder) *ForumUseCase {
+	uc.attachments = b
 	return uc
 }
 

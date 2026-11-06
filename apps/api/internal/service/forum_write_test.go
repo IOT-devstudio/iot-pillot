@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -146,17 +148,20 @@ func TestCreatePostLengthBoundary(t *testing.T) {
 }
 
 // TestCreateReplyLengthBoundary 回复正文 20000/20001。
+//
+// 新建回复自 #241 起仅限管理员，因此这里的调用者 userID=2 必须在名单内，
+// 否则测到的是权限而不是长度边界。
 func TestCreateReplyLengthBoundary(t *testing.T) {
 	post := &domain.ForumPost{ID: 1, Scope: domain.ForumScopeRecruitment}
 
 	repo := &stubForumWriteRepo{post: post}
-	uc := NewForumUseCase(repo, &stubAdminDirectory{})
+	uc := NewForumUseCase(repo, &stubAdminDirectory{ids: []int{2}})
 	if _, err := uc.CreateReply(context.Background(), 2, 1, CreateForumReplyInput{Body: strings.Repeat("文", 20000)}); err != nil {
 		t.Fatalf("20000 runes should pass, got %v", err)
 	}
 
 	repo2 := &stubForumWriteRepo{post: post}
-	uc2 := NewForumUseCase(repo2, &stubAdminDirectory{})
+	uc2 := NewForumUseCase(repo2, &stubAdminDirectory{ids: []int{2}})
 	_, err := uc2.CreateReply(context.Background(), 2, 1, CreateForumReplyInput{Body: strings.Repeat("文", 20001)})
 	if !IsForumInvalidInput(err) {
 		t.Fatalf("20001 runes should be rejected, got %v", err)
@@ -377,6 +382,257 @@ func TestReplyPermission(t *testing.T) {
 		uc := NewForumUseCase(repo, &stubAdminDirectory{})
 		if err := uc.DeleteReply(context.Background(), authorID, 99); err != repository.ErrForumReplyNotFound {
 			t.Fatalf("expected ErrForumReplyNotFound, got %v", err)
+		}
+	})
+}
+
+/* ------------------------------------------------------------------ *
+ * 附件绑定回填（#241）
+ * ------------------------------------------------------------------ */
+
+// stubAttachmentBinder 记录按正文重算绑定的调用，可注入失败。
+type stubAttachmentBinder struct {
+	calls []bindingCall
+	err   error
+}
+
+type bindingCall struct {
+	col      string
+	ownerID  int64
+	authorID int
+	body     string
+}
+
+func (s *stubAttachmentBinder) RecomputeBindings(_ context.Context, col string, ownerID int64, authorID int, body string) error {
+	s.calls = append(s.calls, bindingCall{col: col, ownerID: ownerID, authorID: authorID, body: body})
+	return s.err
+}
+
+// captureStdLog 把标准日志临时重定向到缓冲区，返回后自动还原。
+func captureStdLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	orig := log.Writer()
+	log.SetOutput(buf)
+	t.Cleanup(func() { log.SetOutput(orig) })
+	return buf
+}
+
+// TestCreatePostBindsAttachments 发帖后按正文重算附件绑定，列取 post_id。
+func TestCreatePostBindsAttachments(t *testing.T) {
+	repo := &stubForumWriteRepo{}
+	binder := &stubAttachmentBinder{}
+	uc := NewForumUseCase(repo, &stubAdminDirectory{}).WithAttachments(binder)
+
+	body := "看图 ![x](/api/v1/attachments/7)"
+	if _, err := uc.CreatePost(context.Background(), 1, domain.ForumScopeRecruitment,
+		CreateForumPostInput{Title: "标题", Body: body}); err != nil {
+		t.Fatalf("create post: %v", err)
+	}
+
+	if len(binder.calls) != 1 {
+		t.Fatalf("expected 1 binding pass, got %d", len(binder.calls))
+	}
+	got := binder.calls[0]
+	// 落库后才知道帖子 id，绑定必须用返回的 id 而不是 0。
+	if got.col != "post_id" || got.ownerID != 100 || got.authorID != 1 || got.body != body {
+		t.Fatalf("unexpected binding call: %+v", got)
+	}
+}
+
+// TestUpdatePostRebindsAttachments 编辑帖子同样重算绑定：正文是唯一真源，
+// 移除的图必须走同一次重算被解绑回孤儿态。
+func TestUpdatePostRebindsAttachments(t *testing.T) {
+	repo := &stubForumWriteRepo{post: &domain.ForumPost{ID: 42, AuthorID: 1, Scope: domain.ForumScopeRecruitment}}
+	binder := &stubAttachmentBinder{}
+	uc := NewForumUseCase(repo, &stubAdminDirectory{}).WithAttachments(binder)
+
+	body := "只剩这张 ![y](/api/v1/attachments/8)"
+	if _, err := uc.UpdatePost(context.Background(), 1, 42, UpdateForumPostInput{Title: "t", Body: body}); err != nil {
+		t.Fatalf("update post: %v", err)
+	}
+	if len(binder.calls) != 1 {
+		t.Fatalf("expected 1 binding pass, got %d", len(binder.calls))
+	}
+	if binder.calls[0].col != "post_id" || binder.calls[0].ownerID != 42 {
+		t.Fatalf("unexpected binding call: %+v", binder.calls[0])
+	}
+}
+
+// TestCreateReplyBindsAttachments 新建回复按正文重算绑定，列取 reply_id。
+func TestCreateReplyBindsAttachments(t *testing.T) {
+	repo := &stubForumWriteRepo{post: &domain.ForumPost{ID: 1, Scope: domain.ForumScopeRecruitment}}
+	binder := &stubAttachmentBinder{}
+	uc := NewForumUseCase(repo, &stubAdminDirectory{ids: []int{1}}).WithAttachments(binder)
+
+	body := "补充 ![z](/api/v1/attachments/9)"
+	if _, err := uc.CreateReply(context.Background(), 1, 1, CreateForumReplyInput{Body: body}); err != nil {
+		t.Fatalf("create reply: %v", err)
+	}
+	if len(binder.calls) != 1 {
+		t.Fatalf("expected 1 binding pass, got %d", len(binder.calls))
+	}
+	got := binder.calls[0]
+	if got.col != "reply_id" || got.ownerID != 200 || got.authorID != 1 || got.body != body {
+		t.Fatalf("unexpected binding call: %+v", got)
+	}
+}
+
+// TestUpdateReplyBindsAttachments 编辑回复也重算绑定。
+func TestUpdateReplyBindsAttachments(t *testing.T) {
+	repo := &stubForumWriteRepo{reply: &domain.ForumReply{ID: 5, PostID: 1, AuthorID: 1}}
+	binder := &stubAttachmentBinder{}
+	uc := NewForumUseCase(repo, &stubAdminDirectory{}).WithAttachments(binder)
+
+	body := "换成这张 ![w](/api/v1/attachments/10)"
+	if _, err := uc.UpdateReply(context.Background(), 1, 5, CreateForumReplyInput{Body: body}); err != nil {
+		t.Fatalf("update reply: %v", err)
+	}
+	if len(binder.calls) != 1 {
+		t.Fatalf("expected 1 binding pass, got %d", len(binder.calls))
+	}
+	if binder.calls[0].col != "reply_id" || binder.calls[0].ownerID != 5 {
+		t.Fatalf("unexpected binding call: %+v", binder.calls[0])
+	}
+}
+
+// TestBindAttachmentsFailureDoesNotRollback 绑定失败（引用了别人的图等）
+// 不能让已落库的正文消失，但必须留下日志线索。
+func TestBindAttachmentsFailureDoesNotRollback(t *testing.T) {
+	repo := &stubForumWriteRepo{}
+	binder := &stubAttachmentBinder{err: domain.ErrAttachmentForbidden}
+	uc := NewForumUseCase(repo, &stubAdminDirectory{}).WithAttachments(binder)
+
+	buf := captureStdLog(t)
+	post, err := uc.CreatePost(context.Background(), 1, domain.ForumScopeRecruitment,
+		CreateForumPostInput{Title: "t", Body: "![x](/api/v1/attachments/999)"})
+	if err != nil {
+		t.Fatalf("正文已落库时绑定失败不应回滚，got %v", err)
+	}
+	if post == nil || repo.createdPost == nil {
+		t.Fatal("expected post persisted despite binding failure")
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, "[forum]") || !strings.Contains(logs, "绑定") {
+		t.Fatalf("绑定失败必须记日志，实际日志=%q", logs)
+	}
+}
+
+// TestBindAttachmentsNilIsNoop 未注入绑定能力时不 panic（只读/既有桩场景）。
+func TestBindAttachmentsNilIsNoop(t *testing.T) {
+	repo := &stubForumWriteRepo{}
+	uc := NewForumUseCase(repo, &stubAdminDirectory{})
+	if _, err := uc.CreatePost(context.Background(), 1, domain.ForumScopeRecruitment,
+		CreateForumPostInput{Title: "t", Body: "![x](/api/v1/attachments/1)"}); err != nil {
+		t.Fatalf("unexpected error without binder: %v", err)
+	}
+}
+
+// TestBindAttachmentsUsesContentAuthor 绑定的归属是**内容作者**，不是操作者。
+//
+// 仓库层的校验是「附件只能由上传者本人绑到自己的内容」。管理员编辑他人帖子时
+// 若把编辑者当上传者，该作者名下的图片会整批被判越权，重算回滚、图全部退成孤儿。
+func TestBindAttachmentsUsesContentAuthor(t *testing.T) {
+	const authorID = 5
+	const adminID = 9
+
+	t.Run("管理员编辑他人帖子按帖子作者绑定", func(t *testing.T) {
+		repo := &stubForumWriteRepo{post: &domain.ForumPost{ID: 1, AuthorID: authorID, Scope: domain.ForumScopeRecruitment}}
+		binder := &stubAttachmentBinder{}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{ids: []int{adminID}}).WithAttachments(binder)
+
+		if _, err := uc.UpdatePost(context.Background(), adminID, 1,
+			UpdateForumPostInput{Title: "t", Body: "![x](/api/v1/attachments/3)"}); err != nil {
+			t.Fatalf("admin should edit others' post, got %v", err)
+		}
+		if len(binder.calls) != 1 {
+			t.Fatalf("expected 1 binding pass, got %d", len(binder.calls))
+		}
+		if binder.calls[0].authorID != authorID {
+			t.Fatalf("expected content author %d, got %d", authorID, binder.calls[0].authorID)
+		}
+	})
+
+	t.Run("管理员编辑他人回复按回复作者绑定", func(t *testing.T) {
+		repo := &stubForumWriteRepo{reply: &domain.ForumReply{ID: 1, PostID: 1, AuthorID: authorID}}
+		binder := &stubAttachmentBinder{}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{ids: []int{adminID}}).WithAttachments(binder)
+
+		if _, err := uc.UpdateReply(context.Background(), adminID, 1,
+			CreateForumReplyInput{Body: "![x](/api/v1/attachments/4)"}); err != nil {
+			t.Fatalf("admin should edit others' reply, got %v", err)
+		}
+		if len(binder.calls) != 1 {
+			t.Fatalf("expected 1 binding pass, got %d", len(binder.calls))
+		}
+		if binder.calls[0].authorID != authorID {
+			t.Fatalf("expected content author %d, got %d", authorID, binder.calls[0].authorID)
+		}
+	})
+}
+
+/* ------------------------------------------------------------------ *
+ * 回答权限收口到管理员（#241）
+ * ------------------------------------------------------------------ */
+
+// TestCreateReplyAdminOnly 新建回复仅限管理员；403 语义由 service 哨兵承载。
+func TestCreateReplyAdminOnly(t *testing.T) {
+	post := &domain.ForumPost{ID: 1, Scope: domain.ForumScopeRecruitment}
+
+	t.Run("普通用户被拒", func(t *testing.T) {
+		repo := &stubForumWriteRepo{post: post}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{})
+		_, err := uc.CreateReply(context.Background(), 2, 1, CreateForumReplyInput{Body: "回复"})
+		if !errors.Is(err, ErrForumReplyForbidden) {
+			t.Fatalf("expected ErrForumReplyForbidden, got %v", err)
+		}
+		if repo.createdReply != nil {
+			t.Fatal("must not create reply for non-admin")
+		}
+	})
+
+	t.Run("管理员可回复", func(t *testing.T) {
+		repo := &stubForumWriteRepo{post: post}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{ids: []int{9}})
+		if _, err := uc.CreateReply(context.Background(), 9, 1, CreateForumReplyInput{Body: "回复"}); err != nil {
+			t.Fatalf("admin should reply, got %v", err)
+		}
+		if repo.createdReply == nil {
+			t.Fatal("expected reply created by admin")
+		}
+	})
+
+	t.Run("管理员名单读失败时保守拒绝", func(t *testing.T) {
+		repo := &stubForumWriteRepo{post: post}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{err: context.Canceled})
+		_, err := uc.CreateReply(context.Background(), 9, 1, CreateForumReplyInput{Body: "回复"})
+		if !errors.Is(err, ErrForumReplyForbidden) {
+			t.Fatalf("expected deny when admin dir errors, got %v", err)
+		}
+	})
+
+	t.Run("自己的回复仍可编辑", func(t *testing.T) {
+		repo := &stubForumWriteRepo{reply: &domain.ForumReply{ID: 1, PostID: 1, AuthorID: 2, Body: "旧"}}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{})
+		if _, err := uc.UpdateReply(context.Background(), 2, 1, CreateForumReplyInput{Body: "新"}); err != nil {
+			t.Fatalf("author should still edit own reply, got %v", err)
+		}
+	})
+
+	t.Run("自己的回复仍可删除", func(t *testing.T) {
+		repo := &stubForumWriteRepo{reply: &domain.ForumReply{ID: 1, PostID: 1, AuthorID: 2}}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{})
+		if err := uc.DeleteReply(context.Background(), 2, 1); err != nil {
+			t.Fatalf("author should still delete own reply, got %v", err)
+		}
+	})
+
+	t.Run("普通用户仍可发帖", func(t *testing.T) {
+		repo := &stubForumWriteRepo{}
+		uc := NewForumUseCase(repo, &stubAdminDirectory{})
+		if _, err := uc.CreatePost(context.Background(), 2, domain.ForumScopeRecruitment,
+			CreateForumPostInput{Title: "t", Body: "b"}); err != nil {
+			t.Fatalf("non-admin should still create posts, got %v", err)
 		}
 	})
 }
