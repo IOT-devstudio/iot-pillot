@@ -54,6 +54,14 @@ type ForumPostListFilter struct {
 //
 // 一次查询带出：作者名（LEFT JOIN users）、回复数（子查询）、是否含图（正文 LIKE）、
 // 最后活跃时间（帖子创建或最近一条未删回复，取较大者）。详情页另走 GetPost。
+//
+// 作者名取 users.name（不是 users.username）：users 表没有 username 列，
+// 「用户名」只是 JWT 声明与接口响应里的字段名，落库列名是 name（见 domain.User.Name）。
+// 写错列名不会在编译期暴露，只会在 SQL 执行时 42703，最终变成 500 + 业务码 5000。
+//
+// 这个 JOIN 刻意**不过滤** u.deleted_at：注销账号的历史帖子仍要显示当时的作者名，
+// 与迁移 0011「按 user_id 保留历史与审计」同口径。登录面（GetByName 等）的排除规则
+// 不适用于内容展示——否则注销一个人，所有旧帖作者就集体变成「匿名」。
 type ForumPostSummary struct {
 	ID            int       `json:"id" gorm:"column:id"`
 	Scope         string    `json:"scope" gorm:"column:scope"`
@@ -178,7 +186,7 @@ func (r *gormForumRepo) ListPosts(ctx context.Context, scope domain.ForumScope, 
 	err := applyFilter(base.Session(&gorm.Session{})).
 		Select(`
 			forum_posts.*,
-			COALESCE(u.username, '') AS author_name,
+			COALESCE(u.name, '') AS author_name,
 			(SELECT count(*) FROM forum_replies r WHERE r.post_id = forum_posts.id AND r.deleted_at IS NULL) AS reply_count,
 			-- 含图判定：正文里出现 Markdown 图片语法 ![任意](任意) 即视为有图。
 			-- 之前只匹配空 alt 的 ![]()，漏掉常规 ![alt](url)。
