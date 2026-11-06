@@ -333,8 +333,9 @@ func newForumReplyEngine(repo *stubForumWriteRepo, userID int, admin bool) *gin.
 
 	r := gin.New()
 	authRequired := middleware.AuthRequired(stubValidator{accept: "good-token", userID: userID})
-	requireAdmin := middleware.RequireAdmin(stubAdminChecker{admin: admin})
-	// 「回答仅限管理员」：只给这一条挂 requireAdmin。
+	// 与生产 router.go 一致：用带专用文案的管理员关。
+	requireAdmin := middleware.RequireAdminWithMessage(stubAdminChecker{admin: admin}, "只有管理员可以回答招新问答")
+	// 「回答仅限管理员」：只给这一条挂管理员关。
 	r.POST("/api/v1/forum/posts/:id/replies", authRequired, requireAdmin,
 		func(c *gin.Context) { h.CreateForumReply(c, domain.ForumScopeRecruitment) })
 	// 其余端点保持「零变化」：不挂 requireAdmin。
@@ -357,13 +358,14 @@ func TestForumCreateReplyMemberIs403(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for member reply, got %d (body=%s)", w.Code, w.Body.String())
 	}
-	// message 必须可读中文，不能是空串或英文内部错误。
+	// message 必须可读中文，且要说清「为什么」——默认的「无权限访问该资源」
+	// 对可见的帖子没有信息量，spec 明确要求类似「只有管理员可以回答招新问答」。
 	var resp response.Result
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if resp.Message == "" {
-		t.Fatal("expected readable message for member reply rejection")
+	if resp.Message != "只有管理员可以回答招新问答" {
+		t.Fatalf("403 文案应说明原因，实际 %q", resp.Message)
 	}
 	if repo.createdReply != nil {
 		t.Fatal("must not create reply as non-admin")
