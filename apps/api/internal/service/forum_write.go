@@ -371,6 +371,16 @@ func (uc *ForumUseCase) UpdateReply(ctx context.Context, userID int, replyID int
 // 时让整次保存失败，用户会以为内容没写进去。取舍与 bindRoadmapAttachments 一致，
 // 但这里**必须记日志**——路线那边完全静默，出问题只能靠猜。
 //
+// authorID 必须是**内容作者**，不能是操作者。仓库层的校验是
+// 「附件只能由上传者本人绑到自己的内容」，管理员编辑他人帖子时传编辑者，
+// 该作者名下的图片会整批被判越权、整次重算回滚。
+//
+// 已知限制（已接受）：管理员编辑**他人**的帖子/回复时，他自己新上传的图绑不上——
+// uploader 是管理员，而内容作者是原作者，两条规则在这里冲突。这不是本次引入的回归，
+// 但在那条路径上「正文是唯一真源」不成立，那些图会留在孤儿态、24 小时后被清理。
+// 放宽会动摇 ADR 0003 决策 5「只允许绑定自己上传的附件」（否则任何管理员都能把
+// 别人的图挂到任意内容下），因此记录而非放宽；真有需求应单独开票设计。
+//
 // col 来自固定的 scope→列映射（post_id / reply_id），不是用户输入。
 func (uc *ForumUseCase) bindBodyAttachments(ctx context.Context, col string, ownerID int64, authorID int, body string) {
 	if uc.attachments == nil {

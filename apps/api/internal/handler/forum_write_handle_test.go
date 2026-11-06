@@ -31,6 +31,7 @@ type stubForumWriteRepo struct {
 	createdReply *domain.ForumReply
 	updatedReply *domain.ForumReply
 	deletedReply [2]int
+	resolved     [3]any // [id, byUserID, resolved]
 }
 
 func (s *stubForumWriteRepo) CreatePost(_ context.Context, p *domain.ForumPost) error {
@@ -72,7 +73,18 @@ func (s *stubForumWriteRepo) SoftDeleteReply(_ context.Context, id int, by int) 
 	return nil
 }
 
+// SetPostResolved 记录解决标记。内嵌的 ForumRepo 是零值接口，
+// 不补这个方法会在调用时 panic（nil 接口调用）。
+func (s *stubForumWriteRepo) SetPostResolved(_ context.Context, id int, by int, resolved bool) error {
+	s.resolved = [3]any{id, by, resolved}
+	return nil
+}
+
 // newForumWriteEngine 组装带写入端点的招新问答路由（当前用户 userID=1）。
+//
+// 回复端点与生产同形：挂管理员关（#241）。adminDir 同时喂给中间件与 service，
+// 与 wire 组装一致——生产上两者读的是同一份 Redis 名单，测试里若不一致，
+// 会出现「中间件放行、service 又拒」的假绿。
 func newForumWriteEngine(repo *stubForumWriteRepo, adminDir stubAdminDir) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	uc := service.NewForumUseCase(repo, adminDir)
@@ -80,13 +92,16 @@ func newForumWriteEngine(repo *stubForumWriteRepo, adminDir stubAdminDir) *gin.E
 
 	r := gin.New()
 	authRequired := middleware.AuthRequired(stubValidator{accept: "good-token", userID: 1})
+	requireReplyAdmin := middleware.RequireAdminWithMessage(adminDir, "只有管理员可以回答招新问答")
 	forum := r.Group("/api/v1/forum", authRequired)
 	forum.POST("/posts", func(c *gin.Context) { h.CreateForumPost(c, domain.ForumScopeRecruitment) })
 	forum.PATCH("/posts/:id", func(c *gin.Context) { h.UpdateForumPost(c, domain.ForumScopeRecruitment) })
 	forum.DELETE("/posts/:id", func(c *gin.Context) { h.DeleteForumPost(c, domain.ForumScopeRecruitment) })
-	forum.POST("/posts/:id/replies", func(c *gin.Context) { h.CreateForumReply(c, domain.ForumScopeRecruitment) })
+	// 只有这一条挂管理员关，其余写入端点保持原样。
+	forum.POST("/posts/:id/replies", requireReplyAdmin, func(c *gin.Context) { h.CreateForumReply(c, domain.ForumScopeRecruitment) })
 	forum.PATCH("/replies/:id", func(c *gin.Context) { h.UpdateForumReply(c, domain.ForumScopeRecruitment) })
 	forum.DELETE("/replies/:id", func(c *gin.Context) { h.DeleteForumReply(c, domain.ForumScopeRecruitment) })
+	forum.POST("/posts/:id/resolve", func(c *gin.Context) { h.ResolveForumPost(c, domain.ForumScopeRecruitment) })
 	return r
 }
 
@@ -200,10 +215,13 @@ func TestForumCreatePostTooLongIs400(t *testing.T) {
 }
 
 // TestForumCreateReplyOnMissingPostIs404 帖子不存在时回复 404。
+//
+// 用管理员身份：中间件先于「帖子是否存在」判定（权限是路由层的关），
+// 非管理员拿到的 403 与帖子在不在无关，测不到这条 404 语义。
 func TestForumCreateReplyOnMissingPostIs404(t *testing.T) {
 	repo := &stubForumWriteRepo{}
 	repo.stubForumRepo.postErr = service.ErrForumPostNotFound
-	r := newForumWriteEngine(repo, stubAdminDir{})
+	r := newForumWriteEngine(repo, stubAdminDir{ids: []int{1}})
 
 	w := doForumJSON(t, r, http.MethodPost, "/api/v1/forum/posts/123/replies", "good-token", map[string]any{"body": "回复"})
 	if w.Code != http.StatusNotFound {
@@ -338,10 +356,14 @@ func newForumReplyEngine(repo *stubForumWriteRepo, userID int, admin bool) *gin.
 	// 「回答仅限管理员」：只给这一条挂管理员关。
 	r.POST("/api/v1/forum/posts/:id/replies", authRequired, requireAdmin,
 		func(c *gin.Context) { h.CreateForumReply(c, domain.ForumScopeRecruitment) })
-	// 其余端点保持「零变化」：不挂 requireAdmin。
+	// 其余端点保持「零变化」：不挂管理员关。
 	forum := r.Group("/api/v1/forum", authRequired)
 	forum.POST("/posts", func(c *gin.Context) { h.CreateForumPost(c, domain.ForumScopeRecruitment) })
+	forum.PATCH("/posts/:id", func(c *gin.Context) { h.UpdateForumPost(c, domain.ForumScopeRecruitment) })
+	forum.DELETE("/posts/:id", func(c *gin.Context) { h.DeleteForumPost(c, domain.ForumScopeRecruitment) })
 	forum.PATCH("/replies/:id", func(c *gin.Context) { h.UpdateForumReply(c, domain.ForumScopeRecruitment) })
+	forum.DELETE("/replies/:id", func(c *gin.Context) { h.DeleteForumReply(c, domain.ForumScopeRecruitment) })
+	forum.POST("/posts/:id/resolve", func(c *gin.Context) { h.ResolveForumPost(c, domain.ForumScopeRecruitment) })
 	return r
 }
 
@@ -391,18 +413,35 @@ func TestForumCreateReplyAdminIs200(t *testing.T) {
 }
 
 // TestForumMemberCanStillWriteElsewhere 收口只针对「新建回复」，
-// 发帖与编辑自己的回复对普通用户行为零变化。
+// 其余写入对普通用户行为零变化。
+//
+// spec 逐项列出了这些端点：发帖、编辑/删除自己的帖子与回复、标记已解决。
+// 这里逐条复核，而不是抽查一个——把 requireAdmin 挂错分组正是本次要防的回归。
 func TestForumMemberCanStillWriteElsewhere(t *testing.T) {
 	repo := &stubForumWriteRepo{}
+	repo.post = &domain.ForumPost{ID: 1, AuthorID: 2, Scope: domain.ForumScopeRecruitment}
 	repo.reply = &domain.ForumReply{ID: 1, PostID: 1, AuthorID: 2, Body: "旧"}
 	r := newForumReplyEngine(repo, 2, false)
 
-	if w := doForumJSON(t, r, http.MethodPost, "/api/v1/forum/posts", "good-token",
-		map[string]any{"title": "提问", "body": "正文"}); w.Code != http.StatusOK {
-		t.Fatalf("member should still create posts, got %d (body=%s)", w.Code, w.Body.String())
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   any
+	}{
+		{"发帖", http.MethodPost, "/api/v1/forum/posts", map[string]any{"title": "提问", "body": "正文"}},
+		{"编辑自己的帖子", http.MethodPatch, "/api/v1/forum/posts/1", map[string]any{"title": "改", "body": "正文"}},
+		{"删除自己的帖子", http.MethodDelete, "/api/v1/forum/posts/1", nil},
+		{"编辑自己的回复", http.MethodPatch, "/api/v1/forum/replies/1", map[string]any{"body": "新"}},
+		{"删除自己的回复", http.MethodDelete, "/api/v1/forum/replies/1", nil},
+		{"标记已解决", http.MethodPost, "/api/v1/forum/posts/1/resolve", map[string]any{"resolved": true}},
 	}
-	if w := doForumJSON(t, r, http.MethodPatch, "/api/v1/forum/replies/1", "good-token",
-		map[string]any{"body": "新"}); w.Code != http.StatusOK {
-		t.Fatalf("member should still edit own reply, got %d (body=%s)", w.Code, w.Body.String())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := doForumJSON(t, r, tc.method, tc.path, "good-token", tc.body)
+			if w.Code != http.StatusOK {
+				t.Fatalf("普通用户应仍可%s，实际 %d（body=%s）", tc.name, w.Code, w.Body.String())
+			}
+		})
 	}
 }
