@@ -81,11 +81,25 @@ export function mergeAuthSession(
   current: AuthSession,
   refreshed: RefreshAuthSession,
 ): AuthSession {
-  return {
+  const merged: AuthSession = {
     ...current,
     ...refreshed,
     user_id: current.user_id,
   };
+
+  // 范围与冻结标记的合并规则（0012 自助解冻）：
+  //   - 后端明确给了 scope 就用它（受限令牌刷新后仍是受限，这是防火墙）；
+  //   - 没给就沿用本地值，避免旧后端或不带该字段的响应把受限状态抹成"正常"。
+  // 静默升权比多拦一次危险得多：升权后用户能访问所有业务接口。
+  if (refreshed.scope === undefined) {
+    merged.scope = current.scope;
+  }
+  // frozen 与 issues 不是 refresh 的返回字段，必须沿用，否则刷新一次
+  // 前端就不再认为自己是冻结态了。
+  merged.frozen = current.frozen;
+  merged.freeze_issues = current.freeze_issues;
+
+  return merged;
 }
 
 export interface SignOutDeps {

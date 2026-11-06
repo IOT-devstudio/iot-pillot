@@ -196,6 +196,17 @@ func (issue86TokenManager) GenerateTokens(_ context.Context, _ int, _, _ string)
 	return "", "", nil
 }
 
+// GenerateRestrictedTokens 受限令牌（0012 自助解冻）：桩里复用具名 token，
+// 需要区分 scope 的测试用 authFrozenTokenManager 之类更专门的桩。
+func (issue86TokenManager) GenerateRestrictedTokens(_ context.Context, _ int, _, _ string) (string, string, error) {
+	return "restricted-access", "restricted-refresh", nil
+}
+
+// ValidateRefreshTokenWithScope 缺省按 full：既有测试都假设完整权限令牌。
+func (issue86TokenManager) ValidateRefreshTokenWithScope(_ context.Context, _ string) (int, string, string, string, error) {
+	return 1, "tester", "member", utils.ScopeFull, nil
+}
+
 func (issue86TokenManager) ValidateRefreshToken(_ context.Context, _ string) (int, string, string, error) {
 	return 0, "", "", nil
 }

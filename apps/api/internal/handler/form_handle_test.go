@@ -169,6 +169,24 @@ type stubValidator struct {
 	userID int
 	role   string // 缺省视为 member；测试可显式指定 admin。
 	err    error
+	// scope 令牌范围；空串按 full（既有测试都是完整权限场景）。
+	scope string
+}
+
+// ValidateAccessTokenWithScope 带 scope 的版本（0012 自助解冻）。
+//
+// 缺省按 full：既有测试都是完整权限场景。需要模拟受限会话的测试
+// 显式构造 scope=profile_only 的桩。
+func (s stubValidator) ValidateAccessTokenWithScope(ctx context.Context, token string) (int, string, string, string, error) {
+	userID, username, role, err := s.ValidateAccessToken(ctx, token)
+	if err != nil {
+		return 0, "", "", "", err
+	}
+	scope := s.scope
+	if scope == "" {
+		scope = "full"
+	}
+	return userID, username, role, scope, nil
 }
 
 func (s stubValidator) ValidateAccessToken(_ context.Context, token string) (int, string, string, error) {
@@ -471,7 +489,6 @@ func TestSubmitForm_ReusesExistingApplication(t *testing.T) {
 		t.Errorf("应恰有 1 条提交记录，实际 %d 条", len(repo.submissions))
 	}
 }
-
 
 /* ------------------------------------------------------------------ *
  * 验收项：服务端拒绝缺必填 / 已关闭表单

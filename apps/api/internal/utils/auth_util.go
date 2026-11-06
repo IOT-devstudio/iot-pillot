@@ -108,23 +108,46 @@ func (tm *TokenManager) GenerateTokens(ctx context.Context, userID int, username
 		return "", "", fmt.Errorf("写入会话唯一码失败: %w", err)
 	}
 
-	accessToken, err = generateToken(userID, username, role, "access", tm.accessTTLSeconds(), tm.Secret, uniqueCode)
+	accessToken, err = generateToken(userID, username, role, "access", ScopeFull, tm.accessTTLSeconds(), tm.Secret, uniqueCode)
 	if err != nil {
 		return "", "", err
 	}
-	refreshToken, err = generateToken(userID, username, role, "refresh", tm.refreshTTLSeconds(), tm.Secret, uniqueCode)
+	refreshToken, err = generateToken(userID, username, role, "refresh", ScopeFull, tm.refreshTTLSeconds(), tm.Secret, uniqueCode)
 	if err != nil {
 		return "", "", err
 	}
 	return accessToken, refreshToken, nil
 }
 
-func generateToken(userID int, username string, role string, tokenType string, expireSeconds int, secret string, uniqueCode string) (string, error) {
+// GenerateRestrictedTokens 生成「仅补资料」的受限双令牌（0012 冻结自助解冻）。
+//
+// 与 GenerateTokens 的唯一差别是 scope claim 为 profile_only。
+// 同样会替换会话唯一码（单端登录语义一致）：受限登录也算一次登录，
+// 把旧设备的正常会话顶掉是正确的——那个会话本就不该继续存在。
+func (tm *TokenManager) GenerateRestrictedTokens(ctx context.Context, userID int, username string, role string) (accessToken string, refreshToken string, err error) {
+	uniqueCode := generateUniqueCode()
+	if err := tm.storeUnique(ctx, userID, uniqueCode); err != nil {
+		return "", "", fmt.Errorf("写入会话唯一码失败: %w", err)
+	}
+
+	accessToken, err = generateToken(userID, username, role, "access", ScopeProfileOnly, tm.accessTTLSeconds(), tm.Secret, uniqueCode)
+	if err != nil {
+		return "", "", err
+	}
+	refreshToken, err = generateToken(userID, username, role, "refresh", ScopeProfileOnly, tm.refreshTTLSeconds(), tm.Secret, uniqueCode)
+	if err != nil {
+		return "", "", err
+	}
+	return accessToken, refreshToken, nil
+}
+
+func generateToken(userID int, username string, role string, tokenType string, scope string, expireSeconds int, secret string, uniqueCode string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id":  userID,
 		"username": username,
 		"role":     role,
 		"type":     tokenType,
+		"scope":    NormalizeScope(scope),
 		"sub":      uniqueCode, // 会话唯一码：与 Redis jwt:unique:{userID} 比对
 		"exp":      time.Now().Add(time.Duration(expireSeconds) * time.Second).Unix(),
 		"iat":      time.Now().Unix(),
@@ -135,8 +158,20 @@ func generateToken(userID int, username string, role string, tokenType string, e
 
 // ==================== 令牌校验 ====================
 
-// parseAndValidateToken 仅校验 JWT 签名 / 类型 / 过期，返回 claims 信息（不做 Redis 比对）
+// parseAndValidateToken 仅校验 JWT 签名 / 类型 / 过期，返回 claims 信息（不做 Redis 比对）。
+//
+// 保留不含 scope 的旧签名：RevokeToken / RevokeSession 等只关心 userID，
+// 让它们跟着改会扩散无关改动。需要 scope 的调用方用 parseAndValidateTokenWithScope。
 func parseAndValidateToken(tokenString string, secret string, expectedType string) (int, string, string, string, error) {
+	userID, username, role, sub, _, err := parseAndValidateTokenWithScope(tokenString, secret, expectedType)
+	if err != nil {
+		return 0, "", "", "", err
+	}
+	return userID, username, role, sub, nil
+}
+
+// parseAndValidateTokenWithScope 在校验基础上额外返回令牌范围（scope）。
+func parseAndValidateTokenWithScope(tokenString string, secret string, expectedType string) (int, string, string, string, string, error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("未知的签名方法: %v", t.Header["alg"])
@@ -145,37 +180,43 @@ func parseAndValidateToken(tokenString string, secret string, expectedType strin
 	})
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return 0, "", "", "", ErrTokenExpired
+			return 0, "", "", "", "", ErrTokenExpired
 		}
-		return 0, "", "", "", ErrTokenInvalid
+		return 0, "", "", "", "", ErrTokenInvalid
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
-		return 0, "", "", "", ErrTokenInvalid
+		return 0, "", "", "", "", ErrTokenInvalid
 	}
 
 	if claims["type"] != expectedType {
-		return 0, "", "", "", ErrTokenInvalid
+		return 0, "", "", "", "", ErrTokenInvalid
 	}
 
 	userIDFloat, okID := claims["user_id"].(float64)
 	username, okName := claims["username"].(string)
 	role, _ := claims["role"].(string)
 	sub, _ := claims["sub"].(string)
+	// 旧令牌没有 scope claim，NormalizeScope 归一到 full，避免加字段导致全体掉线。
+	scopeRaw, _ := claims["scope"].(string)
+	scope := NormalizeScope(scopeRaw)
+	if !IsValidScope(scopeRaw) {
+		return 0, "", "", "", "", ErrTokenInvalid
+	}
 	if !okID || !okName {
-		return 0, "", "", "", ErrTokenInvalid
+		return 0, "", "", "", "", ErrTokenInvalid
 	}
 
-	return int(userIDFloat), username, role, sub, nil
+	return int(userIDFloat), username, role, sub, scope, nil
 }
 
 // validateToken 完整校验：JWT 签名/类型/过期 + Redis 会话唯一码比对
 // （唯一码不一致说明该用户已重新登录或已登出，token 失效）
-func (tm *TokenManager) validateToken(ctx context.Context, tokenString string, expectedType string) (int, string, string, error) {
-	userID, username, role, sub, err := parseAndValidateToken(tokenString, tm.Secret, expectedType)
+func (tm *TokenManager) validateToken(ctx context.Context, tokenString string, expectedType string) (int, string, string, string, error) {
+	userID, username, role, sub, scope, err := parseAndValidateTokenWithScope(tokenString, tm.Secret, expectedType)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", "", err
 	}
 
 	getCmd := tm.redis.B().Get().Key(tm.uniqueKey(userID)).Build()
@@ -183,24 +224,44 @@ func (tm *TokenManager) validateToken(ctx context.Context, tokenString string, e
 	if err != nil {
 		if rueidis.IsRedisNil(err) {
 			// Redis key 不存在 = 唯一码已被删除（登出 / RevokeUserSessions）
-			return 0, "", "", ErrSessionRevoked
+			return 0, "", "", "", ErrSessionRevoked
 		}
 		// Redis 网络/服务故障，非逻辑错误
-		return 0, "", "", ErrTokenStoreUnavailable
+		return 0, "", "", "", ErrTokenStoreUnavailable
 	}
 	if current != sub {
-		return 0, "", "", ErrSessionSuperseded
+		return 0, "", "", "", ErrSessionSuperseded
 	}
-	return userID, username, role, nil
+	return userID, username, role, scope, nil
 }
 
-// ValidateAccessToken 校验 access token（含 Redis 会话唯一码比对）
+// ValidateAccessToken 校验 access token（含 Redis 会话唯一码比对）。
+//
+// 保持不含 scope 的签名：它被中间件接口（TokenValidator）与若干测试实现，
+// 让它们跟着改会扩散无关改动。需要 scope 的调用方用 ValidateAccessTokenWithScope。
 func (tm *TokenManager) ValidateAccessToken(ctx context.Context, tokenString string) (int, string, string, error) {
+	userID, username, role, _, err := tm.validateToken(ctx, tokenString, "access")
+	return userID, username, role, err
+}
+
+// ValidateAccessTokenWithScope 校验 access token 并返回令牌范围（scope）。
+//
+// 中间件用它把 scope 写进上下文，从而区分「完整权限」与「仅补资料」。
+func (tm *TokenManager) ValidateAccessTokenWithScope(ctx context.Context, tokenString string) (userID int, username string, role string, scope string, err error) {
 	return tm.validateToken(ctx, tokenString, "access")
 }
 
-// ValidateRefreshToken 校验 refresh token（含 Redis 会话唯一码比对）
+// ValidateRefreshToken 校验 refresh token（含 Redis 会话唯一码比对）。
+//
+// 刷新时要保持原 scope：受限令牌刷新后必须仍是受限令牌，
+// 否则冻结账号刷新一次就拿到了完整权限。
 func (tm *TokenManager) ValidateRefreshToken(ctx context.Context, tokenString string) (int, string, string, error) {
+	userID, username, role, _, err := tm.validateToken(ctx, tokenString, "refresh")
+	return userID, username, role, err
+}
+
+// ValidateRefreshTokenWithScope 校验 refresh token 并返回 scope（刷新时保持受限状态）。
+func (tm *TokenManager) ValidateRefreshTokenWithScope(ctx context.Context, tokenString string) (userID int, username string, role string, scope string, err error) {
 	return tm.validateToken(ctx, tokenString, "refresh")
 }
 
