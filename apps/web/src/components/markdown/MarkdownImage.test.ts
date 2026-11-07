@@ -1,16 +1,116 @@
-import { describe, expect, it } from "vitest";
-import { h } from "vue";
+import { describe, expect, it, vi } from "vitest";
+import { createRenderer, defineComponent, h, nextTick } from "vue";
 import { renderToString } from "vue/server-renderer";
+
+/**
+ * 站内附件的取数桩（#242）。
+ *
+ * 组件把 /api/v1/attachments/:id fetch 成 blob URL —— 这条路径要能测到
+ * 「取回成功后渲染出 <img>」，所以必须能控制它 resolve / reject。
+ * isAttachmentUrl 等纯函数保持真身，本用例要验证的正是它们的配合。
+ */
+const attachmentApi = vi.hoisted(() => ({ loadAttachmentObjectUrl: vi.fn() }));
+
+vi.mock("@/api/attachment", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/attachment")>()),
+  loadAttachmentObjectUrl: attachmentApi.loadAttachmentObjectUrl,
+}));
+
 import MarkdownImage from "./MarkdownImage.vue";
 
 /**
- * 只断言图片组件的安全属性与降级行为（ADR 0005 决策 3 / 12）。
- * 加载失败（onError）分支是浏览器事件驱动的纯逻辑（failed=true → 占位），
- * 这里用协议门占位覆盖「占位块文案」路径；onError 交互由组件逻辑保证。
+ * 断言图片组件的安全属性与降级行为（ADR 0005 决策 3 / 12），
+ * 以及 #242 修掉的「所有图片都显示图片不可用」。
+ *
+ * 两种渲染方式各有分工：
+ *   - renderToString：首屏形态（骨架 / <img> / 占位块）的最短路径；
+ *   - 自定义 renderer：需要等异步 fetch resolve 后再看树的用例。
+ *     项目没有装 @vue/test-utils，SendMailDialog.test.ts 已用同一套办法。
  */
 
 async function render(src: string, alt: string): Promise<string> {
   return renderToString(h(MarkdownImage, { src, alt }));
+}
+
+/* ---------------- 自定义 renderer（只为等异步状态） ---------------- */
+
+interface Node {
+  type: string;
+  props: Record<string, unknown>;
+  children: Node[];
+  parent: Node | null;
+  text: string;
+}
+
+const node = (type: string, text = ""): Node => ({
+  type,
+  props: {},
+  children: [],
+  parent: null,
+  text,
+});
+
+function detach(target: Node): void {
+  const parent = target.parent;
+  if (parent) parent.children.splice(parent.children.indexOf(target), 1);
+  target.parent = null;
+}
+
+const renderer = createRenderer<Node, Node>({
+  createElement: node,
+  createText: (text) => node("text", text),
+  createComment: (text) => node("comment", text),
+  setText: (target, text) => {
+    target.text = text;
+  },
+  setElementText: (target, text) => {
+    target.text = text;
+    for (const child of target.children) child.parent = null;
+    target.children = [];
+  },
+  patchProp: (target, key, _old, value) => {
+    target.props[key] = value;
+  },
+  insert(target, parent, anchor) {
+    detach(target);
+    target.parent = parent;
+    const index = anchor ? parent.children.indexOf(anchor) : -1;
+    parent.children.splice(index < 0 ? parent.children.length : index, 0, target);
+  },
+  remove: detach,
+  parentNode: (target) => target.parent,
+  nextSibling: (target) =>
+    target.parent?.children[target.parent.children.indexOf(target) + 1] ?? null,
+});
+
+function findAll(root: Node, type: string): Node[] {
+  const found: Node[] = [];
+  const visit = (target: Node): void => {
+    if (target.type === type) found.push(target);
+    for (const child of target.children) visit(child);
+  };
+  visit(root);
+  return found;
+}
+
+async function settle(): Promise<void> {
+  // fetch 成功 → resolvedSrc 赋值 → 触发一次重新渲染；两轮足够覆盖。
+  for (let i = 0; i < 4; i += 1) {
+    await Promise.resolve();
+    await nextTick();
+  }
+}
+
+async function mount(
+  src: string,
+  alt: string,
+): Promise<{ root: Node; unmount: () => void }> {
+  const root = node("root");
+  const app = renderer.createApp(
+    defineComponent({ setup: () => () => h(MarkdownImage, { src, alt }) }),
+  );
+  app.mount(root);
+  return { root, unmount: () => app.unmount() };
 }
 
 describe("MarkdownImage — 统一属性与占位降级（决策 3 / 12）", () => {
@@ -51,5 +151,60 @@ describe("MarkdownImage — 统一属性与占位降级（决策 3 / 12）", () 
   it("带 alt 的占位块显示「图片不可用：{alt}」", async () => {
     const html = await render("javascript:x", "凭证图");
     expect(html).toContain("图片不可用：凭证图");
+  });
+});
+
+describe("MarkdownImage — 站内附件取回后真正渲染 <img>（#242）", () => {
+  it("fetch 成功后 <img> 的 src 是组件自己生成的 blob URL", async () => {
+    // 回归点：`new URL("blob:…").protocol === "blob:"`，此前用正文协议白名单
+    // 校验 resolvedSrc 会让 showImage 恒为 false，任何图片都落占位块。
+    attachmentApi.loadAttachmentObjectUrl.mockReset();
+    attachmentApi.loadAttachmentObjectUrl.mockResolvedValue(
+      "blob:http://localhost/5f0e1c9a",
+    );
+
+    const view = await mount("/api/v1/attachments/7", "图1");
+    try {
+      // 首屏是骨架，不是占位块。
+      expect(findAll(view.root, "img")).toHaveLength(0);
+      expect(findAll(view.root, "span").some((el) => el.props.role === "img")).toBe(
+        true,
+      );
+
+      await settle();
+
+      const images = findAll(view.root, "img");
+      expect(images).toHaveLength(1);
+      expect(images[0]?.props.src).toBe("blob:http://localhost/5f0e1c9a");
+      expect(images[0]?.props.alt).toBe("图1");
+      expect(images[0]?.props.loading).toBe("lazy");
+      expect(images[0]?.props.referrerpolicy).toBe("no-referrer");
+      // 渲染出真图之后不该再有占位文案。
+      expect(view.root.children.some((el) => el.text.includes("图片不可用"))).toBe(
+        false,
+      );
+      expect(attachmentApi.loadAttachmentObjectUrl).toHaveBeenCalledWith(7);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("取数失败仍然落回占位块（401 / 404 / 网络错误同一种结果）", async () => {
+    attachmentApi.loadAttachmentObjectUrl.mockReset();
+    attachmentApi.loadAttachmentObjectUrl.mockRejectedValue(
+      new Error("附件加载失败（404）"),
+    );
+
+    const view = await mount("/api/v1/attachments/9", "图2");
+    try {
+      await settle();
+      expect(findAll(view.root, "img")).toHaveLength(0);
+      const fallback = findAll(view.root, "span").find((el) =>
+        el.text.includes("图片不可用"),
+      );
+      expect(fallback?.text).toBe("图片不可用：图2");
+    } finally {
+      view.unmount();
+    }
   });
 });
