@@ -171,6 +171,19 @@ type FoundingChecker interface {
 // 必须挂在 AuthRequired 之后：缺少身份信息时按 401 拒绝（而不是放行），
 // 这样"忘记加 AuthRequired"会表现为拒绝访问，而不是静默开门。
 func RequireAdmin(checker AdminChecker) gin.HandlerFunc {
+	return RequireAdminWithMessage(checker, "无权限访问该资源")
+}
+
+// RequireAdminWithMessage 与 RequireAdmin 相同，但可指定非管理员时的文案。
+//
+// 存在理由（#241）：默认文案「无权限访问该资源」对管理端点是对的——不能回显
+// 管理端结构。但招新问答的「回答」不是隐藏资源，帖子对普通用户本来就可见，
+// 通用文案会让前端只能显示一句没有信息量的话。spec 要求可读的中文提示
+// （「只有管理员可以回答招新问答」），因此给这一类端点一个能说清原因的入口。
+//
+// 注意：这**不是**把权限判定挪进 handler——判定仍然只在这里做，
+// 区别仅在这条 403 的措辞。
+func RequireAdminWithMessage(checker AdminChecker, deniedMessage string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _, _, ok := CurrentUser(c)
 		if !ok {
@@ -188,8 +201,9 @@ func RequireAdmin(checker AdminChecker) gin.HandlerFunc {
 		}
 
 		if !isAdmin {
-			// 不回显所需角色，避免向普通成员暴露管理端结构
-			response.Fail(c, http.StatusForbidden, response.CodeForbidden, "无权限访问该资源")
+			// 默认不回显所需角色，避免向普通成员暴露管理端结构；
+			// 调用方可传入更贴切但仍不泄漏结构的文案（见 RequireAdminWithMessage）。
+			response.Fail(c, http.StatusForbidden, response.CodeForbidden, deniedMessage)
 			c.Abort()
 			return
 		}

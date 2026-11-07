@@ -129,6 +129,9 @@ func NewRouter(
 	authRequired := middleware.AuthRequired(tokenManager)
 	requireFullScope := middleware.RequireFullScope()
 	requireAdmin := middleware.RequireAdmin(adminStore)
+	// 「回答招新问答」专用：判定与 requireAdmin 完全一致，只换 403 的文案（#241）。
+	// 该帖子对普通用户可见，通用文案「无权限访问该资源」等于什么都没说。
+	requireReplyAdmin := middleware.RequireAdminWithMessage(adminStore, "只有管理员可以回答招新问答")
 	// 创始鉴权（issue #142 Q1）：auth:admins:founding 首次参与鉴权，
 	// 仅覆盖注销账号这一个端点，其余端点语义零变化。
 	requireFounding := middleware.RequireFounding(adminStore)
@@ -356,11 +359,18 @@ func NewRouter(
 		forum := apiV1.Group("/forum", authRequired, requireFullScope)
 		forum.GET("/posts", func(c *gin.Context) { forumHandler.ListForumPosts(c, domain.ForumScopeRecruitment) })
 		forum.GET("/posts/:id", func(c *gin.Context) { forumHandler.GetForumPost(c, domain.ForumScopeRecruitment) })
-		// 写入（#220）：所有登录用户都能发帖与回复招新问答。
+		// 写入（#220）：所有登录用户都能发帖、编辑/删除自己的内容、标记已解决。
 		forum.POST("/posts", func(c *gin.Context) { forumHandler.CreateForumPost(c, domain.ForumScopeRecruitment) })
 		forum.PATCH("/posts/:id", func(c *gin.Context) { forumHandler.UpdateForumPost(c, domain.ForumScopeRecruitment) })
 		forum.DELETE("/posts/:id", func(c *gin.Context) { forumHandler.DeleteForumPost(c, domain.ForumScopeRecruitment) })
-		forum.POST("/posts/:id/replies", func(c *gin.Context) { forumHandler.CreateForumReply(c, domain.ForumScopeRecruitment) })
+		// 回答收口到管理员（#241，ADR 0003 决策 8 修订）。
+		//
+		// 只给这一条挂管理员关，**不能**给整个 /forum 分组挂：
+		// 那会连带锁死发帖、编辑、删除（普通用户仍应能做）。写法与下方
+		// `apiV1.POST("/forms", ..., requireAdmin, ...)` 一致。
+		// 普通用户在这里拿 403 而不是 404：帖子本来就对他可见（与 studio 的 404 口径不同）。
+		// 文案单独指定：默认的「无权限访问该资源」对可见的帖子没有信息量。
+		forum.POST("/posts/:id/replies", requireReplyAdmin, func(c *gin.Context) { forumHandler.CreateForumReply(c, domain.ForumScopeRecruitment) })
 		forum.PATCH("/replies/:id", func(c *gin.Context) { forumHandler.UpdateForumReply(c, domain.ForumScopeRecruitment) })
 		forum.DELETE("/replies/:id", func(c *gin.Context) { forumHandler.DeleteForumReply(c, domain.ForumScopeRecruitment) })
 		forum.POST("/posts/:id/resolve", func(c *gin.Context) { forumHandler.ResolveForumPost(c, domain.ForumScopeRecruitment) })

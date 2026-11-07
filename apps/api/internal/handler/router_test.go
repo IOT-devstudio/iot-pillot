@@ -179,4 +179,31 @@ func TestNewRouterDoesNotPanic(t *testing.T) {
 			t.Errorf("未注册 %s", key)
 		}
 	}
+
+	// 招新问答的写入端点（#220 / #241）必须真的挂上。
+	//
+	// 只检查「注册了」不足以防住这次的真实回归——把 requireAdmin 挂到整组上会
+	// 连带锁死发帖与编辑。中间件链本身读不到（gin.RouteInfo 不暴露 Handlers），
+	// 因此行为断言放在 forum_write_handle_test.go 的 TestForumCreateReplyMemberIs403
+	// 与 TestForumMemberCanStillWriteElsewhere 里，这里只锁路径存在。
+	wantForumRoutes := map[string]bool{
+		"POST /api/v1/forum/posts":             false,
+		"PATCH /api/v1/forum/posts/:id":        false,
+		"DELETE /api/v1/forum/posts/:id":       false,
+		"POST /api/v1/forum/posts/:id/replies": false,
+		"PATCH /api/v1/forum/replies/:id":      false,
+		"DELETE /api/v1/forum/replies/:id":     false,
+		"POST /api/v1/forum/posts/:id/resolve": false,
+	}
+	for _, route := range router.eng.Routes() {
+		key := route.Method + " " + route.Path
+		if _, ok := wantForumRoutes[key]; ok {
+			wantForumRoutes[key] = true
+		}
+	}
+	for key, registered := range wantForumRoutes {
+		if !registered {
+			t.Errorf("未注册 %s", key)
+		}
+	}
 }
