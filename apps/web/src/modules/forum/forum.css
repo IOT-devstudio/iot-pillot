@@ -1,0 +1,145 @@
+/*
+ * 招新问答的「双壳适配」层（#242）。
+ *
+ * 同一套视图组件要同时成立在两种外壳里：
+ *   - 管理端 AdminLayout：读 theme.css 的纸/墨令牌（--ink-soft / --ink-faint /
+ *     --line，蓝是 #164d80）；
+ *   - 用户端 SignalShell：signal.css 在 .swiss-signal 上重定义了 --ink / --blue /
+ *     --paper / --line，并额外提供 --muted（#666b62），蓝是 #1739f5。
+ *
+ * 三处视图的模板与版式不变，只把颜色收敛成一组语义名；取值全部来自壳层令牌，
+ * 不引入新配色。声明顺序即优先级：
+ *   var(--muted, …) —— 用户端壳优先（管理端没有 --muted，自然回落到 theme 令牌）。
+ *
+ * 为什么单独一个文件而不是写进各视图的 scoped 样式：
+ *   1. 令牌要挂在视图根元素上供 scoped 规则读取，写在模块级 CSS 才不分叉；
+ *   2. 下面那组 Element Plus 控件重置必须命中子组件内部的 <input>，
+ *      scoped 样式不加 :deep 够不到，集中一处更好核对。
+ *
+ * 与 forms.css 里 `.swiss-signal .share-form-page` 同思路：只覆盖局部令牌，不复制组件。
+ */
+
+/* ── 语义令牌：管理端壳的取值 ── */
+.qa-list,
+.qa-detail,
+.qa-compose {
+  --qa-ink: var(--ink, #102b4e);
+  --qa-muted: var(--ink-soft, #5b6b82);
+  --qa-faint: var(--ink-faint, #8a97ab);
+  --qa-line: var(--line, #e3e8ef);
+  --qa-line-soft: var(--line-soft, #eef1f6);
+  --qa-accent: var(--blue, #164d80);
+  --qa-danger: var(--red, #b84235);
+  --qa-success: var(--green, #2e8b57);
+  --qa-surface: var(--surface, #fffdf7);
+  --qa-raised: var(--el-fill-color-light, #f5f2ea);
+  --qa-radius: 10px;
+}
+
+/*
+ * ── 语义令牌：用户端（瑞士信号壳）的取值 ──
+ *
+ * 命中条件用 .swiss-signal 前缀而不是读 meta 判断——壳是 DOM 事实，
+ * 组件不该为了换配色去读路由。这里只换值与圆角：signal.css 的视觉基线是
+ * 锐角 + 蓝/黄/纸墨，方形卡片才与 /user/home 的观感一致。
+ * 版式（间距、栅格、字号比例）不动。
+ *
+ * 后三行是共享组件（PageHeader / MarkdownContent）读的令牌别名：
+ * 它们只在 theme.css @root 定义过一次，进信号壳后会保留后台的藏青/陶土红。
+ * 这里就地映射到信号壳的取值，让「同一套组件」在两种壳里都完整成立，
+ * 而不是给页面头再写一份实现。
+ */
+.swiss-signal .qa-list,
+.swiss-signal .qa-detail,
+.swiss-signal .qa-compose {
+  --qa-ink: var(--ink, #141a32);
+  --qa-muted: var(--muted, #666b62);
+  --qa-faint: var(--muted, #6f7469);
+  --qa-line: var(--line, #d2d5ca);
+  --qa-line-soft: var(--line, #d2d5ca);
+  --qa-accent: var(--blue, #1739f5);
+  --qa-danger: #ba291b;
+  --qa-success: #2c6b46;
+  /* 信号壳里卡片/编辑器是纸底上的透明块，靠边框分隔，不做白卡浮起。 */
+  --qa-surface: transparent;
+  --qa-raised: transparent;
+  --qa-radius: 0;
+
+  --ink-soft: var(--muted, #666b62);
+  --ink-faint: var(--muted, #6f7469);
+  --accent: var(--blue, #1739f5);
+  --red: #ba291b;
+  --code-bg: #e8e9e1;
+}
+
+/*
+ * ── Element Plus 控件在信号壳里的重置 ──
+ *
+ * signal.css 的 `.swiss-signal input:not([type="checkbox"])`（优先级 0,2,1）本意是
+ * 给**裸控件**定基线：透明底、12px 字号、min-height 45px、外加 margin-bottom 19px。
+ * 它会一并命中 EP 组件内部的真 <input class="el-input__inner">，与 EP 自己的
+ * wrapper 边框叠加成双层边框，并在筛选栏里多出 19px 落差。
+ *
+ * 所以这里把「信号壳给裸控件的那层皮」摘掉，交回 EP 外观（配色仍由 theme.css
+ * 的 --el-* 令牌统一）。选择器带 .el-*__inner（优先级 0,3,0）而不是只写 `input`
+ * （0,2,1）——同优先级要靠打包顺序取胜，那不是稳定的保证。
+ *
+ * 不用 `revert`：它回退到浏览器默认值而不是 EP 的规则，display 会从 flex 项
+ * 退成 inline-block，把 EP 的图标/计数布局挤坏。逐条写回 EP 期望的值更可靠。
+ */
+.swiss-signal .qa-list .el-input__inner,
+.swiss-signal .qa-compose .el-input__inner,
+.swiss-signal .qa-list .el-select__input,
+.swiss-signal .qa-list .el-textarea__inner,
+.swiss-signal .qa-detail .el-textarea__inner,
+.swiss-signal .qa-compose .el-textarea__inner {
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  box-shadow: none;
+}
+
+.swiss-signal .qa-list .el-textarea__inner,
+.swiss-signal .qa-detail .el-textarea__inner,
+.swiss-signal .qa-compose .el-textarea__inner {
+  padding: 5px 11px;
+}
+
+.swiss-signal .qa-list .el-input__inner:focus,
+.swiss-signal .qa-list .el-textarea__inner:focus,
+.swiss-signal .qa-detail .el-textarea__inner:focus,
+.swiss-signal .qa-compose .el-textarea__inner:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+/*
+ * Markdown 编辑器用的是原生 <textarea class="md-editor__textarea">（不是 EP 组件），
+ * 信号壳对它同样会套上 margin-bottom 与 45px 最小高。这里按编辑器自己的版式写回：
+ * 它需要保留内边距与 220px 起高，边框交给外层 .md-editor 容器。
+ */
+.swiss-signal .qa-detail .md-editor__textarea,
+.swiss-signal .qa-compose .md-editor__textarea {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  min-height: 220px;
+  padding: 12px 14px;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--qa-ink);
+}
+
+.swiss-signal .qa-detail .md-editor__textarea:focus,
+.swiss-signal .qa-compose .md-editor__textarea:focus {
+  border: 0;
+  box-shadow: inset 3px 0 var(--qa-accent);
+}
