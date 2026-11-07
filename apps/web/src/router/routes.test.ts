@@ -129,6 +129,49 @@ describe("application routes", () => {
       expect(r.meta?.forumScope).toBe("recruitment");
       // 招新问答面向全体登录用户，不是 admin 专属
       expect(r.meta?.allowRoles).toEqual(["admin", "member"]);
+      // #242：纳入瑞士信号壳，与 /user/home 观感一致（此前是裸渲染的后台风格）
+      expect(r.meta?.signalShell).toBe(true);
+      // 路径前缀显式声明，管理端入口用同一套组件、另一组前缀
+      expect(r.meta?.forumBase).toBe("/user/qa");
+    }
+  });
+
+  it("管理端招新问答（#242）只回答问题且留在管理台外壳里", () => {
+    const adminQa = routes.filter((r) => r.path.startsWith("/recruitment/qa"));
+
+    expect(adminQa.map((r) => r.path)).toEqual([
+      "/recruitment/qa",
+      "/recruitment/qa/:id/edit",
+      "/recruitment/qa/:id",
+    ]);
+
+    for (const r of adminQa) {
+      // 漏标 allowRoles 就等于对普通用户敞开
+      expect(r.meta?.allowRoles).toEqual(["admin"]);
+      // 与其它 /recruitment/* 页一致，套管理台布局
+      expect(r.meta?.adminShell).toBe(true);
+      // 与用户端同一个内容域（接口前缀相同），只是入口与外壳不同
+      expect(r.meta?.forumScope).toBe("recruitment");
+      // 关键：前缀显式声明为管理端位置，否则「返回列表 / 编辑后跳转」会
+      // 把管理员送回 /user/qa，直接跳出管理台外壳。
+      expect(r.meta?.forumBase).toBe("/recruitment/qa");
+      // 不许再挂 signalShell，否则会同时命中两个外壳
+      expect(r.meta?.signalShell).toBeUndefined();
+      // AC 明确要求复用组件，不复制一份实现
+      expect(["QaListView", "QaDetailView", "QaComposeView"]).toContain(
+        (r.component as { name?: string })?.name,
+      );
+    }
+
+    // 管理端不提供发帖入口：没有 /recruitment/qa/new
+    expect(adminQa.some((r) => r.path === "/recruitment/qa/new")).toBe(false);
+  });
+
+  it("内部论坛同样声明了显式前缀（#242 后不再靠硬编码推导）", () => {
+    const studioForum = routes.filter((r) => r.path.startsWith("/studio/forum"));
+
+    for (const r of studioForum) {
+      expect(r.meta?.forumBase).toBe("/studio/forum");
     }
   });
 
@@ -370,6 +413,10 @@ describe("application routes", () => {
       "/recruitment/invitations",
       "/recruitment/candidates",
       "/recruitment/candidates/:id",
+      // 招新问答管理端入口（#242）：加在候选人之后，不打断既有顺序。
+      "/recruitment/qa",
+      "/recruitment/qa/:id/edit",
+      "/recruitment/qa/:id",
     ]);
   });
 
@@ -378,7 +425,8 @@ describe("application routes", () => {
       (route) => route.path.startsWith("/recruitment") && route.component,
     );
 
-    expect(recruitmentPages).toHaveLength(4);
+    // 4 个招新流程页 + 3 个问答管理端页（#242）
+    expect(recruitmentPages).toHaveLength(7);
     for (const page of recruitmentPages) {
       // 漏标 allowRoles 的页面会被守卫当成公开路由，这里锁死
       expect(page.meta?.allowRoles).toEqual(["admin"]);
