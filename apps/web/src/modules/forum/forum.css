@@ -34,6 +34,8 @@
   --qa-surface: var(--surface, #fffdf7);
   --qa-raised: var(--el-fill-color-light, #f5f2ea);
   --qa-radius: 10px;
+  /* 选中态投影沿用后端托盘的自有阴影，避免编辑器里出现第二种灰。 */
+  --qa-shadow: rgb(16 43 78 / 8%);
 }
 
 /*
@@ -44,10 +46,10 @@
  * 锐角 + 蓝/黄/纸墨，方形卡片才与 /user/home 的观感一致。
  * 版式（间距、栅格、字号比例）不动。
  *
- * 后三行是共享组件（PageHeader / MarkdownContent）读的令牌别名：
- * 它们只在 theme.css @root 定义过一次，进信号壳后会保留后台的藏青/陶土红。
- * 这里就地映射到信号壳的取值，让「同一套组件」在两种壳里都完整成立，
- * 而不是给页面头再写一份实现。
+ * 顺带把共享组件的 TOKEN 别名指向信号壳（--ink-soft / --ink-faint 已在
+ * signal.css:2290 映射过 --muted，这里不再重复声明）：PageHeader 的 eyebrow
+ * 与 MarkdownContent 的链接色只认 theme.css 的变量名，不映射就仍是后台藏青。
+ * 只声明信号壳里**没有**的那几个，避免同一变量两处定义。
  */
 .swiss-signal .qa-list,
 .swiss-signal .qa-detail,
@@ -58,18 +60,81 @@
   --qa-line: var(--line, #d2d5ca);
   --qa-line-soft: var(--line, #d2d5ca);
   --qa-accent: var(--blue, #1739f5);
-  --qa-danger: #ba291b;
-  --qa-success: #2c6b46;
+  --qa-danger: var(--red, #b84235);
+  --qa-success: var(--green, #2e8b57);
   /* 信号壳里卡片/编辑器是纸底上的透明块，靠边框分隔，不做白卡浮起。 */
   --qa-surface: transparent;
   --qa-raised: transparent;
   --qa-radius: 0;
+  /* 信号壳是锐角描边的纸面，不做后台那种暖墨投影。 */
+  --qa-shadow: transparent;
 
-  --ink-soft: var(--muted, #666b62);
-  --ink-faint: var(--muted, #6f7469);
+  /* PageHeader 的 eyebrow 短横与 MarkdownContent 的链接色读这两个名字。 */
   --accent: var(--blue, #1739f5);
-  --red: #ba291b;
-  --code-bg: #e8e9e1;
+}
+
+/*
+ * ── 用户端问答页：让黄色 tape 贴住视口底部 ──
+ *
+ * signal.css 的壳是普通文档流（masthead → slot → tape → footer），页面内容短时
+ * tape 会停在内容末尾，下方留出一段纸底空白，看起来像「滚动条浮在中间」。
+ *
+ * 做法是把壳变成纵向 flex 并把内容区撑开：
+ *   .swiss-signal { min-height: 100dvh; flex }
+ *   slot 内容（router-view 渲染的 .qa-*）{ flex: 1 }
+ * 这样 tape + footer 被推到视口底部；内容超出一屏时又自然回到流末尾，
+ * 不需要 position: fixed（那会盖住正文末尾，也和小屏滚动打架）。
+ *
+ * 只在问答页生效：用 :has() 限定「槽里装着 .qa-*」的壳，不动
+ * /user/home（它的版式自带满屏 poster）与认证页。
+ *
+ * 为什么还要写 align-self: stretch 与 width: 100%：
+ * 壳一旦变成 flex 容器，masthead / footer 这类「max-width + 自动外边距」的块
+ * 不再按块级规则占满一行，而是被收缩到内容宽度（实测 masthead 从 1600px 掉到
+ * 755px，字标跟着偏移）。flex 的 align-items: stretch 也管不住它们——
+ * 自动外边距会吃掉剩余空间。所以显式给这几类子元素撑满。
+ */
+.swiss-signal:has(> .qa-list),
+.swiss-signal:has(> .qa-detail),
+.swiss-signal:has(> .qa-compose) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* 壳的横向子元素一律撑满，保持 flex 化之前的满宽观感。 */
+.swiss-signal:has(> .qa-list) > .masthead,
+.swiss-signal:has(> .qa-detail) > .masthead,
+.swiss-signal:has(> .qa-compose) > .masthead,
+.swiss-signal:has(> .qa-list) > .footer,
+.swiss-signal:has(> .qa-detail) > .footer,
+.swiss-signal:has(> .qa-compose) > .footer,
+.swiss-signal:has(> .qa-list) > .signal-tape,
+.swiss-signal:has(> .qa-detail) > .signal-tape,
+.swiss-signal:has(> .qa-compose) > .signal-tape {
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* masthead / footer 原来靠自动外边距居中；撑满后由自身的 max-width + margin auto 继续居中。 */
+.swiss-signal:has(> .qa-list) > .masthead,
+.swiss-signal:has(> .qa-detail) > .masthead,
+.swiss-signal:has(> .qa-compose) > .masthead {
+  margin-inline: auto;
+}
+
+.swiss-signal:has(> .qa-list) > .qa-list,
+.swiss-signal:has(> .qa-detail) > .qa-detail,
+.swiss-signal:has(> .qa-compose) > .qa-compose {
+  /* 撑满 masthead 与 tape 之间的剩余高度，把 tape+footer 顶到底部。 */
+  flex: 1 0 auto;
+  width: 100%;
+}
+
+/* 内容超出视口时 tape 回到流末尾；固定动作只发生在「不满一屏」的情况。 */
+.swiss-signal:has(> .qa-list) > .signal-tape {
+  margin-top: auto;
 }
 
 /*

@@ -166,6 +166,9 @@ onMounted(async () => {
 
 <template>
   <section class="qa-compose">
+    <!-- 品牌色柔光晕（与 /user/home、/user/settings、/user/about 同一层）。 -->
+    <div class="glass-backdrop" aria-hidden="true"></div>
+
     <PageHeader
       :eyebrow="forum.label.value"
       :title="isEdit ? '编辑帖子' : '提问'"
@@ -234,6 +237,14 @@ onMounted(async () => {
   max-width: 760px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+  /* .glass-backdrop 是 fixed + z-index:0 的装饰层；isolation 建独立层叠上下文，
+     再让内容以 z-index:1 压在光斑之上。 */
+  position: relative;
+  isolation: isolate;
+}
+.qa-compose > :not(.glass-backdrop) {
+  position: relative;
+  z-index: 1;
 }
 .qa-compose__label {
   display: block;

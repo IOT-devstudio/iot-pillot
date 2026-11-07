@@ -11,14 +11,19 @@
  *   - 作者本人或管理员可编辑/删除帖子与回复；
  *   - 编辑过的内容显示「已编辑」。
  *
- * #242 回答收口：招新问答的**新建回复仅限管理员**（后端 ADR 0003 决策 8 修订），
- * 所以普通用户不再看到回复框，只留一行说明。这里刻意不用「禁用输入框」：
- * 禁用的输入框暗示「等我有权限就能用」，而这个身份永远不会获得该权限，
- * 一行说明更诚实，也不白占一屏。
+ * #242 回答收口：招新问答的**新建回复仅限管理员**，所以普通用户不再看到回复框，
+ * 只留一行说明。这里刻意不用「禁用输入框」：禁用的输入框暗示「等我有权限就能用」，
+ * 而这个身份永远不会获得该权限，一行说明更诚实，也不白占一屏。
  * 同一身份下「提问 / 编辑 / 删除 / 标记已解决」的权限没有被收回，仍然可见可用。
  *
- * 权限只用于**隐藏**按钮：真正的判定在后端（无权与不存在都回 404，
- * 回答则回 403 + 可读文案）。
+ * 注意这条规则当前只有**前端侧**成立：#242 的原文是「与后端权限收口配套（后端
+ * issue 里做强制）」，而截至本分支，`origin/main` 的 `/forum/posts/:id/replies`
+ * 仍只挂 authRequired，ADR 0003 决策 8 也仍写「任何登录用户都能回复招新问答」；
+ * 强制收口在 #241 的分支上，尚未合并。因此：
+ *   - 这里隐藏回复框是**减少误操作**，不是安全边界，绕过界面直接调接口仍可成功；
+ *   - 别按「后端一定会 403」来写兜底逻辑，那条契约要等 #241 合入后才成立。
+ *
+ * 权限只用于**隐藏**按钮：编辑/删除的判定在后端（无权与不存在都回 404）。
  */
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -73,15 +78,26 @@ function canManage(authorId: number): boolean {
 /**
  * 能否回答（#242）。
  *
- * 招新问答与内部论坛的新建回复都收口到管理员（后端 ADR 0003 决策 8 修订），
- * 因此这里只看角色——作者身份不再带来回答权限。
- * 普通用户在详情页看到一行说明而不是灰掉的输入框：这个身份永远不会获得回答权限。
+ * 招新问答的新建回复按 #242 收口到管理员，因此这里只看角色——作者身份不再
+ * 带来回答权限。普通用户在详情页看到一行说明而不是灰掉的输入框：这个身份
+ * 不会再获得回答权限（这是产品裁决，不是对他当前权限的描述）。
+ *
+ * 与后端的分工见文件头注释：强制在 #241，未合入前这条只是前端可见性。
  */
 const canReply = computed(() => amAdmin.value);
-/** 普通用户的说明文案：说清「谁能答」+「我还能做什么」，而不是只说不行。 */
-const replyRestrictedNote = computed(() =>
-  "只有管理员可以回答招新问答。你仍然可以提问、编辑或删除自己的内容，也可以标记已解决。",
-);
+
+/**
+ * 普通用户的说明文案：说清「谁能答」，再按**这个人对这篇帖子**的真实能力补一句。
+ *
+ * 不写死「你仍然可以编辑或删除自己的内容」：对别人的帖子，普通用户根本看不到
+ * 那些按钮，一句话把人引向不存在的入口比不说更糟。作者与非作者分开写。
+ */
+const replyRestrictedNote = computed(() => {
+  const mine = post.value !== null && canManage(post.value.author_id);
+  return mine
+    ? "只有管理员可以回答招新问答。你仍然可以提问，也可以编辑、删除自己的帖子或标记已解决。"
+    : "只有管理员可以回答招新问答。其他帖子你可以在列表里检索、向作者提问，或自己发起新问题。";
+});
 
 async function load(): Promise<void> {
   if (!Number.isInteger(postId) || postId <= 0) {
@@ -209,6 +225,11 @@ onMounted(load);
 
 <template>
   <section class="qa-detail">
+    <!-- 品牌色柔光晕（与 /user/home、/user/settings、/user/about 同一层）。
+         它自己就是 fixed 装饰层，靠 .qa-detail 的 isolation 与 z-index 把
+         正文压在上面，不需要额外包一层 wrapper。 -->
+    <div class="glass-backdrop" aria-hidden="true"></div>
+
     <PageHeader
       :eyebrow="forum.label.value"
       :title="post ? (post.title || '（无标题）') : '问答详情'"
@@ -320,6 +341,14 @@ onMounted(load);
   max-width: 760px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+  /* .glass-backdrop 是 fixed + z-index:0 的装饰层；isolation 建独立层叠上下文，
+     再让内容以 z-index:1 压在光斑之上（不额外包 wrapper，v-if 分支才不被拆开）。 */
+  position: relative;
+  isolation: isolate;
+}
+.qa-detail > :not(.glass-backdrop) {
+  position: relative;
+  z-index: 1;
 }
 .qa-detail__meta {
   font-size: 13px;

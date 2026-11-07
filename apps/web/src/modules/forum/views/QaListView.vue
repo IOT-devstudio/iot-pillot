@@ -122,6 +122,11 @@ onMounted(async () => {
 
 <template>
   <section class="qa-list">
+    <!-- 品牌色柔光晕（与 /user/home、/user/settings、/user/about 同一层
+         .glass-backdrop：蓝光在左上、黄光在右下）。它自己是 fixed 装饰层，
+         正文靠 .qa-list 的 isolation + 子元素 z-index 压在上面。 -->
+    <div class="glass-backdrop" aria-hidden="true"></div>
+
     <PageHeader
       :eyebrow="forum.label.value"
       :title="forum.label.value"
@@ -221,6 +226,14 @@ onMounted(async () => {
   max-width: 860px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+  /* .glass-backdrop 是 fixed + z-index:0 的装饰层；isolation 建独立层叠上下文，
+     再让内容以 z-index:1 压在光斑之上（不额外包 wrapper）。 */
+  position: relative;
+  isolation: isolate;
+}
+.qa-list > :not(.glass-backdrop) {
+  position: relative;
+  z-index: 1;
 }
 .qa-list__cta {
   display: flex;
