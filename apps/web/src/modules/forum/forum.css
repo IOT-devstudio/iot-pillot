@@ -90,6 +90,7 @@
 .swiss-signal .qa-list .el-input__inner,
 .swiss-signal .qa-compose .el-input__inner,
 .swiss-signal .qa-list .el-select__input,
+.swiss-signal .qa-compose .el-select__input,
 .swiss-signal .qa-list .el-textarea__inner,
 .swiss-signal .qa-detail .el-textarea__inner,
 .swiss-signal .qa-compose .el-textarea__inner {
