@@ -175,6 +175,30 @@ describe("application routes", () => {
     }
   });
 
+  it("每一条问答路由都必须声明 forumBase（#242 的结构性约束）", () => {
+    // 上面两条是「逐个点名的清单」，只能守住今天的路由。
+    // 这条守的是**规则本身**：任何新增的问答入口（不管落在哪个前缀）
+    // 只要漏写 forumBase，就会静默回落到 useForumScope 的历史前缀，
+    // 把人带出自己所在的外壳。所以这里枚举全部问答路由，逐条要求非空。
+    const qaRoutes = routes.filter((r) => {
+      const name = (r.component as { name?: string } | undefined)?.name;
+      return name !== undefined && ["QaListView", "QaDetailView", "QaComposeView"].includes(name);
+    });
+
+    expect(qaRoutes.length).toBeGreaterThanOrEqual(11);
+    for (const r of qaRoutes) {
+      expect(
+        typeof r.meta?.forumBase === "string" && r.meta.forumBase !== "",
+        `${String(r.path)} 缺少 forumBase`,
+      ).toBe(true);
+      // 声明的前缀必须真的是自己路径的前缀，否则「返回列表」仍会跳错
+      expect(
+        String(r.path).startsWith(String(r.meta?.forumBase)),
+        `${String(r.path)} 的 forumBase 不是自己的前缀`,
+      ).toBe(true);
+    }
+  });
+
   it("mounts the same 2D auth view on both public login paths", () => {
     const rootRoutes = routes.filter((route) => route.path === "/");
 

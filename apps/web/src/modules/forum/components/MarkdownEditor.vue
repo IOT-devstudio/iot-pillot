@@ -365,7 +365,7 @@ onBeforeUnmount(() => {
   background: var(--qa-surface, #fff);
   color: var(--qa-ink, #102b4e);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgb(16 43 78 / 8%);
+  box-shadow: 0 1px 2px var(--qa-shadow, rgb(16 43 78 / 8%));
 }
 .md-editor__hint {
   margin-left: auto;
@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   padding: 4px 12px;
   font-size: 13px;
-  color: var(--qa-ink, #35507a);
+  color: var(--qa-ink, #102b4e);
   cursor: pointer;
 }
 .md-editor__btn:disabled {
@@ -468,7 +468,7 @@ onBeforeUnmount(() => {
   background: none;
   padding: 0;
   font-size: 12px;
-  color: var(--qa-ink, #35507a);
+  color: var(--qa-ink, #102b4e);
   cursor: pointer;
 }
 .md-strip__link--danger {
@@ -506,6 +506,3 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 </style>
-
-
-

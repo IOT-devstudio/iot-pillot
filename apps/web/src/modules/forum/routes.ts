@@ -23,11 +23,6 @@ import QaListView from "./views/QaListView.vue";
 import QaDetailView from "./views/QaDetailView.vue";
 import QaComposeView from "./views/QaComposeView.vue";
 
-// meta 键与内容域类型的唯一真源在 scope-meta.ts（避免纯逻辑单测被视图链拖累）；
-// 这里原样再导出，保持 routes.ts 作为「本模块路由契约」的既有入口。
-export { FORUM_BASE_META, FORUM_SCOPE_META } from "./scope-meta";
-export type { ForumScope } from "./scope-meta";
-
 /** 用户端招新问答前缀：登录即可，套瑞士信号壳。 */
 const USER_QA_BASE = "/user/qa";
 /** 管理端招新问答前缀：只回答问题，不提供发帖入口。 */

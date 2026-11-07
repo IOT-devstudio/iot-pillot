@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createRenderer, defineComponent, h, nextTick } from "vue";
+import { defineComponent, h } from "vue";
 import { renderToString } from "vue/server-renderer";
+
+import { findAll, makeNode, settle, testRenderer } from "@/test/test-renderer";
 
 /**
  * 站内附件的取数桩（#242）。
@@ -25,88 +27,18 @@ import MarkdownImage from "./MarkdownImage.vue";
  * 两种渲染方式各有分工：
  *   - renderToString：首屏形态（骨架 / <img> / 占位块）的最短路径；
  *   - 自定义 renderer：需要等异步 fetch resolve 后再看树的用例。
- *     项目没有装 @vue/test-utils，SendMailDialog.test.ts 已用同一套办法。
  */
 
 async function render(src: string, alt: string): Promise<string> {
   return renderToString(h(MarkdownImage, { src, alt }));
 }
 
-/* ---------------- 自定义 renderer（只为等异步状态） ---------------- */
-
-interface Node {
-  type: string;
-  props: Record<string, unknown>;
-  children: Node[];
-  parent: Node | null;
-  text: string;
-}
-
-const node = (type: string, text = ""): Node => ({
-  type,
-  props: {},
-  children: [],
-  parent: null,
-  text,
-});
-
-function detach(target: Node): void {
-  const parent = target.parent;
-  if (parent) parent.children.splice(parent.children.indexOf(target), 1);
-  target.parent = null;
-}
-
-const renderer = createRenderer<Node, Node>({
-  createElement: node,
-  createText: (text) => node("text", text),
-  createComment: (text) => node("comment", text),
-  setText: (target, text) => {
-    target.text = text;
-  },
-  setElementText: (target, text) => {
-    target.text = text;
-    for (const child of target.children) child.parent = null;
-    target.children = [];
-  },
-  patchProp: (target, key, _old, value) => {
-    target.props[key] = value;
-  },
-  insert(target, parent, anchor) {
-    detach(target);
-    target.parent = parent;
-    const index = anchor ? parent.children.indexOf(anchor) : -1;
-    parent.children.splice(index < 0 ? parent.children.length : index, 0, target);
-  },
-  remove: detach,
-  parentNode: (target) => target.parent,
-  nextSibling: (target) =>
-    target.parent?.children[target.parent.children.indexOf(target) + 1] ?? null,
-});
-
-function findAll(root: Node, type: string): Node[] {
-  const found: Node[] = [];
-  const visit = (target: Node): void => {
-    if (target.type === type) found.push(target);
-    for (const child of target.children) visit(child);
-  };
-  visit(root);
-  return found;
-}
-
-async function settle(): Promise<void> {
-  // fetch 成功 → resolvedSrc 赋值 → 触发一次重新渲染；两轮足够覆盖。
-  for (let i = 0; i < 4; i += 1) {
-    await Promise.resolve();
-    await nextTick();
-  }
-}
-
 async function mount(
   src: string,
   alt: string,
-): Promise<{ root: Node; unmount: () => void }> {
-  const root = node("root");
-  const app = renderer.createApp(
+): Promise<{ root: ReturnType<typeof makeNode>; unmount: () => void }> {
+  const root = makeNode("root");
+  const app = testRenderer.createApp(
     defineComponent({ setup: () => () => h(MarkdownImage, { src, alt }) }),
   );
   app.mount(root);
@@ -166,23 +98,23 @@ describe("MarkdownImage — 站内附件取回后真正渲染 <img>（#242）", 
     const view = await mount("/api/v1/attachments/7", "图1");
     try {
       // 首屏是骨架，不是占位块。
-      expect(findAll(view.root, "img")).toHaveLength(0);
-      expect(findAll(view.root, "span").some((el) => el.props.role === "img")).toBe(
-        true,
-      );
+      expect(findAll(view.root, (n) => n.type === "img")).toHaveLength(0);
+      expect(
+        findAll(view.root, (n) => n.type === "span" && n.props.role === "img"),
+      ).toHaveLength(1);
 
       await settle();
 
-      const images = findAll(view.root, "img");
+      const images = findAll(view.root, (n) => n.type === "img");
       expect(images).toHaveLength(1);
       expect(images[0]?.props.src).toBe("blob:http://localhost/5f0e1c9a");
       expect(images[0]?.props.alt).toBe("图1");
       expect(images[0]?.props.loading).toBe("lazy");
       expect(images[0]?.props.referrerpolicy).toBe("no-referrer");
       // 渲染出真图之后不该再有占位文案。
-      expect(view.root.children.some((el) => el.text.includes("图片不可用"))).toBe(
-        false,
-      );
+      expect(
+        findAll(view.root, (n) => n.type === "span" && n.text.includes("图片不可用")),
+      ).toHaveLength(0);
       expect(attachmentApi.loadAttachmentObjectUrl).toHaveBeenCalledWith(7);
     } finally {
       view.unmount();
@@ -198,11 +130,12 @@ describe("MarkdownImage — 站内附件取回后真正渲染 <img>（#242）", 
     const view = await mount("/api/v1/attachments/9", "图2");
     try {
       await settle();
-      expect(findAll(view.root, "img")).toHaveLength(0);
-      const fallback = findAll(view.root, "span").find((el) =>
-        el.text.includes("图片不可用"),
+      expect(findAll(view.root, (n) => n.type === "img")).toHaveLength(0);
+      const fallback = findAll(
+        view.root,
+        (n) => n.type === "span" && n.text.includes("图片不可用"),
       );
-      expect(fallback?.text).toBe("图片不可用：图2");
+      expect(fallback[0]?.text).toBe("图片不可用：图2");
     } finally {
       view.unmount();
     }

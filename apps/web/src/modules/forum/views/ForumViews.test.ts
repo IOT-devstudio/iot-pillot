@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createRenderer, defineComponent, h, nextTick } from "vue";
+import { defineComponent, h, nextTick } from "vue";
+
+import {
+  findAll,
+  makeNode,
+  settle,
+  testRenderer,
+  textOf,
+  type TestNode,
+} from "@/test/test-renderer";
 
 /**
  * 详情页的回答权限展示（#242 AC）。
@@ -65,11 +74,21 @@ vi.mock("element-plus/es/components/button/style/css", () => ({}));
 vi.mock("element-plus/es/components/message/style/css", () => ({}));
 vi.mock("element-plus/es/components/message-box/style/css", () => ({}));
 
-/** 编辑器：只要它的存在与否，内容不参与断言。 */
+/**
+ * 编辑器桩：只需要「在不在」和「能不能往外抛正文」。
+ * 必须声明 emits，否则 v-model:body 的 update 事件不会被父组件接上，
+ * 也就无法驱动「填正文 → 点回复」这条行为链。
+ */
 vi.mock("../components/MarkdownEditor.vue", () => ({
   default: defineComponent({
     props: ["body", "maxLength", "disabled", "placeholder"],
-    setup: () => () => h("div", { class: "stub-md-editor" }),
+    emits: ["update:body"],
+    setup: (_, { emit }) => () =>
+      h("div", {
+        class: "stub-md-editor",
+        // 把事件处理器直接暴露到 props 上，测试可以手动触发一次输入
+        onInput: (value: string) => emit("update:body", value),
+      }),
   }),
 }));
 
@@ -83,88 +102,16 @@ vi.mock("@/components/markdown/MarkdownContent.vue", () => ({
 
 import QaDetailView from "../views/QaDetailView.vue";
 
-/* ---------------- 最小 renderer（项目没装 @vue/test-utils） ---------------- */
-
-interface Node {
-  type: string;
-  props: Record<string, unknown>;
-  children: Node[];
-  parent: Node | null;
-  text: string;
-}
-
-const node = (type: string, text = ""): Node => ({
-  type,
-  props: {},
-  children: [],
-  parent: null,
-  text,
-});
-
-function detach(target: Node): void {
-  const parent = target.parent;
-  if (parent) parent.children.splice(parent.children.indexOf(target), 1);
-  target.parent = null;
-}
-
-const renderer = createRenderer<Node, Node>({
-  createElement: node,
-  createText: (text) => node("text", text),
-  createComment: (text) => node("comment", text),
-  setText: (target, text) => {
-    target.text = text;
-  },
-  setElementText: (target, text) => {
-    target.text = text;
-    for (const child of target.children) child.parent = null;
-    target.children = [];
-  },
-  patchProp: (target, key, _old, value) => {
-    target.props[key] = value;
-  },
-  insert(target, parent, anchor) {
-    detach(target);
-    target.parent = parent;
-    const index = anchor ? parent.children.indexOf(anchor) : -1;
-    parent.children.splice(index < 0 ? parent.children.length : index, 0, target);
-  },
-  remove: detach,
-  parentNode: (target) => target.parent,
-  nextSibling: (target) =>
-    target.parent?.children[target.parent.children.indexOf(target) + 1] ?? null,
-});
-
-/** 整棵树的文本，用于找说明文案。 */
-function textOf(root: Node): string {
-  let out = root.text;
-  for (const child of root.children) out += `\n${textOf(child)}`;
-  return out;
-}
-
-function findAll(root: Node, predicate: (n: Node) => boolean): Node[] {
-  const found: Node[] = [];
-  const visit = (target: Node): void => {
-    if (predicate(target)) found.push(target);
-    for (const child of target.children) visit(child);
-  };
-  visit(root);
-  return found;
-}
-
-async function mount(): Promise<{ root: Node; unmount: () => void }> {
-  const root = node("root");
-  const app = renderer.createApp(
+async function mount(): Promise<{ root: TestNode; unmount: () => void }> {
+  const root = makeNode("root");
+  const app = testRenderer.createApp(
     defineComponent({ setup: () => () => h(QaDetailView) }),
   );
   app.mount(root);
   // onMounted 里发起的 load() 是异步的：等它 resolve 后的一轮渲染。
-  for (let i = 0; i < 5; i += 1) {
-    await Promise.resolve();
-    await nextTick();
-  }
+  await settle(5);
   return { root, unmount: () => app.unmount() };
 }
-
 /** 作者 = 2，帖子本身的作者；另有一条别人写的回复。 */
 const post = {
   id: 7,
@@ -262,6 +209,100 @@ describe("QaDetailView — 回答权限（#242）", () => {
       expect(labels).toContain("编辑");
       expect(labels).toContain("删除");
       expect(labels).toContain("标记已解决");
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("普通非作者：说明文案不再承诺「编辑或删除自己的内容」", async () => {
+    // 帖子作者是 2，当前用户是 3：对**帖子** canManage 不成立，页面上没有
+    // 帖子的编辑/删除按钮。注意回复列表里 id=3 写的那条回复仍带自己的删除
+    // 按钮——那是回复级权限，与帖子级文案无关，所以这里只断言帖子级。
+    profileState.profile = { user_id: 3, username: "lisi", role: "member" };
+
+    const view = await mount();
+    try {
+      const text = textOf(view.root);
+      expect(text).toContain("只有管理员可以回答招新问答");
+      // 关键回归：不能对非作者承诺「编辑、删除自己的帖子」
+      expect(text).not.toContain("编辑、删除自己的帖子");
+      // 非作者的口径应指向「可以去问、可以自己发起」
+      expect(text).toContain("自己发起新问题");
+    } finally {
+      view.unmount();
+    }
+  });
+});
+
+describe("QaDetailView — 回复提交（#242 AC：回复框可用，回复成功）", () => {
+  /**
+   * 前面的用例只断言「编辑器在不在」。「回复成功」是行为，必须真的点到提交
+   * 并看到 createQaReply 被调用、正文被清空、列表被重拉。
+   */
+  it("管理员填正文后点回复：调用 createQaReply，成功提示并重拉详情", async () => {
+    profileState.profile = { user_id: 9, username: "admin", role: "admin" };
+    api.createQaReply.mockResolvedValue({ id: 99, post_id: 7, body: "已回复" });
+
+    const view = await mount();
+    try {
+      // 截图前先确认按钮确实渲染出来了（否则下面的「点不到」是另一种失败）
+      const replyButton = findAll(
+        view.root,
+        (n) => n.type === "button" && textOf(n).trim() === "回复",
+      )[0];
+      expect(replyButton).toBeDefined();
+
+      // MarkdownEditor 是桩组件，正文通过 v-model:body 由父组件持有；
+      // 直接触发桩组件暴露的输入事件，模拟用户敲入正文。
+      const editor = findAll(
+        view.root,
+        (n) => n.type === "div" && n.props.class === "stub-md-editor",
+      )[0];
+      expect(editor).toBeDefined();
+      const onInput = editor?.props.onInput as
+        | ((value: string) => void)
+        | undefined;
+      expect(onInput).toBeTypeOf("function");
+      onInput?.("这是管理员的回复");
+      await nextTick();
+
+      // 正文非空后按钮才可点。按钮桩只在 disabled 为真时输出该属性，
+      // 所以「可点」表现为属性缺失（undefined）而不是显式的 false。
+      const enabled = findAll(
+        view.root,
+        (n) => n.type === "button" && textOf(n).trim() === "回复",
+      )[0];
+      expect(enabled?.props.disabled).not.toBe(true);
+      await (enabled?.props.onClick as () => Promise<void>)();
+      await nextTick();
+
+      expect(api.createQaReply).toHaveBeenCalledTimes(1);
+      expect(api.createQaReply).toHaveBeenCalledWith(
+        7,
+        { body: "这是管理员的回复" },
+        "recruitment",
+      );
+      // 成功后重拉详情（load() 会再次 fetchQaPost）
+      const fetches = api.fetchQaPost.mock.calls.length;
+      expect(fetches).toBeGreaterThanOrEqual(2);
+    } finally {
+      view.unmount();
+    }
+  });
+
+  it("普通用户即使伪造输入也调不到 createQaReply（界面无提交入口）", async () => {
+    profileState.profile = { user_id: 2, username: "zhangsan", role: "member" };
+
+    const view = await mount();
+    try {
+      // 没有编辑器 = 没有正文来源；没有「回复」按钮 = 没有提交入口
+      expect(
+        findAll(view.root, (n) => n.type === "div" && n.props.class === "stub-md-editor"),
+      ).toHaveLength(0);
+      expect(
+        findAll(view.root, (n) => n.type === "button" && textOf(n).trim() === "回复"),
+      ).toHaveLength(0);
+      expect(api.createQaReply).not.toHaveBeenCalled();
     } finally {
       view.unmount();
     }
