@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 招新问答详情（#219 只读 → #220 增加回复与作者操作）。
+ * 招新问答详情（#219 只读 → #220 增加回复与作者操作 → #242 回答收口）。
  *
  * 闭合：列表点进来 → 拉详情 → 渲染正文（MarkdownContent，唯一正文渲染组件，
  * 见 ADR 0005 决策 6）+ 回复列表（官方回答已由后端置顶，这里只展示标签）。
@@ -11,8 +11,19 @@
  *   - 作者本人或管理员可编辑/删除帖子与回复；
  *   - 编辑过的内容显示「已编辑」。
  *
- * 权限只用于**隐藏**按钮：真正的判定在后端（无权与不存在都回 404）。
- * 前端根据 /me 的 role 与 author_id 提前收起按钮，避免用户点了才失败。
+ * #242 回答收口：招新问答的**新建回复仅限管理员**，所以普通用户不再看到回复框，
+ * 只留一行说明。这里刻意不用「禁用输入框」：禁用的输入框暗示「等我有权限就能用」，
+ * 而这个身份永远不会获得该权限，一行说明更诚实，也不白占一屏。
+ * 同一身份下「提问 / 编辑 / 删除 / 标记已解决」的权限没有被收回，仍然可见可用。
+ *
+ * 注意这条规则当前只有**前端侧**成立：#242 的原文是「与后端权限收口配套（后端
+ * issue 里做强制）」，而截至本分支，`origin/main` 的 `/forum/posts/:id/replies`
+ * 仍只挂 authRequired，ADR 0003 决策 8 也仍写「任何登录用户都能回复招新问答」；
+ * 强制收口在 #241 的分支上，尚未合并。因此：
+ *   - 这里隐藏回复框是**减少误操作**，不是安全边界，绕过界面直接调接口仍可成功；
+ *   - 别按「后端一定会 403」来写兜底逻辑，那条契约要等 #241 合入后才成立。
+ *
+ * 权限只用于**隐藏**按钮：编辑/删除的判定在后端（无权与不存在都回 404）。
  */
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -32,6 +43,8 @@ import {
 } from "@/api/qa";
 import { currentProfile } from "@/modules/user-settings/profileIdentity";
 import { formatDateTime, replyRoleLabel } from "../model";
+// 双壳适配（#242）：同一套组件在 AdminLayout 与 SignalShell 下各自成立。
+import "../forum.css";
 
 /** 正文上限，与后端 CHECK 一致。 */
 const BODY_MAX = 20000;
@@ -62,6 +75,30 @@ function canManage(authorId: number): boolean {
   return myId.value !== null && myId.value === authorId;
 }
 
+/**
+ * 能否回答（#242）。
+ *
+ * 招新问答的新建回复按 #242 收口到管理员，因此这里只看角色——作者身份不再
+ * 带来回答权限。普通用户在详情页看到一行说明而不是灰掉的输入框：这个身份
+ * 不会再获得回答权限（这是产品裁决，不是对他当前权限的描述）。
+ *
+ * 与后端的分工见文件头注释：强制在 #241，未合入前这条只是前端可见性。
+ */
+const canReply = computed(() => amAdmin.value);
+
+/**
+ * 普通用户的说明文案：说清「谁能答」，再按**这个人对这篇帖子**的真实能力补一句。
+ *
+ * 不写死「你仍然可以编辑或删除自己的内容」：对别人的帖子，普通用户根本看不到
+ * 那些按钮，一句话把人引向不存在的入口比不说更糟。作者与非作者分开写。
+ */
+const replyRestrictedNote = computed(() => {
+  const mine = post.value !== null && canManage(post.value.author_id);
+  return mine
+    ? "只有管理员可以回答招新问答。你仍然可以提问，也可以编辑、删除自己的帖子或标记已解决。"
+    : "只有管理员可以回答招新问答。其他帖子你可以在列表里检索、向作者提问，或自己发起新问题。";
+});
+
 async function load(): Promise<void> {
   if (!Number.isInteger(postId) || postId <= 0) {
     loadError.value = "无效的问答编号";
@@ -91,15 +128,17 @@ const replyBlocked = computed(
     replyEditorRef.value?.submitBlockReason !== null &&
     replyEditorRef.value?.submitBlockReason !== undefined,
 );
-const canReply = computed(
+/** 「回复」按钮是否可点：有权限、有正文、没有失败/上传中的图。 */
+const canSubmitReply = computed(
   () =>
+    canReply.value &&
     !replying.value &&
     replyBody.value.trim().length > 0 &&
     !replyBlocked.value,
 );
 
 async function submitReply(): Promise<void> {
-  if (!canReply.value) return;
+  if (!canSubmitReply.value) return;
   const block = replyEditorRef.value?.submitBlockReason ?? null;
   if (block) {
     ElMessage.warning(block);
@@ -186,8 +225,13 @@ onMounted(load);
 
 <template>
   <section class="qa-detail">
+    <!-- 品牌色柔光晕（与 /user/home、/user/settings、/user/about 同一层）。
+         它自己就是 fixed 装饰层，靠 .qa-detail 的 isolation 与 z-index 把
+         正文压在上面，不需要额外包一层 wrapper。 -->
+    <div class="glass-backdrop" aria-hidden="true"></div>
+
     <PageHeader
-      eyebrow="招新问答"
+      :eyebrow="forum.label.value"
       :title="post ? (post.title || '（无标题）') : '问答详情'"
       :meta="loading ? '加载中…' : undefined"
     />
@@ -258,7 +302,11 @@ onMounted(load);
       </ul>
       <p v-else class="qa-detail__empty">还没有回复</p>
 
-      <section class="qa-detail__compose">
+      <!-- 回答收口（#242）：普通用户只看一行说明，不给灰掉的输入框 -->
+      <p v-if="!canReply" class="qa-detail__answer-locked" role="note">
+        {{ replyRestrictedNote }}
+      </p>
+      <section v-else class="qa-detail__compose">
         <h3 class="qa-detail__compose-title">写回复</h3>
         <MarkdownEditor
           ref="replyEditorRef"
@@ -268,7 +316,12 @@ onMounted(load);
           placeholder="写下你的回复，可以贴图片"
         />
         <div class="qa-detail__compose-actions">
-          <el-button type="primary" :loading="replying" :disabled="!canReply" @click="submitReply">
+          <el-button
+            type="primary"
+            :loading="replying"
+            :disabled="!canSubmitReply"
+            @click="submitReply"
+          >
             回复
           </el-button>
         </div>
@@ -280,14 +333,26 @@ onMounted(load);
 </template>
 
 <style scoped>
+/*
+ * 颜色只用语义令牌（--qa-*），取值由 forum.css 按外壳注入（#242）。
+ * 版式（宽、间距、字号）未改动——本次只换壳与配色变量。
+ */
 .qa-detail {
   max-width: 760px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+  /* .glass-backdrop 是 fixed + z-index:0 的装饰层；isolation 建独立层叠上下文，
+     再让内容以 z-index:1 压在光斑之上（不额外包 wrapper，v-if 分支才不被拆开）。 */
+  position: relative;
+  isolation: isolate;
+}
+.qa-detail > :not(.glass-backdrop) {
+  position: relative;
+  z-index: 1;
 }
 .qa-detail__meta {
   font-size: 13px;
-  color: #8a97ab;
+  color: var(--qa-faint);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -295,14 +360,14 @@ onMounted(load);
   margin-bottom: 16px;
 }
 .qa-detail__resolved {
-  background: #e6f7ed;
-  color: #1a8a4f;
+  background: color-mix(in srgb, var(--qa-success) 14%, transparent);
+  color: var(--qa-success);
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 12px;
 }
 .qa-detail__edited {
-  color: #9aa7ba;
+  color: var(--qa-faint);
 }
 .qa-detail__actions {
   display: flex;
@@ -310,12 +375,13 @@ onMounted(load);
   margin-bottom: 12px;
 }
 .qa-detail__body {
-  border-bottom: 1px solid #eef1f6;
+  border-bottom: 1px solid var(--qa-line-soft);
   padding-bottom: 20px;
 }
 .qa-detail__replies-title {
   font-size: 16px;
   margin: 24px 0 12px;
+  color: var(--qa-ink);
 }
 .qa-detail__replies {
   list-style: none;
@@ -325,20 +391,20 @@ onMounted(load);
   gap: 12px;
 }
 .qa-reply {
-  border: 1px solid #e3e8ef;
-  border-radius: 10px;
+  border: 1px solid var(--qa-line);
+  border-radius: var(--qa-radius);
   padding: 14px;
 }
 .qa-reply--official {
-  border-color: #4c8bf5;
-  background: #f5f9ff;
+  border-color: var(--qa-accent);
+  background: color-mix(in srgb, var(--qa-accent) 6%, transparent);
 }
 .qa-reply__head {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #8a97ab;
+  color: var(--qa-faint);
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
@@ -346,18 +412,18 @@ onMounted(load);
   font-size: 12px;
   padding: 1px 8px;
   border-radius: 999px;
-  background: #eef1f6;
-  color: #5b6b82;
+  background: color-mix(in srgb, var(--qa-ink) 8%, transparent);
+  color: var(--qa-muted);
 }
 .qa-reply__role--official {
-  background: #4c8bf5;
+  background: var(--qa-accent);
   color: #fff;
 }
 .qa-reply__author {
-  color: #5b6b82;
+  color: var(--qa-muted);
 }
 .qa-reply__edited {
-  color: #9aa7ba;
+  color: var(--qa-faint);
 }
 .qa-reply__del {
   margin-left: auto;
@@ -365,22 +431,31 @@ onMounted(load);
   background: none;
   padding: 0;
   font-size: 12px;
-  color: #c0392b;
+  color: var(--qa-danger);
   cursor: pointer;
 }
 .qa-detail__empty {
-  color: #8a97ab;
+  color: var(--qa-faint);
   padding: 12px 0;
+}
+/* 普通用户的回答限制说明（#242）：一行文字，不占一屏，也不用禁用态输入框。 */
+.qa-detail__answer-locked {
+  margin: 28px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--qa-line-soft);
+  color: var(--qa-muted);
+  font-size: 13px;
+  line-height: 1.8;
 }
 .qa-detail__compose {
   margin-top: 28px;
   padding-top: 20px;
-  border-top: 1px solid #eef1f6;
+  border-top: 1px solid var(--qa-line-soft);
 }
 .qa-detail__compose-title {
   font-size: 15px;
   margin: 0 0 10px;
-  color: #35507a;
+  color: var(--qa-ink);
 }
 .qa-detail__compose-actions {
   display: flex;
@@ -391,7 +466,7 @@ onMounted(load);
   margin-top: 24px;
 }
 .qa-detail__error {
-  color: #c0392b;
+  color: var(--qa-danger);
   margin: 12px 0;
 }
 </style>

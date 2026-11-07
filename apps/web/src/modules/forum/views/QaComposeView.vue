@@ -6,6 +6,9 @@
  * 拆成正反两个组件只会让校验与提交逻辑重复一遍。
  *
  * 路由参数 id 存在即编辑态；编辑态下方向不可改（后端契约也不接受）。
+ *
+ * 路径前缀来自 `forum.base`（#242）：管理端入口编辑完帖子后要留在管理台，
+ * 不能被送回 /user/qa——那会直接跳出管理台外壳。
  */
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -20,6 +23,9 @@ import {
   updateQaPost,
 } from "@/api/qa";
 import { fetchDirections } from "@/api/recruitment";
+// 双壳适配（#242）：同一套组件在 AdminLayout 与 SignalShell 下各自成立。
+import "../forum.css";
+
 const route = useRoute();
 const router = useRouter();
 // 内容域来自路由 meta（#221）。
@@ -160,8 +166,11 @@ onMounted(async () => {
 
 <template>
   <section class="qa-compose">
+    <!-- 品牌色柔光晕（与 /user/home、/user/settings、/user/about 同一层）。 -->
+    <div class="glass-backdrop" aria-hidden="true"></div>
+
     <PageHeader
-      eyebrow="招新问答"
+      :eyebrow="forum.label.value"
       :title="isEdit ? '编辑帖子' : '提问'"
       :meta="loading ? '加载中…' : undefined"
     />
@@ -223,21 +232,30 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* 颜色只用语义令牌（--qa-*），取值由 forum.css 按外壳注入（#242）。 */
 .qa-compose {
   max-width: 760px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+  /* .glass-backdrop 是 fixed + z-index:0 的装饰层；isolation 建独立层叠上下文，
+     再让内容以 z-index:1 压在光斑之上。 */
+  position: relative;
+  isolation: isolate;
+}
+.qa-compose > :not(.glass-backdrop) {
+  position: relative;
+  z-index: 1;
 }
 .qa-compose__label {
   display: block;
   margin: 18px 0 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #35507a;
+  color: var(--qa-ink);
 }
 .qa-compose__optional {
   font-weight: 400;
-  color: #9aa7ba;
+  color: var(--qa-faint);
 }
 .qa-compose__actions {
   display: flex;
@@ -246,7 +264,7 @@ onMounted(async () => {
   margin-top: 20px;
 }
 .qa-compose__error {
-  color: #c0392b;
+  color: var(--qa-danger);
   font-size: 12px;
   margin: 6px 0 0;
 }

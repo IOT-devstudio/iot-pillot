@@ -87,10 +87,30 @@ watch(
 // blob URL 是组件私有的，卸载必须回收，否则整页浏览下来会一直占内存。
 onBeforeUnmount(revoke);
 
-// 纵深防护：协议不在白名单（javascript: / data: 等）时也不渲染 <img>，直接走占位块。
-const showImage = computed(
-  () => !failed.value && resolvedSrc.value !== "" && isAllowedUrl(resolvedSrc.value),
-);
+/** 我们自己 fetch 回来生成的对象地址（局部规则，不在正文协议白名单里）。 */
+function isOwnObjectUrl(url: string): boolean {
+  return url.startsWith("blob:");
+}
+
+/**
+ * 是否真的渲染出 <img>。
+ *
+ * 两条判定，故意分开写：
+ *   1. **自己生成的 blob URL** 单独放行。它不是正文里写的东西，而是组件为了绕过
+ *      「<img> 带不上 Authorization 头」生成的中间产物，所以不能拿正文协议白名单
+ *      去量它——`new URL("blob:http://…").protocol` 是 `blob:`，必然被拒；
+ *      把 `blob:` 加进 isAllowedUrl 又会顺带让 `![](blob:…)` 变成合法正文语法，
+ *      而 ADR 0005 决策 5 正是要排除这种东西。
+ *   2. 其余地址（外链 / 站内相对路径）仍按**原始 src** 走 isAllowedUrl 做纵深防护
+ *      （javascript: / data: 等一律落占位块）。
+ */
+const showImage = computed(() => {
+  if (failed.value) return false;
+  const src = resolvedSrc.value;
+  if (src === "") return false;
+  if (isOwnObjectUrl(src)) return isAttachmentUrl(props.src);
+  return isAllowedUrl(props.src);
+});
 
 const fallbackLabel = computed(() =>
   props.alt ? `图片不可用：${props.alt}` : "图片不可用",

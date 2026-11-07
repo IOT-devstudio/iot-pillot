@@ -56,6 +56,14 @@ const navGroups: AdminNavGroup[] = [
         icon: "M9 4.75h6l4 4V19.25H9z M14 4.75v4.5h4.5 M5.5 7.75v11.5h9",
       },
       {
+        // 招新问答（#242）：管理员在这里回答问题。
+        // 与 /user/qa 是同一套组件，靠路由 meta 切内容域与外壳；
+        // 该入口的列表页不提供「提问」（发帖走用户端）。
+        label: "招新问答",
+        to: "/recruitment/qa",
+        icon: "M4 5.75h16v10.5H9.5L5 20v-3.75H4z M8 9.5h8 M8 12.5h5",
+      },
+      {
         label: "候选人处理",
         to: "/recruitment/candidates",
         icon: "M9 4.75h6l4 4V19.25H9z M14 4.75v4.5h4.5 M5.5 7.75v11.5h9",
