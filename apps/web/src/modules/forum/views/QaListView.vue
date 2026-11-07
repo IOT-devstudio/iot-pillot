@@ -1,9 +1,12 @@
 <script setup lang="ts">
 /**
- * 招新问答 / 内部论坛列表（#219 只读、#221 分区）。
+ * 招新问答 / 内部论坛列表（#219 只读、#221 分区、#242 管理端入口）。
  *
- * 同一个组件服务两个内容域：域由路由 meta 决定（useForumScope），
- * 标题、路径、接口前缀全部随之切换，不复制一份实现。
+ * 同一个组件服务三组入口：域与路径前缀全部由路由 meta 决定（useForumScope），
+ * 标题、路径、接口前缀随之切换，不复制一份实现。
+ *
+ * 管理端入口（/recruitment/qa）只回答问题，因此不渲染「提问」按钮（#242）：
+ * 该页职责是回答，管理员要发帖走用户端。按钮可见性由 forum.canCompose 决定。
  *
  * 闭环：拉方向列表（构建筛选下拉）→ 分页拉帖子 → 方向/关键词筛选 → 点进详情。
  * 不渲染正文：列表只给摘要与元信息（ADR 0005 决策 8：列表不唯一需要 20 个 Markdown VNode）。
@@ -26,6 +29,8 @@ import {
   postExcerpt,
   replyRoleLabel,
 } from "../model";
+// 双壳适配（#242）：同一套组件在 AdminLayout 与 SignalShell 下各自成立。
+import "../forum.css";
 
 const router = useRouter();
 // 内容域来自路由 meta（#221）：招新问答与内部论坛复用本组件。
@@ -117,14 +122,19 @@ onMounted(async () => {
 
 <template>
   <section class="qa-list">
+    <!-- 品牌色柔光晕（与 /user/home、/user/settings、/user/about 同一层
+         .glass-backdrop：蓝光在左上、黄光在右下）。它自己是 fixed 装饰层，
+         正文靠 .qa-list 的 isolation + 子元素 z-index 压在上面。 -->
+    <div class="glass-backdrop" aria-hidden="true"></div>
+
     <PageHeader
       :eyebrow="forum.label.value"
       :title="forum.label.value"
-      :description="forum.isStudio.value ? '工作室内部讨论。仅管理员可见。' : '成员与报名者整理的常见问题。按方向筛选，点开查看完整问答。'"
+      :description="forum.description.value"
       :meta="loading ? '加载中…' : `共 ${total} 条`"
     />
 
-    <div class="qa-list__cta">
+    <div v-if="forum.canCompose.value" class="qa-list__cta">
       <el-button type="primary" @click="goCompose">提问</el-button>
     </div>
 
@@ -207,10 +217,23 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/*
+ * 颜色只用语义令牌（--qa-*），具体取值由 forum.css 按外壳注入：
+ * 管理端读 theme.css，用户端读 signal.css。#242 之前这里硬编码
+ * #4c8bf5 / #e3e8ef / #8a97ab，套在瑞士信号壳里就是「信号外壳 + 后台蓝卡片」。
+ */
 .qa-list {
   max-width: 860px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+  /* .glass-backdrop 是 fixed + z-index:0 的装饰层；isolation 建独立层叠上下文，
+     再让内容以 z-index:1 压在光斑之上（不额外包 wrapper）。 */
+  position: relative;
+  isolation: isolate;
+}
+.qa-list > :not(.glass-backdrop) {
+  position: relative;
+  z-index: 1;
 }
 .qa-list__cta {
   display: flex;
@@ -230,7 +253,7 @@ onMounted(async () => {
   width: 180px;
 }
 .qa-list__error {
-  color: #c0392b;
+  color: var(--qa-danger);
   margin: 12px 0;
 }
 .qa-list__items {
@@ -241,15 +264,15 @@ onMounted(async () => {
   gap: 12px;
 }
 .qa-card {
-  border: 1px solid #e3e8ef;
-  border-radius: 10px;
+  border: 1px solid var(--qa-line);
+  border-radius: var(--qa-radius);
   padding: 16px;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .qa-card:hover {
-  border-color: #4c8bf5;
-  box-shadow: 0 2px 10px rgba(76, 139, 245, 0.12);
+  border-color: var(--qa-accent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--qa-accent) 14%, transparent);
 }
 .qa-card__head {
   display: flex;
@@ -267,11 +290,11 @@ onMounted(async () => {
   border-radius: 999px;
 }
 .qa-card__badge--resolved {
-  background: #e6f7ed;
-  color: #1a8a4f;
+  background: color-mix(in srgb, var(--qa-success) 14%, transparent);
+  color: var(--qa-success);
 }
 .qa-card__excerpt {
-  color: #5b6b82;
+  color: var(--qa-muted);
   margin: 8px 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -280,7 +303,7 @@ onMounted(async () => {
 }
 .qa-card__meta {
   font-size: 13px;
-  color: #8a97ab;
+  color: var(--qa-faint);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -288,15 +311,15 @@ onMounted(async () => {
 }
 .qa-card__img {
   display: inline-block;
-  border: 1px solid #c9d3e0;
+  border: 1px solid var(--qa-line);
   border-radius: 4px;
   padding: 0 4px;
   font-size: 11px;
-  color: #4c8bf5;
+  color: var(--qa-accent);
 }
 .qa-list__empty {
   text-align: center;
-  color: #8a97ab;
+  color: var(--qa-faint);
   padding: 48px 0;
 }
 .qa-list__pager {
