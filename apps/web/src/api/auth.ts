@@ -4,6 +4,9 @@ import type {
   RegisterPayload,
   ResetPayload,
 } from "@/auth/form";
+// 只取类型：session-request.ts 反向引用了本文件的错误类型与 requestBackend，
+// 这里再 import 它的运行时会形成循环依赖。具体请求器由调用方传入。
+import type { SessionRequester } from "./session-request";
 
 export const UNAVAILABLE_MESSAGE = "服务暂时不可用，请稍后重试";
 
@@ -268,15 +271,22 @@ export interface UnfreezeSelfResult {
  *
  * 资料仍不全时后端回 200 + frozen=true + 剩余问题项（不是 400）：
  * 那是业务上的正常结果，前端需要拿到清单去渲染，而不是一句错误文案。
- * 因此这里用 postAuth（要求 data 存在）而不是 postAuthNoData。
+ * 因此这里要求响应带 data，而不是只取 message。
  *
  * 解冻成功时响应里带新的双令牌：调用方必须替换本地会话，
  * 否则用户手里还是受限令牌，什么都点不开。
+ *
+ * 为什么必须由调用方传入会话请求器（默认用 requestWithSession）：
+ * 补资料要花时间，access token 在这期间过期是常态。手拼 Authorization
+ * 会把这种情况变成一句「登录状态已失效」；走会话请求器则会安静刷新后
+ * 重试，用户无感。401 之外的失败（含 403 资料未补全）原样抛出，不重试。
  */
-export function unfreezeSelf(accessToken: string): Promise<UnfreezeSelfResult> {
-  return postAuth<UnfreezeSelfResult>(
-    "/api/v1/me/unfreeze",
-    {},
-    { Authorization: `Bearer ${accessToken}` },
-  );
+export function unfreezeSelf(
+  request: SessionRequester,
+): Promise<UnfreezeSelfResult> {
+  return request<UnfreezeSelfResult>("/api/v1/me/unfreeze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
 }

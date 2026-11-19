@@ -16,6 +16,7 @@ import type { Direction } from "@iot-pillot/shared-types";
 import { fetchMyApplications, type RecruitmentApplication } from "@/api/recruitment";
 import { ElMessage } from "element-plus";
 
+import { AuthRequestError, type AuthSession, type FreezeIssue, type UnfreezeSelfResult } from "@/api/auth";
 import {
   detailToForm,
   fetchMyProfile,
@@ -25,7 +26,9 @@ import {
   type MyProfile,
   type MyProfileUpdate,
 } from "@/api/profile";
-import { readAuthSession } from "@/auth/session";
+import { readAuthSession, saveAuthSession } from "@/auth/session";
+import { requestWithSession } from "@/api/session-request";
+import { unfreezeSelf } from "@/api/auth";
 import { describeAuthError } from "@/modules/dashboard/composables/useAdminPermissions";
 import { beginProfileLoad, beginProfileSave, beginProfileSessionCheck, setCurrentProfile } from "../profileIdentity";
 import { missingRequiredProfile, validateRequiredProfile, type RequiredProfileErrors } from "../profileCompletion";
@@ -34,12 +37,37 @@ export interface UserSettingsDeps {
   fetchMyProfile: () => Promise<MyProfile>;
   updateMyProfile: (input: MyProfileUpdate, expectedUserId: number) => Promise<MyProfile>;
   fetchMyApplications: () => Promise<{ items: Pick<RecruitmentApplication, "direction_code">[] }>;
+  /** 提交解冻（POST /me/unfreeze）。默认走带刷新的会话请求器。 */
+  unfreeze: () => Promise<UnfreezeSelfResult>;
+  /**
+   * 当前会话是否受限（0012 自助解冻的 profile_only 令牌）。
+   *
+   * 注入而不是直接读 localStorage：测试要能构造「受限会话」而不用真去写存储。
+   * 省略时按「不受限」处理——真正的兜底是 checkDirection 里对 403 的识别，
+   * 所以漏注入只会多一次注定 403 的请求，不会把用户锁死。
+   */
+  isRestrictedSession?: () => boolean;
+  /**
+   * 替换本地会话（解冻换发令牌后）。
+   *
+   * 注入而不是直接调 saveAuthSession：这个 composable 要能在无 window 的
+   * 环境（node 单测）里跑，而默认实现本来就会读写 localStorage。
+   */
+  persistSession?: (session: AuthSession) => void;
+  /** 读取本地会话（默认读 localStorage）。 */
+  readSession?: () => AuthSession | null;
 }
 
 const defaultDeps: UserSettingsDeps = {
   fetchMyProfile: () => fetchMyProfile(),
   updateMyProfile: (input, expectedUserId) => updateMyProfile(input, expectedUserId),
   fetchMyApplications,
+  unfreeze: () => unfreezeSelf(requestWithSession),
+  isRestrictedSession: () => {
+    const session = readAuthSession();
+    return session?.scope === "profile_only" || session?.frozen === true;
+  },
+  persistSession: (session) => saveAuthSession(session),
 };
 
 /** 可自动保存的资料字段。方向不在此列（普通成员只读；管理员下拉走单独入口）。 */
@@ -52,6 +80,18 @@ export interface FieldErrors extends RequiredProfileErrors {
   /** QQ 无本地格式校验，但保存失败时会在这里带错误文案（可重试）。 */
   qq?: string;
 }
+
+/**
+ * 「提交解冻」的结局。视图只按 kind 出文案与跳转，不再自己编流程。
+ */
+export type UnfreezeOutcome =
+  /** 解冻成功（含保存顺路自动解冻）。 */
+  | { kind: "unfrozen" }
+  /** 后端复核后仍不合规则：把最新清单交给视图渲染。 */
+  | { kind: "incomplete"; issues: FreezeIssue[] }
+  /** 落盘失败：资料都没存下去，解冻必然不通过，不该继续打接口。 */
+  | { kind: "unsaved" }
+  | { kind: "failed"; message: string };
 
 export interface UseUserSettings {
   profile: Ref<MyProfile | null>;
@@ -67,6 +107,21 @@ export interface UseUserSettings {
   directionError: Readonly<Ref<string>>;
   /** 服务端资料缺少任一必填字段时显示补全横幅。 */
   needsCompletion: Ref<boolean>;
+  /**
+   * 本次会话是否已经被一次保存顺路解冻了。
+   *
+   * 「提交解冻」按钮要据此决定还要不要打 POST /me/unfreeze：PUT /me 在资料
+   * 补齐时会当场解冻并换发令牌，换了之后旧令牌按单端登录语义立即失效，
+   * 再拿它去调解冻接口只会拿到 401。
+   */
+  autoUnfrozen: Readonly<Ref<boolean>>;
+  /**
+   * 提交解冻（0012 自助解冻）。
+   *
+   * 返回结果而不是直接弹提示，是为了把「先落盘、再解冻」这段编排放进可单测的
+   * 地方——它正是本轮 bug 的现场：不先落盘就提交，后端读到的还是旧资料。
+   */
+  submitUnfreeze: () => Promise<UnfreezeOutcome>;
   load: () => Promise<void>;
   /** 字段失焦触发：防抖由调用方（组件 blur → setTimeout）或本函数内部完成。 */
   saveField: (key: FieldKey) => Promise<void>;
@@ -86,6 +141,21 @@ export function nextFormFromProfile(profile: MyProfile): FormShape {
 }
 
 const FIELD_KEYS: FieldKey[] = ["name", "class", "studentId", "qq"];
+
+/** 后端「账号资料未补全」的 403 业务码（response.CodeForbidden）。 */
+const CODE_FORBIDDEN = 4003;
+
+/**
+ * 判定一次失败是不是「受限令牌被业务端点拒绝」。
+ *
+ * 只看 403 不够：真正的权限不足也是 403。但本页唯一的业务请求是
+ * 本人报名列表，普通成员访问它不可能因角色被拒，因此 403 在这里
+ * 只可能是 scope 门槛——按冻结处理，放行补资料的写入。
+ */
+function isScopeForbidden(error: unknown): boolean {
+  if (!(error instanceof AuthRequestError) || error.status !== 403) return false;
+  return error.businessCode === undefined || error.businessCode === CODE_FORBIDDEN;
+}
 
 function emptyStatuses(): Record<FieldKey, FieldStatus> {
   return { name: "idle", class: "idle", studentId: "idle", qq: "idle" };
@@ -107,6 +177,8 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       : ""
   ));
   const needsCompletion = ref(false);
+  /** 保存顺路解冻过没有（见 UseUserSettings.autoUnfrozen 的注释）。 */
+  const autoUnfrozen = ref(false);
 
   const form = reactive<FormShape>({
     name: "",
@@ -124,6 +196,44 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
   const fieldSaveQueues: Partial<Record<FieldKey, Promise<void>>> = {};
   let autoSaveInFlight: Promise<boolean> | null = null;
 
+  /** 当前会话是否受限（profile_only）。每次现读，解冻换发令牌后立即不再受限。 */
+  function isRestricted(): boolean {
+    return deps.isRestrictedSession?.() ?? false;
+  }
+
+  /**
+   * 读/写本地会话。
+   *
+   * 走依赖注入而不是直接碰 localStorage：这个 composable 要在无 window 的
+   * 环境（node 单测）里跑，默认实现才允许读写存储。
+   */
+  function readSession(): AuthSession | null {
+    return deps.readSession ? deps.readSession() : readAuthSession();
+  }
+
+  function writeSession(session: AuthSession): void {
+    (deps.persistSession ?? ((next: AuthSession) => saveAuthSession(next)))(session);
+  }
+
+  /**
+   * 保存响应若带回「刚解冻」的新双令牌，立刻替换本地会话。
+   *
+   * 后端只在 PUT /me 真的解冻了才返回这一对令牌；不换成它，用户手里
+   * 还是受限令牌，接下来点什么都 403——包括刷新前的这次页面停留。
+   * 没返回就什么都不做：无条件替换会把其它标签页的正常会话顶下线。
+   */
+  function adoptUnfrozenSession(next: MyProfile): void {
+    if (!next.access_token || !next.refresh_token) return;
+    autoUnfrozen.value = true;
+    writeSession({
+      access_token: next.access_token,
+      refresh_token: next.refresh_token,
+      user_id: next.user_id,
+      scope: next.scope ?? "full",
+      frozen: false,
+    });
+  }
+
   function hydrate(next: MyProfile, publish: (profile: MyProfile) => void = setCurrentProfile): void {
     profile.value = next;
     publish(next);
@@ -139,6 +249,18 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
 
   async function checkDirection(): Promise<void> {
     directionLoadError.value = "";
+    // 受限会话（0012 自助解冻）**不能**核对报名方向：
+    // GET /recruitment/applications 挂在 requireFullScope 之后，受限令牌
+    // 必定拿到 403「账号资料未补全」。若照常走请求→失败→置错误，
+    // directionError 会永久非空，runFieldSave/autoSave 因此拦下所有写入，
+    // 用户资料永远存不进去、也就永远解不了冻——整个自助解冻闭环被自己锁死。
+    //
+    // 方向的作用是「防止资料方向与最新报名冲突」，而受限账号此刻连业务
+    // 端点都进不去，不存在并发新报名的风险；解冻后再核对即可。
+    if (isRestricted()) {
+      latestDirection.value = "";
+      return;
+    }
     try {
       // API 明确按 id DESC 返回：第一条为最新报名。
       const { items } = await deps.fetchMyApplications();
@@ -147,7 +269,15 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
         throw new Error("未知报名方向");
       }
       latestDirection.value = code as Direction | "";
-    } catch {
+    } catch (error: unknown) {
+      // 第二道保险：本地会话缺 scope 时（旧存储格式、旧版本登录留下的会话）
+      // isRestricted() 认不出来，但服务端照样回 403「账号资料未补全」。
+      // 这条错误说明的是「账号被冻结」，而不是「方向核对失败」——
+      // 按核对失败处理会把补资料的写入一起拦死，正是本次要修的 bug。
+      if (isScopeForbidden(error)) {
+        latestDirection.value = "";
+        return;
+      }
       directionLoadError.value = "暂时无法核对最新报名方向，请重试；核对成功前无法保存。";
     }
   }
@@ -282,6 +412,8 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
         fieldStatuses[key] = "idle";
         return;
       }
+      // 后端在这次保存里顺手解冻了：先换令牌，否则后面每一步都是 403。
+      adoptUnfrozenSession(next);
       updateBaseline(key, next, publish);
       fieldStatuses[key] = "saved";
     } catch (err: unknown) {
@@ -384,6 +516,7 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       }
       const patch = formToUpdate(form);
       const next = await deps.updateMyProfile(patch, profile.value.user_id);
+      adoptUnfrozenSession(next);
       profile.value = next;
       publish(next);
       for (const key of dirty) {
@@ -397,6 +530,56 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
       markError(describeAuthError(error, "保存失败").message);
       return false;
     }
+  }
+
+  /**
+   * 提交解冻（0012 自助解冻）。
+   *
+   * 顺序是刻意的，也正是本轮 bug 的现场：
+   *   1. **先落盘**。表单看起来填好了不等于后端已有数据；不先存就提交，
+   *      后端读库看到的还是旧资料，必然回「仍不全」，用户会觉得
+   *      「明明填好了却说我没填」。
+   *   2. 落盘若已顺路解冻（PUT /me 的自动解冻），就别再打 /me/unfreeze：
+   *      旧令牌已被换掉，再打只会 401。
+   *   3. 否则才调解冻接口，并用它返回的清单刷新顶部提示。
+   */
+  async function submitUnfreeze(): Promise<UnfreezeOutcome> {
+    if (await autoSave() === false) {
+      return { kind: "unsaved" };
+    }
+    if (autoUnfrozen.value) {
+      return { kind: "unfrozen" };
+    }
+
+    let result: UnfreezeSelfResult;
+    try {
+      result = await deps.unfreeze();
+    } catch (error: unknown) {
+      return { kind: "failed", message: describeAuthError(error, "提交解冻失败，请稍后重试").message };
+    }
+
+    if (result.frozen) {
+      // 仍不合规是**正常业务结果**（HTTP 200），不是错误：把清单交给视图渲染。
+      // 同时刷新本地会话里的清单，避免顶部还显示登录时的旧项。
+      const issues = result.freeze_issues ?? [];
+      const session = readSession();
+      if (session) {
+        writeSession({ ...session, frozen: true, freeze_issues: issues });
+      }
+      return { kind: "incomplete", issues };
+    }
+
+    if (result.access_token && result.refresh_token) {
+      writeSession({
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
+        user_id: result.user_id,
+        scope: result.scope ?? "full",
+        frozen: false,
+      });
+      autoUnfrozen.value = true;
+    }
+    return { kind: "unfrozen" };
   }
 
   /** 标签页关闭/刷新兜底（beforeunload 无法 await，keepalive fetch）。 */
@@ -431,6 +614,8 @@ export function useUserSettings(deps: UserSettingsDeps = defaultDeps): UseUserSe
     latestDirection,
     directionError,
     needsCompletion,
+    autoUnfrozen,
+    submitUnfreeze,
     load,
     saveField,
     retryField,

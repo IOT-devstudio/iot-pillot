@@ -8,7 +8,9 @@ import {
   resetPassword,
   sendResetCode,
   sendVerifyCode,
+  unfreezeSelf,
 } from "./auth";
+import type { SessionRequester } from "./session-request";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -305,5 +307,48 @@ describe("password recovery api", () => {
         new_password: "secret1",
       }),
     ).rejects.toThrow("验证码错误或已过期");
+  });
+});
+
+describe("自助解冻 api（0012）", () => {
+  /** 假请求器：把泛型 SessionRequester 收窄到本接口的返回类型。 */
+  function fakeRequester<T>(result: T): SessionRequester & ReturnType<typeof vi.fn> {
+    return vi.fn(async () => result) as unknown as SessionRequester & ReturnType<typeof vi.fn>;
+  }
+
+  it("posts to /me/unfreeze through the injected session requester", async () => {
+    // 用假请求器而不是打网络：这里验的是「路由与动词」，
+    // 401 刷新与重试由 session-request 自己的测试覆盖。
+    const request = fakeRequester({
+      user_id: 7,
+      frozen: false,
+      access_token: "full-access",
+      refresh_token: "full-refresh",
+      scope: "full" as const,
+    });
+
+    await expect(unfreezeSelf(request)).resolves.toMatchObject({
+      access_token: "full-access",
+      frozen: false,
+    });
+    expect(request).toHaveBeenCalledWith("/api/v1/me/unfreeze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  });
+
+  it("passes the remaining freeze issues through untouched", async () => {
+    // 资料仍不全时后端回 200 + frozen=true + 清单：
+    // 这是业务结果，不能被包装成错误。
+    const request = fakeRequester({
+      user_id: 7,
+      frozen: true,
+      freeze_issues: [{ field: "class", message: "班级未填写" }],
+    });
+
+    const result = await unfreezeSelf(request);
+    expect(result.frozen).toBe(true);
+    expect(result.freeze_issues).toHaveLength(1);
   });
 });
