@@ -18,8 +18,8 @@ import {
   type FormFieldInput,
 } from "@/api/forms";
 import {
+  fetchAdminDirections,
   fetchAdminRounds,
-  fetchDirections,
   type RecruitmentRound,
   type RecruitmentDirection,
 } from "@/api/recruitment";
@@ -98,7 +98,10 @@ async function load() {
     const [detail, roundList, directionList] = await Promise.all([
       id ? fetchForm(id) : Promise.resolve(null),
       fetchAdminRounds(),
-      fetchDirections(),
+      // 管理端编辑表单要选方向，用**全量**方向（含关闭中的）：
+      // 用户端的 fetchDirections() 只返回 open=true，招新结束后会是空列表，
+      // 那时编辑表单就会「一个方向都选不了」，而表单本身是长期配置。
+      fetchAdminDirections(),
     ]);
     if (current !== revision) return;
     rounds.value = roundList.items;

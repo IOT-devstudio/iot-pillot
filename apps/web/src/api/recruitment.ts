@@ -137,6 +137,17 @@ export function fetchMyApplication(
 
 // ── 管理端 ──
 
+/**
+ * 管理端方向全量列表（含关闭中的），按 sort_order 稳定排序。
+ *
+ * 与用户端 `fetchDirections()` 的区别：那个只返回 `open = true` 的方向，
+ * 招新结束后会是空列表。管理端编辑长期内容（如学习路线）时要选方向，
+ * 不能因为「招新已结束」就一个选项都没有。
+ */
+export function fetchAdminDirections(): Promise<{ items: RecruitmentDirection[] }> {
+  return requestWithSession("/api/v1/admin/recruitment/directions");
+}
+
 export function fetchAdminRounds(): Promise<{ items: RecruitmentRound[] }> {
   return requestWithSession("/api/v1/admin/recruitment/rounds");
 }
