@@ -8,6 +8,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  fetchAdminDirections,
   fetchDirections,
   fetchMyApplications,
   reviewApplication,
@@ -118,5 +119,37 @@ describe("recruitment api", () => {
     expect(path).toBe("/api/v1/admin/recruitment/applications/3/review");
     expect(init?.method).toBe("PATCH");
     expect(init?.body).toBe(JSON.stringify({ target: "reviewing" }));
+  });
+
+  it("reads the full admin direction list, including closed directions", async () => {
+    // 管理端编辑长期内容（如学习路线）时要选方向，不能因为招新结束、
+    // 方向全关就一个选项都没有。这条锁住走的是 admin 全量端点、
+    // 而不是只返回 open=true 的用户端端点。
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 0,
+          message: "success",
+          data: {
+            items: [
+              { id: 1, code: "front-end", name: "前端", open: true, sort_order: 1 },
+              { id: 2, code: "back-end", name: "后端", open: false, sort_order: 2 },
+            ],
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(fetchAdminDirections()).resolves.toEqual({
+      items: [
+        { id: 1, code: "front-end", name: "前端", open: true, sort_order: 1 },
+        { id: 2, code: "back-end", name: "后端", open: false, sort_order: 2 },
+      ],
+    });
+    const [path, init] = fetchMock.mock.calls[0] ?? [];
+    expect(path).toBe("/api/v1/admin/recruitment/directions");
+    // 管理端端点必须带令牌（bearerOf 返回的是完整的 Authorization 头）。
+    expect(bearerOf(init)).toBe("Bearer access-token");
   });
 });

@@ -21,6 +21,7 @@ import type {
 
 import MarkdownContent from "@/components/markdown/MarkdownContent.vue";
 import { createRoadmap, deleteRoadmap, fetchRoadmap, listRoadmaps, updateRoadmap } from "@/api/roadmap";
+import { fetchAdminDirections } from "@/api/recruitment";
 
 import {
   MAX_RESOURCES_PER_STAGE,
@@ -35,6 +36,17 @@ import {
 
 const items = ref<RoadmapListItem[]>([]);
 const directions = ref<RoadmapDirectionOption[]>([]);
+/**
+ * 编辑器「方向」下拉的可选项：**全量方向**，与上面的筛选列表不是一回事。
+ *
+ * `directions` 来自路线列表接口，只含有路线的方向（ADR 0006 决策 8：筛选
+ * 不受招新开关影响）。拿它当新建路线的候选会有先有鸡还是先有蛋的问题——
+ * 库里一条路线都没有时它是空的，下拉显示 No data，第一条路线就建不出来。
+ *
+ * 所以候选改查管理端全量方向（含关闭中的）：路线是长期内容，不该因为
+ * 招新结束、方向被关就选不出来。
+ */
+const directionOptions = ref<Array<{ code: string; name: string }>>([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = 20;
@@ -233,8 +245,27 @@ function applyFilter(): void {
   void loadList();
 }
 
+/**
+ * 拉编辑器「方向」下拉的全量候选项。
+ *
+ * 与列表并行加载，且**失败不阻塞列表**：候选拉不到时新建路线确实没法选方向，
+ * 但浏览与编辑已有路线不受影响，把整页变成错误态是过度反应。
+ * 失败时保留空数组，下拉会显示「No data」，用户仍然可以 filterable
+ * 手动输入 code（allow-create）。
+ */
+async function loadDirectionOptions(): Promise<void> {
+  try {
+    const { items } = await fetchAdminDirections();
+    // 稳定排序交给后端（sort_order），这里只做字段映射。
+    directionOptions.value = items.map((d) => ({ code: d.code, name: d.name || d.code }));
+  } catch {
+    directionOptions.value = [];
+  }
+}
+
 onMounted(() => {
   void loadList();
+  void loadDirectionOptions();
 });
 </script>
 
@@ -312,7 +343,7 @@ onMounted(() => {
             <label class="roadmap__label">方向</label>
             <el-select v-model="draft.direction_code" placeholder="选择方向" filterable allow-create>
               <el-option
-                v-for="d in directions"
+                v-for="d in directionOptions"
                 :key="d.code"
                 :label="d.name"
                 :value="d.code"
