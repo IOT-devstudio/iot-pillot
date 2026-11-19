@@ -120,6 +120,19 @@ function goQa(event: MouseEvent): void {
   void transition(() => router.push("/user/qa"));
 }
 
+/**
+ * 学习路线（#224 用户端）。
+ *
+ * 与招新问答同一套口径：登录才能看（路由标的是 ANY_SIGNED_IN，
+ * 守卫会把人拦去登录页），所以这里先过一次 requireSignIn 提示，
+ * 免得上一个空白页才发现要登录。
+ */
+function goLearningPaths(event: MouseEvent): void {
+  event.preventDefault();
+  if (!requireSignIn("查看学习路线")) return;
+  void transition(() => router.push("/user/learning-paths"));
+}
+
 const userError = ref("");
 const loading = ref(true);
 
@@ -563,6 +576,8 @@ function steps(application: RecruitmentApplication) {
           >我的进度</a
         ><a href="/user/invitations" @click="goInvitations">邀请与结果</a
         ><a href="/user/qa" @click="goQa">招新问答</a
+        ><a href="/user/learning-paths" @click="goLearningPaths"
+          >学习路线</a
         ><RouterLink to="/user/about" @click="goAbout($event)"
           >关于我们</RouterLink
         >
