@@ -22,6 +22,13 @@ const props = defineProps<{
   fieldErrors: FieldErrors;
   latestDirection: Direction | "";
   directionError: string;
+  /**
+   * 受限会话（0012 自助解冻）：此刻报名方向无法核对。
+   *
+   * 受限令牌进不了报名接口，方向区只能显示资料里已有的值；
+   * 「去选择」会把人送去一个注定 403 的业务页，所以要藏起来。
+   */
+  restricted?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -215,7 +222,7 @@ function onInput(key: FieldKey): void {
         <span class="settings__value">
           {{ directionLabel(latestDirection || form.direction) }}
           <button
-            v-if="!directionError && directionUnset"
+            v-if="!restricted && !directionError && directionUnset"
             type="button"
             class="settings__pick-link"
             aria-label="去首页选择方向"
@@ -224,7 +231,14 @@ function onInput(key: FieldKey): void {
             去选择
           </button>
         </span>
-        <span class="settings__hint">{{ latestDirection ? '根据最新一条报名记录自动带出，无需重复填写。' : '暂无报名记录，保留当前资料方向。' }}</span>
+        <span class="settings__hint">
+          <template v-if="restricted">
+            账号解冻后才能核对报名方向；先补齐下面的必填资料。
+          </template>
+          <template v-else>
+            {{ latestDirection ? '根据最新一条报名记录自动带出，无需重复填写。' : '暂无报名记录，保留当前资料方向。' }}
+          </template>
+        </span>
         <span v-if="latestDirection && profile.detail?.direction && profile.detail.direction !== latestDirection" class="settings__hint">当前资料方向：{{ directionLabel(profile.detail.direction) }}</span>
         <p v-if="directionError" class="settings__field-error" role="alert">{{ directionError }}</p>
         <button v-if="directionError" type="button" class="settings__btn settings__btn--ghost" @click="emit('retry-direction')">重新核对方向</button>

@@ -24,6 +24,7 @@ const ERROR = vi.mocked(ElMessage.error);
 afterEach(() => {
   vi.clearAllMocks();
   setCurrentProfile(null);
+  vi.unstubAllGlobals();
 });
 
 function profile(overrides: Partial<MyProfile> = {}): MyProfile {
@@ -49,6 +50,7 @@ function makeDeps(overrides: Partial<UserSettingsDeps> = {}): UserSettingsDeps {
     fetchMyProfile: async () => profile(),
     updateMyProfile: async (input) =>
       profile({ name: input.name ?? profile().name, detail: { ...profile().detail, ...input } }),
+    unfreeze: async () => ({ user_id: 1, frozen: false, access_token: "a", refresh_token: "r", scope: "full" }),
     ...overrides,
   };
 }
@@ -350,6 +352,255 @@ describe("useUserSettings（字段级自动保存，#149）", () => {
     await state.load();
     expect(state.form).toEqual({ name: "Ada", class: "", studentId: "", qq: "", direction: "" });
     expect(state.needsCompletion.value).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 0012 自助解冻：受限会话必须能存下资料
+ *
+ * 这一组守着本轮修的 bug：受限令牌访问 /recruitment/applications 必然
+ * 403，而方向核对失败会让 runFieldSave / autoSave 拦下所有写入。
+ * 结果就是「表单填满了却存不进去 → 后端读到的还是旧资料 → 解不了冻」，
+ * 整个自助解冻闭环被方向校验锁死。
+ * ------------------------------------------------------------------ */
+
+/** 受限会话看得到的 403：后端 RequireFullScope 拒绝时的原样错误。 */
+function scopeForbidden(): AuthRequestError {
+  return new AuthRequestError("账号资料未补全，请先补齐后再使用其它功能", 403, 4003);
+}
+
+describe("useUserSettings — 受限会话（0012 自助解冻）", () => {
+  it("skips the direction check instead of failing closed for a restricted session", async () => {
+    const fetchMyApplications = vi.fn(async () => ({ items: [] }));
+    const update = vi.fn(async () => profile({ detail: { ...profile().detail, class: "软件工程230301" } }));
+    const state = useUserSettings(makeDeps({
+      fetchMyApplications,
+      updateMyProfile: update,
+      isRestrictedSession: () => true,
+    }));
+    await state.load();
+
+    // 关键：受限会话压根不去打注定 403 的业务端点。
+    expect(fetchMyApplications).not.toHaveBeenCalled();
+    expect(state.directionError.value).toBe("");
+
+    state.form.class = "软件工程230301";
+    await state.saveField("class");
+
+    expect(state.directionError.value).toBe("");
+    expect(update).toHaveBeenCalledWith({ class: "软件工程230301" }, 1);
+    expect(state.fieldStatuses.class).toBe("saved");
+  });
+
+  it("saves the whole form on autoSave for a restricted session", async () => {
+    const update = vi.fn(async () => profile());
+    const state = useUserSettings(makeDeps({
+      updateMyProfile: update,
+      isRestrictedSession: () => true,
+    }));
+    await state.load();
+
+    state.form.class = "软件工程230301";
+    state.form.studentId = "202311451";
+
+    // autoSave 是「提交解冻」前的落盘步骤：返回 false 就意味着永远解不了冻。
+    expect(await state.autoSave()).toBe(true);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a 403 from the direction check as frozen, not as a direction failure", async () => {
+    // 本地会话缺 scope（旧存储格式 / 旧版本登录）时认不出受限状态，
+    // 服务端仍会回 403——这条兜底保证那种会话也能存下资料。
+    const fetchMyApplications = vi.fn(async () => { throw scopeForbidden(); });
+    const update = vi.fn(async () => profile());
+    const state = useUserSettings(makeDeps({
+      fetchMyApplications,
+      updateMyProfile: update,
+      isRestrictedSession: () => false,
+    }));
+    await state.load();
+
+    expect(state.directionError.value).toBe("");
+    state.form.class = "软件工程230301";
+    await state.saveField("class");
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("still fails closed on a non-403 direction error", async () => {
+    // 网络异常与 403 必须区别对待：前者是真的核对不了，照旧禁止写入。
+    const fetchMyApplications = vi.fn(async () => { throw new AuthRequestError("服务暂时不可用", 0); });
+    const update = vi.fn(async () => profile());
+    const state = useUserSettings(makeDeps({
+      fetchMyApplications,
+      updateMyProfile: update,
+      isRestrictedSession: () => false,
+    }));
+    await state.load();
+
+    expect(state.directionError.value).toContain("重试");
+    state.form.class = "软件工程230301";
+    await state.saveField("class");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("adopts the new tokens when a save response says the account was unfrozen", async () => {
+    // PUT /me 顺手解冻时后端会带回新双令牌；不换掉，用户手里还是受限令牌，
+    // 之后每一步都是 403。
+    const persistSession = vi.fn();
+    const update = vi.fn(async () => profile({
+      access_token: "full-access",
+      refresh_token: "full-refresh",
+      scope: "full",
+      unfrozen: true,
+    }));
+    const state = useUserSettings(makeDeps({
+      updateMyProfile: update,
+      isRestrictedSession: () => true,
+      persistSession,
+    }));
+    await state.load();
+
+    state.form.class = "软件工程230301";
+    await state.saveField("class");
+
+    expect(persistSession).toHaveBeenCalledWith({
+      access_token: "full-access",
+      refresh_token: "full-refresh",
+      user_id: 1,
+      scope: "full",
+      frozen: false,
+    });
+    // 「提交解冻」据此跳过 POST /me/unfreeze：旧令牌已被换掉，再打只会 401。
+    expect(state.autoUnfrozen.value).toBe(true);
+  });
+
+  it("leaves the session alone when a save response carries no tokens", async () => {
+    // 后端只在真的解冻时返回令牌。无条件替换会把别的标签页顶下线。
+    const persistSession = vi.fn();
+    const update = vi.fn(async () => profile());
+    const state = useUserSettings(makeDeps({
+      updateMyProfile: update,
+      isRestrictedSession: () => true,
+      persistSession,
+    }));
+    await state.load();
+
+    state.form.class = "软件工程230301";
+    await state.saveField("class");
+
+    expect(persistSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("useUserSettings — 提交解冻（0012）", () => {
+  it("flushes the filled-in form before asking the backend to re-check", async () => {
+    // 这是用户报的现场：表单看得见都填好了，但那只是本地 v-model。
+    // 不先落盘就提交，后端读库仍是旧资料，只能回「仍不全」。
+    const update = vi.fn(async (_input: MyProfileUpdate, _userId: number) => profile());
+    const unfreeze = vi.fn(async () => ({
+      user_id: 1,
+      frozen: false,
+      scope: "full" as const,
+      access_token: "a",
+      refresh_token: "r",
+    }));
+    const state = useUserSettings(makeDeps({
+      updateMyProfile: update,
+      unfreeze,
+      isRestrictedSession: () => true,
+      persistSession: vi.fn(),
+    }));
+    await state.load();
+
+    state.form.name = "张三";
+    state.form.class = "软件工程230301";
+    state.form.studentId = "202311451";
+
+    const outcome = await state.submitUnfreeze();
+
+    expect(outcome).toEqual({ kind: "unfrozen" });
+    // 先 PUT /me 落盘，再 POST /me/unfreeze（没有 toHaveBeenCalledBefore，用调用序验证）。
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(unfreeze).toHaveBeenCalledTimes(1);
+    expect(update.mock.invocationCallOrder[0]!).toBeLessThan(
+      unfreeze.mock.invocationCallOrder[0]!,
+    );
+    expect(update.mock.calls[0]![0]).toMatchObject({
+      name: "张三",
+      class: "软件工程230301",
+      student_id: 202311451,
+    });
+  });
+
+  it("does not call the unfreeze endpoint when saving the form failed", async () => {
+    // 落盘失败还去打解冻接口，用户只会再吃一次「仍不全」，且不知道是保存的问题。
+    const unfreeze = vi.fn();
+    const state = useUserSettings(makeDeps({
+      updateMyProfile: async () => { throw new AuthRequestError("服务暂时不可用", 0); },
+      unfreeze,
+      isRestrictedSession: () => true,
+    }));
+    await state.load();
+
+    state.form.class = "软件工程230301";
+
+    expect(await state.submitUnfreeze()).toEqual({ kind: "unsaved" });
+    expect(unfreeze).not.toHaveBeenCalled();
+    // 草稿必须留着，让用户改完能重试。
+    expect(state.form.class).toBe("软件工程230301");
+  });
+
+  it("skips the extra unfreeze call when the save already auto-unfroze", async () => {
+    // PUT /me 已经换发了完整令牌，旧令牌随即失效；
+    // 再打 /me/unfreeze 只会拿到 401。
+    const unfreeze = vi.fn();
+    const state = useUserSettings(makeDeps({
+      updateMyProfile: async () => profile({
+        access_token: "full-access",
+        refresh_token: "full-refresh",
+        scope: "full",
+        unfrozen: true,
+      }),
+      unfreeze,
+      isRestrictedSession: () => true,
+      persistSession: vi.fn(),
+    }));
+    await state.load();
+
+    state.form.class = "软件工程230301";
+
+    expect(await state.submitUnfreeze()).toEqual({ kind: "unfrozen" });
+    expect(unfreeze).not.toHaveBeenCalled();
+  });
+
+  it("reports the remaining issues and refreshes the session list when still incomplete", async () => {
+    // frozen=true 是业务结果（200），不是错误：要把清单交回去渲染，
+    // 并覆盖登录时那份旧清单，否则用户会对着已经改好的项发愁。
+    const issues = [{ field: "class", message: "班级须为「汉字 + 6 位数字」" }];
+    const persistSession = vi.fn();
+    const state = useUserSettings(makeDeps({
+      unfreeze: async () => ({ user_id: 1, frozen: true, freeze_issues: issues }),
+      isRestrictedSession: () => true,
+      persistSession,
+      readSession: () => ({ access_token: "a", refresh_token: "r", user_id: 1, scope: "profile_only", frozen: true }),
+    }));
+    await state.load();
+
+    expect(await state.submitUnfreeze()).toEqual({ kind: "incomplete", issues });
+    expect(persistSession).toHaveBeenCalledWith(
+      expect.objectContaining({ frozen: true, freeze_issues: issues }),
+    );
+  });
+
+  it("turns a failed unfreeze request into a readable message", async () => {
+    const state = useUserSettings(makeDeps({
+      unfreeze: async () => { throw new AuthRequestError("当前账号未被冻结，无需解冻", 400); },
+      isRestrictedSession: () => true,
+    }));
+    await state.load();
+
+    const outcome = await state.submitUnfreeze();
+    expect(outcome).toEqual({ kind: "failed", message: "当前账号未被冻结，无需解冻" });
   });
 });
 

@@ -13,8 +13,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 
 import PageHeader from "@/components/common/PageHeader.vue";
 import { deleteCurrentUser } from "@/api/profile";
-import { clearAuthSession, currentSession, saveAuthSession } from "@/auth/session";
-import { unfreezeSelf } from "@/api/auth";
+import { clearAuthSession, currentSession } from "@/auth/session";
 import { SIGNAL_TRANSITION } from "@/modules/swiss-signal/context";
 import { useUserSettings } from "../composables/useUserSettings";
 import {
@@ -36,6 +35,7 @@ const {
   fieldErrors,
   latestDirection,
   directionError,
+  submitUnfreeze,
   retryDirection,
   saveField,
   retryField,
@@ -180,35 +180,32 @@ const unfreezing = ref(false);
 /**
  * 提交解冻。
  *
- * 资料仍不全时后端回 200 + frozen=true + 剩余问题项（不是错误），
- * 所以这里要把「还剩哪几项」展示出来，而不是只说「失败了」。
+ * 流程（先落盘 → 再解冻，自动解冻则跳过重复请求）在 composable 里，
+ * 这里只负责把结果翻成提示与跳转。
  */
-async function submitUnfreeze(): Promise<void> {
-  const token = currentSession.value?.access_token;
-  if (!token || unfreezing.value) return;
+async function handleSubmitUnfreeze(): Promise<void> {
+  if (unfreezing.value) return;
+  if (!currentSession.value?.access_token) return;
 
   unfreezing.value = true;
   try {
-    const result = await unfreezeSelf(token);
-    if (result.frozen) {
-      // 还没补齐：把清单留给用户，别把他弹回登录页。
-      ElMessage.warning("资料仍未补齐，请按提示修改后再提交");
-      return;
+    const outcome = await submitUnfreeze();
+    switch (outcome.kind) {
+      case "unfrozen":
+        ElMessage.success("资料已补齐，账号已解冻");
+        await router.replace("/user/home");
+        return;
+      case "incomplete":
+        // 后端复核后的清单已写回会话，顶部提示条会跟着更新。
+        ElMessage.warning("资料仍未补齐，请按提示修改后再提交");
+        return;
+      case "unsaved":
+        ElMessage.error("资料尚未保存成功，请先修正下方字段提示后再提交解冻");
+        return;
+      case "failed":
+        ElMessage.error(outcome.message);
+        return;
     }
-    // 解冻成功：必须替换本地会话，否则手里还是受限令牌，点什么都是 403。
-    if (result.access_token && result.refresh_token) {
-      saveAuthSession({
-        access_token: result.access_token,
-        refresh_token: result.refresh_token,
-        user_id: result.user_id,
-        scope: result.scope ?? "full",
-        frozen: false,
-      });
-    }
-    ElMessage.success("资料已补齐，账号已解冻");
-    await router.replace("/user/home");
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : "提交解冻失败，请稍后重试");
   } finally {
     unfreezing.value = false;
   }
@@ -237,7 +234,7 @@ async function submitUnfreeze(): Promise<void> {
         <ul v-if="freezeIssues.length" class="settings-frozen__issues">
           <li v-for="issue in freezeIssues" :key="issue.field">{{ issue.message }}</li>
         </ul>
-        <el-button type="primary" :loading="unfreezing" @click="submitUnfreeze">
+        <el-button type="primary" :loading="unfreezing" @click="handleSubmitUnfreeze">
           提交解冻
         </el-button>
       </section>
@@ -285,6 +282,7 @@ async function submitUnfreeze(): Promise<void> {
           :field-errors="fieldErrors"
           :latest-direction="latestDirection"
           :direction-error="directionError"
+          :restricted="frozenSession"
           @save-field="saveField"
           @retry-field="retryField"
           @retry-direction="retryDirection"

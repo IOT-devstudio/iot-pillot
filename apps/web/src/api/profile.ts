@@ -13,6 +13,7 @@ import type { Direction } from "@iot-pillot/shared-types";
 
 import { type SessionRequester, requestWithSession } from "./session-request";
 import type { UserRole } from "./admin";
+import type { TokenScope } from "./auth";
 
 /**
  * 用户的资料字段。
@@ -46,6 +47,18 @@ export interface MyProfile {
    * 处理，一切照旧；字段就绪后前端逻辑自动生效。
    */
   is_founding?: boolean;
+  /**
+   * 自动解冻结果（0012 自助解冻）。
+   *
+   * 受限会话在 PUT /me 补齐资料后，后端当场解冻并换发完整令牌。
+   * 这三个字段**只有本次请求真的解冻了**才非空/为真：其余情况后端一律省略，
+   * 所以「有值」本身就是「刚刚解冻」的信号。无条件替换会话会让每次保存
+   * 都把用户其它标签页顶下线。
+   */
+  scope?: TokenScope;
+  unfrozen?: boolean;
+  access_token?: string;
+  refresh_token?: string;
 }
 
 /** PUT /me 入参：只接受资料字段；空值表示「清空该字段」，未传表示「不动该字段」。 */
