@@ -53,10 +53,20 @@ export function fetchRoadmap(id: number): Promise<RoadmapDetail> {
   return requestWithSession<RoadmapDetail>(`${ADMIN_BASE}/${id}`);
 }
 
+/**
+ * 写请求的公共头。
+ *
+ * Content-Type 必须显式带上：会话请求器只负责加 Authorization，不会替你补
+ * Content-Type。缺了它后端 ShouldBindJSON 会按 null 绑定器处理，请求体根本
+ * 不会被解析——表现为「字段全空」而不是「格式错误」，极难从报错里看出来。
+ */
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
 /** 新建路线。阶段 id 留空串，由服务端生成。 */
 export function createRoadmap(payload: RoadmapWritePayload): Promise<RoadmapDetail> {
   return requestWithSession<RoadmapDetail>(ADMIN_BASE, {
     method: "POST",
+    headers: JSON_HEADERS,
     body: JSON.stringify(payload),
   });
 }
@@ -73,6 +83,7 @@ export function updateRoadmap(
 ): Promise<RoadmapDetail> {
   return requestWithSession<RoadmapDetail>(`${ADMIN_BASE}/${id}`, {
     method: "PUT",
+    headers: JSON_HEADERS,
     body: JSON.stringify(payload),
   });
 }

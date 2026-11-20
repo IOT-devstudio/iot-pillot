@@ -353,7 +353,11 @@ func (h *LearningRoadmapHandler) fail(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrRoadmapNotFound):
 		response.FailNotFound(c, domain.ErrRoadmapNotFound.Error())
 	default:
-		response.FailServer(c, "操作失败，请稍后重试")
+		// 走统一的 failInternal 而不是手写 FailServer：
+		// 它会记一行真实错误。此前这里只回一句「操作失败，请稍后重试」，
+		// 服务端一个字都不留——线上出现 5000 时完全无法定位是约束冲突、
+		// 连接断开还是别的什么。
+		failInternal(c, err)
 	}
 }
 
