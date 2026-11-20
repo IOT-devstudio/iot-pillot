@@ -60,6 +60,7 @@ func NewRouter(
 	forumHandler *ForumHandler,
 	forumNotify *service.ForumNotifyQueue,
 	roadmapHandler *LearningRoadmapHandler,
+	showcaseHandler *ShowcaseHandler,
 ) *Router {
 	if cfg.SERVICE.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -264,6 +265,13 @@ func NewRouter(
 		studio.PUT("/roadmaps/:id", roadmapHandler.UpdateLearningRoadmap)
 		studio.DELETE("/roadmaps/:id", roadmapHandler.DeleteLearningRoadmap)
 
+		// 作品提交审阅：管理端看全量、推进审核状态。
+		//
+		// 下载源码包走用户端那条 /me/showcase/:id/archive（服务层对管理员放行），
+		// 不重复开一条 admin 下载路由——两条路由指向同一份内容只会让权限判定分裂。
+		studio.GET("/showcase", showcaseHandler.ListAllShowcase)
+		studio.PATCH("/showcase/:id/review", showcaseHandler.ReviewShowcase)
+
 		// 项目与参与（#198）：项目 CRUD + 参与增删改。
 		//
 		// 项目名全局唯一；参与行带姓名快照，可关联成员档案也可只记外部姓名。
@@ -355,6 +363,17 @@ func NewRouter(
 		learning.GET("/roadmaps", roadmapHandler.ListLearningRoadmaps)
 		learning.GET("/roadmaps/:id", roadmapHandler.GetLearningRoadmap)
 		learning.POST("/roadmaps/:id/progress", roadmapHandler.MarkRoadmapProgress)
+
+		// 作品提交：学员交源码 zip 或仓库链接。
+		//
+		// 挂 requireFullScope 与其它业务端点一致：受限会话（资料被冻结）
+		// 本来就进不了业务页，也不该在这里开一个例外。
+		// 归属判定在服务层——本人只能看/删自己的，下载额外放行管理员。
+		showcase := apiV1.Group("/me/showcase", authRequired, requireFullScope)
+		showcase.GET("", showcaseHandler.ListMyShowcase)
+		showcase.POST("", showcaseHandler.CreateShowcase)
+		showcase.DELETE("/:id", showcaseHandler.DeleteShowcase)
+		showcase.GET("/:id/archive", showcaseHandler.DownloadShowcaseArchive)
 
 		forum := apiV1.Group("/forum", authRequired, requireFullScope)
 		forum.GET("/posts", func(c *gin.Context) { forumHandler.ListForumPosts(c, domain.ForumScopeRecruitment) })

@@ -16,6 +16,7 @@ import type { RoadmapDetail } from "@iot-pillot/shared-types";
 
 import MarkdownContent from "@/components/markdown/MarkdownContent.vue";
 import { fetchMyRoadmap, markRoadmapProgress } from "@/api/roadmap";
+import ShowcasePanel from "@/modules/showcase/components/ShowcasePanel.vue";
 
 import { isAllowedResourceUrl } from "../model";
 
@@ -149,6 +150,15 @@ onMounted(() => {
           <p v-else class="path-stage__no-res">这个阶段还没有资源</p>
         </li>
       </ol>
+
+      <!-- 作品提交：放在阶段列表**下方**通栏。
+           学员刚看完这条路线，就地交作品最自然；带 roadmapId 让提交记录
+           留住「交的是哪条路线」的标题快照。 -->
+      <ShowcasePanel
+        :roadmap-id="roadmap.id"
+        heading="提交这条路线的作品"
+        hint="按这条路线做出来的项目可以交在这里，会记入你的作品列表。"
+      />
     </template>
   </section>
 </template>

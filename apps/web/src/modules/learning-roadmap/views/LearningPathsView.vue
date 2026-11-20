@@ -14,6 +14,7 @@ import { useRouter } from "vue-router";
 import type { RoadmapDirectionOption, RoadmapListItem } from "@iot-pillot/shared-types";
 
 import { listMyRoadmaps } from "@/api/roadmap";
+import ShowcasePanel from "@/modules/showcase/components/ShowcasePanel.vue";
 
 import { excerptOf } from "../model";
 
@@ -127,6 +128,13 @@ onMounted(() => {
       layout="prev, pager, next"
       class="paths__pager"
       @current-change="load"
+    />
+
+    <!-- 作品提交：放在路线列表**下方**通栏，不做右侧侧栏。
+         学员看完路线后自然往下滚到「交作业」，动线是顺的。 -->
+    <ShowcasePanel
+      heading="提交作品"
+      hint="做完项目就交在这里：贴 GitHub 链接或上传源码压缩包，管理员会在管理端审阅。"
     />
   </section>
 </template>

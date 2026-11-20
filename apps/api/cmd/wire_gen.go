@@ -126,7 +126,14 @@ func InitializeApp() (*handler.Router, func(), error) {
 	roadmapProgressRepo := repository.NewRoadmapProgressRepo(db)
 	roadmapProgressUseCase := service.NewRoadmapProgressUseCase(roadmapProgressRepo, learningRoadmapRepo)
 	learningRoadmapHandler := handler.NewLearningRoadmapHandler(learningRoadmapUseCase).WithProgress(roadmapProgressUseCase)
-	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler, forumNotifyQueue, learningRoadmapHandler)
+	// 作品提交：学员交源码 zip 或仓库链接，管理端审阅。
+	// zip 复用同一套对象存储；路线仓库用于提交时的标题快照。
+	showcaseRepo := repository.NewShowcaseRepo(db)
+	showcaseUseCase := service.NewShowcaseUseCase(showcaseRepo).
+		WithStorage(s3Storage).
+		WithRoadmaps(learningRoadmapRepo)
+	showcaseHandler := handler.NewShowcaseHandler(showcaseUseCase, adminStore)
+	router := handler.NewRouter(configConfig, healthHandler, authHandler, adminHandler, mailHandler, recruitmentHandler, recruitmentInvitationHandler, formHandler, studioMemberHandler, studioKnowledgeHandler, studioProjectHandler, freezeScheduler, attachmentHandler, attachmentCleanup, tokenManager, adminStore, forumHandler, forumNotifyQueue, learningRoadmapHandler, showcaseHandler)
 	return router, func() {
 		cleanup()
 	}, nil
