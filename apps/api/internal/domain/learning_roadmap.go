@@ -1,7 +1,10 @@
 package domain
 
 import (
+	"database/sql/driver"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -48,7 +51,50 @@ type RoadmapResource struct {
 }
 
 // RoadmapStages 阶段数组别名，便于 JSONB 序列化与校验。
+//
+// 必须自己实现 driver.Valuer / sql.Scanner：GORM 看到切片会默认按
+// PostgreSQL **数组**字面量（{...}）写库，而 stages 列是 jsonb。
+// 那种写法会被列上的 `jsonb_typeof(stages) = 'array'` 约束直接拒掉
+// （SQLSTATE 23514）；空切片更糟——写进去的是 NULL，撞 NOT NULL（23502）。
+// 表现出来就是新建路线一律 5000，且与内容无关。
 type RoadmapStages []RoadmapStage
+
+// Value 按 JSON 写库，nil/空切片一律存成 `[]` 而不是 NULL。
+//
+// 空切片存 `[]` 而不是 NULL 很关键：列是 NOT NULL，且约束要求 jsonb 是数组。
+// 「新建一条还没加阶段就保存」是最常见的路径，不能在这里失败。
+func (s RoadmapStages) Value() (driver.Value, error) {
+	if len(s) == 0 {
+		return "[]", nil
+	}
+	b, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
+}
+
+// Scan 按 JSON 读库。库里的 NULL 按空数组处理，避免读到脏数据时整条路线打不开。
+func (s *RoadmapStages) Scan(src any) error {
+	if src == nil {
+		*s = RoadmapStages{}
+		return nil
+	}
+	var raw []byte
+	switch v := src.(type) {
+	case []byte:
+		raw = v
+	case string:
+		raw = []byte(v)
+	default:
+		return fmt.Errorf("learning_roadmap: 无法解析 stages（类型 %T）", src)
+	}
+	if len(raw) == 0 {
+		*s = RoadmapStages{}
+		return nil
+	}
+	return json.Unmarshal(raw, s)
+}
 
 // 学习路线的边界与错误。
 const (
