@@ -44,6 +44,7 @@ import {
   type RecruitmentTimelineEntry,
 } from "@/api/recruitment";
 import SignalDialog from "@/modules/swiss-signal/SignalDialog.vue";
+import ShowcasePanel from "@/modules/showcase/components/ShowcasePanel.vue";
 import {
   interviewBlockReason as interviewBlockReasonOf,
   presentationOf,
@@ -131,6 +132,20 @@ function goLearningPaths(event: MouseEvent): void {
   event.preventDefault();
   if (!requireSignIn("查看学习路线")) return;
   void transition(() => router.push("/user/learning-paths"));
+}
+
+/**
+ * 去作品提交区。
+ *
+ * 它就在本页流程区下方（不是独立页），所以这里是页内锚点跳转而不是路由跳转；
+ * 未登录时仍然先提示登录——提交要身份，滚到表单才发现要登录是浪费一次滚动。
+ */
+function goShowcase(event: MouseEvent): void {
+  if (!requireSignIn("提交作品")) {
+    event.preventDefault();
+    return;
+  }
+  scrollToSection(event, "showcase-anchor");
 }
 
 const userError = ref("");
@@ -578,6 +593,7 @@ function steps(application: RecruitmentApplication) {
         ><a href="/user/qa" @click="goQa">招新问答</a
         ><a href="/user/learning-paths" @click="goLearningPaths"
           >学习路线</a
+        ><a href="#showcase" @click="goShowcase">作品提交</a
         ><RouterLink to="/user/about" @click="goAbout($event)"
           >关于我们</RouterLink
         >
@@ -810,6 +826,14 @@ function steps(application: RecruitmentApplication) {
         </ol>
       </div>
     </section>
+    <!-- 作品提交：紧跟报名流程区**下方**通栏。
+         报名之后最自然的下一步就是「做出东西、交上来」，
+         所以放在流程之后、收尾语之前，而不是塞进右侧或弹窗里。 -->
+    <ShowcasePanel
+      id="showcase-anchor"
+      heading="提交作品"
+      hint="不管是在做招新项目还是自己练手，都可以把成果交在这里：GitHub 链接或源码压缩包。"
+    />
     <section class="closing-note">
       <span class="mono">ONE MORE THING.</span>
       <p>不必什么都会。<br /><span>愿意动手，就有可能。</span></p>
