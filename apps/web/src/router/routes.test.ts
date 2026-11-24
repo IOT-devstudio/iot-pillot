@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+// 作品审阅视图引入 Element Plus，其 theme-chalk CSS 不能在 node 环境解析。
+vi.mock("@/modules/showcase/views/AdminShowcaseView.vue", () => ({
+  default: { name: "AdminShowcaseView" },
+}));
 // 学习路线用户端视图（#224）同样引入 Element Plus，一并 mock。
 vi.mock("@/modules/learning-roadmap/views/LearningPathsView.vue", () => ({
   default: { name: "LearningPathsView" },
@@ -320,6 +324,15 @@ describe("application routes", () => {
       // 用户端走用户外壳，不是管理台。
       expect(r.meta?.adminShell).toBeUndefined();
     }
+  });
+
+  it("作品审阅路由仅管理员可见，且套管理台外壳", () => {
+    const page = routes.find((r) => r.path === "/studio/showcase");
+    expect(page).toBeDefined();
+    expect(page?.name).toBe("studio-showcase");
+    // 审阅是管理员专属：漏标就会让普通成员进到审阅页。
+    expect(page?.meta?.allowRoles).toEqual(["admin"]);
+    expect(page?.meta?.adminShell).toBe(true);
   });
 
   it("mounts the studio member roster as an admin-only page (issue #195)", () => {

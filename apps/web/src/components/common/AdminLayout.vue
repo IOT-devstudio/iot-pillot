@@ -107,6 +107,12 @@ const navGroups: AdminNavGroup[] = [
         icon: "M4 19.5V6.75h16v12.75z M8 6.75V4.5h8v2.25 M8 12h8 M8 15.5h5",
       },
       {
+        // 作品审阅：学员交上来的源码包与仓库链接在这里通过/驳回。
+        label: "作品审阅",
+        to: "/studio/showcase",
+        icon: "M9 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z M3 20v-1.5a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4V20 M16 4.75h5 M18.5 2.25v5",
+      },
+      {
         // 内部论坛（#221）：复用招新问答的页面组件，靠路由 meta 切内容域。
         // 仅 admin 可见；后端对普通成员一律 404，菜单只是不显示入口。
         label: "内部论坛",
@@ -458,6 +464,7 @@ onBeforeUnmount(() => {
 .admin-sidebar__head {
   display: flex;
   min-height: 36px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
@@ -558,6 +565,35 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0;
+  /* 侧栏高度固定（100dvh），菜单项多于一屏时滚这里，而不是整页跟着滚。
+     flex: 1 占满头部与底部之间的剩余空间；min-height: 0 是关键——
+     flex 子项默认 min-height:auto（按内容撑开），不置 0 就不会收缩，
+     overflow-y 也就永远不会触发。 */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 细滚动条：默认滚动条会挤占本就不宽的 246px 侧栏。
+     scrollbar-gutter 预留轨道宽度，滚动条出现时不会让菜单左右跳动。 */
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+}
+
+.admin-navigation::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-navigation::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-navigation::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.admin-navigation::-webkit-scrollbar-thumb:hover {
+  background: #c8c2b4;
 }
 
 .admin-navigation__heading {
@@ -689,6 +725,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  flex: 0 0 auto;
   margin-top: auto;
   padding: 20px 11px 0;
   border-top: 1px solid var(--line);
